@@ -13,10 +13,9 @@ type Props = {
 
 function difficultyMeta(group: RaidGroup) {
   const text = `${group.title} ${group.boss}`;
-  if (/困難|hard|chaos/i.test(text)) return { label: '困難', tone: 'orange' as const };
-  if (/簡單|easy/i.test(text)) return { label: '簡單', tone: 'green' as const };
-  if (/普通|normal/i.test(text)) return { label: '普通', tone: 'purple' as const };
-  return { label: '活動', tone: 'slate' as const };
+  if (/困難|hard|chaos/i.test(text)) return { label: 'HARD', tone: 'red' as const };
+  if (/普通|normal|簡單|easy/i.test(text)) return { label: 'NORMAL', tone: 'green' as const };
+  return { label: 'NORMAL', tone: 'green' as const };
 }
 
 function statusText(group: RaidGroup) {
@@ -74,10 +73,12 @@ export function RaidList({ groups, selectedId, query, onSelect }: Props) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-black text-slate-950">{group.title}</div>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="truncate text-sm font-black text-slate-950">{group.title}</div>
+                        <Pill tone={difficulty.tone}>{difficulty.label}</Pill>
+                      </div>
                       <div className="mt-1 truncate text-xs font-semibold text-slate-500">{group.raidDate}　{group.raidTime}</div>
                     </div>
-                    <Pill tone={difficulty.tone}>{difficulty.label}</Pill>
                   </div>
                   <div className="mt-1 truncate text-xs text-slate-500">隊長：{group.leader}</div>
                   <div className="mt-3 flex items-center justify-between gap-2">

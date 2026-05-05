@@ -1,2 +1,2 @@
-UI-V8
-Small boss icons now use difficulty-matched entry artwork with NORMAL/HARD badges.
+UI-V9
+Difficulty badges now show NORMAL/HARD beside raid titles, and create modal uses NORMAL/HARD options.

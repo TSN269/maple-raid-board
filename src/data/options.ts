@@ -28,4 +28,4 @@ export const roleOptions = ['主坦', '副坦', '輸出', '補師', '主輸出',
 
 export const statusOptions: MemberStatus[] = ['待確認', '已確認', '候補', '請假'];
 
-export const difficultyOptions = ['簡單', '困難'] as const;
+export const difficultyOptions = ['NORMAL', 'HARD'] as const;

@@ -42,10 +42,9 @@ function jobIcon(job: string) {
 
 function difficultyMeta(group: RaidGroup) {
   const text = `${group.title} ${group.boss}`;
-  if (/困難|hard|chaos/i.test(text)) return { label: '困難', tone: 'orange' as const };
-  if (/簡單|easy/i.test(text)) return { label: '簡單', tone: 'green' as const };
-  if (/普通|normal/i.test(text)) return { label: '普通', tone: 'purple' as const };
-  return { label: '活動', tone: 'slate' as const };
+  if (/困難|hard|chaos/i.test(text)) return { label: 'HARD', tone: 'red' as const };
+  if (/普通|normal|簡單|easy/i.test(text)) return { label: 'NORMAL', tone: 'green' as const };
+  return { label: 'NORMAL', tone: 'green' as const };
 }
 
 function MemberRow({ member, onStatusChange, onRemove }: { member: RaidMember; onStatusChange: Props['onStatusChange']; onRemove: Props['onRemove'] }) {
@@ -159,7 +158,6 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 max-w-4xl">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Pill tone={difficulty.tone}>{difficulty.label}</Pill>
                   <Pill tone="dark">{group.boss}</Pill>
                   <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-black text-orange-100 ring-1 ring-white/20">Boss 圖示已替換</span>
                 </div>
@@ -170,7 +168,10 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
                     <span className={classNames('absolute left-2 top-2 rounded-md px-2 py-1 text-[10px] font-black tracking-wide shadow-sm', bossDifficulty.chipClass)}>{bossDifficulty.label}</span>
                   </div>
                   <div className="min-w-0">
-                    <h2 className="truncate text-4xl font-black tracking-tight md:text-5xl">{group.title}</h2>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h2 className="truncate text-4xl font-black tracking-tight md:text-5xl">{group.title}</h2>
+                      <Pill tone={difficulty.tone} className="px-3 py-1 text-sm">{difficulty.label}</Pill>
+                    </div>
                     <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold text-orange-50/90">
                       <span>📅 {group.raidDate}</span>
                       <span>🕘 {group.raidTime}</span>
