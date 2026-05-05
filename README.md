@@ -1,6 +1,6 @@
-# Maple Raid Board - 秋楓 UI-V2
+# Maple Raid Board - 秋楓 UI-V5
 
-這包是明顯改版版型。部署後頁首應該看得到「秋楓 UI-V2」，Hero 卡右上應該看得到「UI-V2 / Premium Raid Dashboard」。如果看不到，代表 Vercel 沒部署到這份 commit。
+這包是 UI-V5 版型。部署後頁首應該看得到「秋楓 UI-V5」。如果看不到，代表 Vercel 沒部署到這份 commit。
 
 
 仿照突襲組隊報名看板的功能，做成可推 GitHub 的 Vite + React + TypeScript + Tailwind + Supabase 專案。
@@ -151,9 +151,17 @@ Vercel should run `npm run build`, not `npm run typecheck`.
 - 不需要重新執行 Supabase SQL。
 
 
-## UI-V4 調整
+## UI-V5 調整
 
 - 左側「首頁」只顯示突襲場次清單與搜尋。
 - 左側「楓突襲」顯示目前選取團隊的詳細內容、公告、統計與隊伍配置。
 - 左側「我要報名」顯示目前選取團隊的報名表單。
 - 不需要重跑 Supabase schema。
+
+
+## UI-V5
+
+- 移除頁尾的 Demo mode / policy 提示文字。
+- 移除左側第 4 個「我的報名」按鈕。
+- 新增突襲場次表單加入「難度」選項：簡單 / 困難。
+- 難度目前用既有 boss 欄位相容儲存，不需要重跑 Supabase schema。

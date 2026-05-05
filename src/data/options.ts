@@ -27,3 +27,5 @@ export const bossOptions = [
 export const roleOptions = ['主坦', '副坦', '輸出', '補師', '主輸出', '副輸出', '輔助', '綁王/控場', '隊長', '替補'];
 
 export const statusOptions: MemberStatus[] = ['待確認', '已確認', '候補', '請假'];
+
+export const difficultyOptions = ['簡單', '困難'] as const;

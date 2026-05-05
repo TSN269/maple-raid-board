@@ -1,1 +1,1 @@
-UI-V4: left navigation panels changed. Home shows only raid list; Maple Raid shows selected raid detail; Signup shows signup form.
+UI-V5: removed footer policy text, removed left nav my-signup button, added simple/hard difficulty option in create raid modal.

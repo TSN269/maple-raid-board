@@ -12,14 +12,13 @@ function getInitialGroupId() {
   return new URLSearchParams(window.location.search).get('group') || 'demo-zakum-soon';
 }
 
-type ActivePanel = 'home' | 'raid' | 'signup' | 'my' | 'favorite' | 'notice' | 'settings';
+type ActivePanel = 'home' | 'raid' | 'signup' | 'favorite' | 'notice' | 'settings';
 
 function NavigationRail({ activePanel, onChange }: { activePanel: ActivePanel; onChange: (panel: ActivePanel) => void }) {
   const items: Array<{ icon: string; label: string; panel: ActivePanel; badge?: string; helper?: string }> = [
     { icon: '⌂', label: '首頁', panel: 'home', helper: '突襲場次清單' },
     { icon: '🍁', label: '楓突襲', panel: 'raid', helper: '突襲詳細內容' },
     { icon: '✎', label: '我要報名', panel: 'signup', helper: '報名表單' },
-    { icon: '▣', label: '我的報名', panel: 'my', helper: '下一階段' },
     { icon: '☆', label: '收藏', panel: 'favorite', helper: '下一階段' },
     { icon: '●', label: '通知', panel: 'notice', badge: '3', helper: '下一階段' },
     { icon: '⚙', label: '設定', panel: 'settings', helper: '下一階段' },
@@ -175,10 +174,9 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">秋楓 UI-V4</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">秋楓 UI-V5</span>
                 <span className="text-orange-500">✦</span>
               </div>
-              <p className="text-xs font-semibold text-slate-500">左導覽分頁：首頁＝場次清單；楓突襲＝團隊詳細；我要報名＝報名表單</p>
             </div>
           </div>
 
@@ -284,8 +282,6 @@ export default function App() {
             ) : (
               <div className="rounded-[2rem] border border-orange-100 bg-white/85 p-10 text-center text-slate-500 shadow-sm">沒有可報名的場次。</div>
             )
-          ) : activePanel === 'my' ? (
-            <PlaceholderPanel title="我的報名" description="下一階段可做成只顯示自己報名過的團與狀態。" />
           ) : activePanel === 'favorite' ? (
             <PlaceholderPanel title="收藏" description="下一階段可做成常用 Boss、固定團與收藏場次。" />
           ) : activePanel === 'notice' ? (
@@ -295,10 +291,6 @@ export default function App() {
           )}
         </div>
       )}
-
-      <footer className="mx-auto max-w-[1560px] px-4 pb-8 text-xs text-slate-400">
-        UI-V4 visible marker：左側『首頁』只顯示突襲場次清單；左側『楓突襲』顯示突襲詳細內容；左側『我要報名』顯示報名表單。Demo mode：目前 SQL policy 開放匿名 CRUD。正式站請改成登入制、管理員權限與每團邀請碼。
-      </footer>
 
       {showCreate ? <CreateRaidModal onClose={() => setShowCreate(false)} onCreate={createGroup} /> : null}
     </div>

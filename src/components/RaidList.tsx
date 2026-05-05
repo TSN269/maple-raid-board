@@ -24,11 +24,12 @@ function bossInitial(group: RaidGroup) {
   return source.replace(/\s+/g, '').slice(0, 1).toUpperCase();
 }
 
-function difficultyTone(group: RaidGroup) {
+function difficultyMeta(group: RaidGroup) {
   const text = `${group.title} ${group.boss}`;
-  if (/困難|hard|chaos/i.test(text)) return 'orange';
-  if (/普通|normal/i.test(text)) return 'purple';
-  return 'slate';
+  if (/困難|hard|chaos/i.test(text)) return { label: '困難', tone: 'orange' as const };
+  if (/簡單|easy/i.test(text)) return { label: '簡單', tone: 'green' as const };
+  if (/普通|normal/i.test(text)) return { label: '普通', tone: 'purple' as const };
+  return { label: '活動', tone: 'slate' as const };
 }
 
 function statusText(group: RaidGroup) {
@@ -60,6 +61,7 @@ export function RaidList({ groups, selectedId, query, onSelect }: Props) {
           const confirmed = group.members.filter((m) => m.status === '已確認').length;
           const palette = bossPalette[index % bossPalette.length];
           const selected = selectedId === group.id;
+          const difficulty = difficultyMeta(group);
           return (
             <button
               key={group.id}
@@ -80,7 +82,7 @@ export function RaidList({ groups, selectedId, query, onSelect }: Props) {
                       <div className="truncate text-sm font-black text-slate-950">{group.title}</div>
                       <div className="mt-1 truncate text-xs font-semibold text-slate-500">{group.raidDate}　{group.raidTime}</div>
                     </div>
-                    <Pill tone={difficultyTone(group)}>{difficultyTone(group) === 'orange' ? '困難' : difficultyTone(group) === 'purple' ? '普通' : '活動'}</Pill>
+                    <Pill tone={difficulty.tone}>{difficulty.label}</Pill>
                   </div>
                   <div className="mt-1 truncate text-xs text-slate-500">隊長：{group.leader}</div>
                   <div className="mt-3 flex items-center justify-between gap-2">

@@ -39,6 +39,14 @@ function jobIcon(job: string) {
   return '◆';
 }
 
+function difficultyMeta(group: RaidGroup) {
+  const text = `${group.title} ${group.boss}`;
+  if (/困難|hard|chaos/i.test(text)) return { label: '困難', tone: 'orange' as const };
+  if (/簡單|easy/i.test(text)) return { label: '簡單', tone: 'green' as const };
+  if (/普通|normal/i.test(text)) return { label: '普通', tone: 'purple' as const };
+  return { label: '活動', tone: 'slate' as const };
+}
+
 function MemberRow({ member, onStatusChange, onRemove }: { member: RaidMember; onStatusChange: Props['onStatusChange']; onRemove: Props['onRemove'] }) {
   return (
     <div className="group/member grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-2 rounded-2xl border border-transparent bg-white/70 px-2.5 py-2 transition hover:border-orange-100 hover:bg-white hover:shadow-sm">
@@ -105,6 +113,7 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
   const confirmed = group.members.filter((m) => m.status === '已確認').length;
   const pending = group.members.filter((m) => m.status === '待確認').length;
   const standby = group.members.filter((m) => m.status === '候補').length;
+  const difficulty = difficultyMeta(group);
 
   const roleCount = useMemo(() => {
     return group.members.reduce<Record<string, number>>((acc, m) => {
@@ -142,12 +151,12 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_68%_28%,rgba(239,68,68,0.52),transparent_26%),radial-gradient(circle_at_82%_75%,rgba(249,115,22,0.34),transparent_32%),linear-gradient(120deg,#09090b_0%,#1c1917_45%,#431407_100%)]" />
           <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_20%_20%,#fff_1px,transparent_1px)] [background-size:24px_24px]" />
           <div className="absolute -right-14 bottom-0 top-0 hidden w-1/2 items-center justify-center text-[13rem] font-black text-red-500/15 lg:flex">楓</div>
-          <div className="absolute right-8 top-8 hidden rounded-3xl border border-white/10 bg-black/25 px-4 py-3 text-xs font-black text-orange-100 shadow-2xl backdrop-blur lg:block">UI-V2 / Premium Raid Dashboard</div>
+          <div className="absolute right-8 top-8 hidden rounded-3xl border border-white/10 bg-black/25 px-4 py-3 text-xs font-black text-orange-100 shadow-2xl backdrop-blur lg:block">Premium Raid Dashboard</div>
           <div className="relative p-6 md:p-8">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Pill tone="orange">困難</Pill>
+                  <Pill tone={difficulty.tone}>{difficulty.label}</Pill>
                   <Pill tone="dark">{group.boss}</Pill>
                   <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-black text-orange-100 ring-1 ring-white/20">新版 Hero 版型</span>
                 </div>

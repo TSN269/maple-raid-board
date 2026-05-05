@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { bossOptions } from '../data/options';
+import { bossOptions, difficultyOptions } from '../data/options';
 import type { NewRaidGroup } from '../types';
 import { Button, Field, Input, Select, Textarea } from './ui';
 
@@ -30,6 +30,7 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
   const [form, setForm] = useState({
     title: '',
     boss: bossOptions[0],
+    difficulty: difficultyOptions[1],
     raidDate: getDateOffset(1),
     raidTime: '22:00',
     leader: '',
@@ -58,6 +59,11 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
           <Field label="Boss">
             <Select value={form.boss} onChange={(e) => set('boss', e.target.value)}>
               {bossOptions.map((b) => <option key={b}>{b}</option>)}
+            </Select>
+          </Field>
+          <Field label="難度">
+            <Select value={form.difficulty} onChange={(e) => set('difficulty', e.target.value as (typeof form)['difficulty'])}>
+              {difficultyOptions.map((d) => <option key={d}>{d}</option>)}
             </Select>
           </Field>
           <Field label="日期">
@@ -89,7 +95,13 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
             onClick={async () => {
               setSaving(true);
               try {
-                await onCreate({ ...form, id: slugify(form.title || form.boss), status: 'open' });
+                const { difficulty, ...payload } = form;
+                await onCreate({
+                  ...payload,
+                  boss: `${payload.boss}｜${difficulty}`,
+                  id: slugify(`${payload.title}-${difficulty}` || payload.boss),
+                  status: 'open',
+                });
               } finally {
                 setSaving(false);
               }
