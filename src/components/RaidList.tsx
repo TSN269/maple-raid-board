@@ -1,4 +1,5 @@
 import type { RaidGroup } from '../types';
+import { getBossArtMeta } from '../data/bossArt';
 import { Pill, classNames } from './ui';
 
 type Props = {
@@ -9,20 +10,6 @@ type Props = {
   onSelect: (id: string) => void;
 };
 
-const bossPalette = [
-  'from-red-950 via-red-800 to-orange-600',
-  'from-violet-950 via-indigo-800 to-fuchsia-500',
-  'from-rose-900 via-pink-700 to-orange-400',
-  'from-slate-950 via-slate-800 to-red-500',
-  'from-emerald-950 via-green-800 to-lime-500',
-  'from-zinc-950 via-stone-800 to-amber-600',
-  'from-blue-950 via-sky-800 to-cyan-500',
-];
-
-function bossInitial(group: RaidGroup) {
-  const source = group.boss || group.title || '?';
-  return source.replace(/\s+/g, '').slice(0, 1).toUpperCase();
-}
 
 function difficultyMeta(group: RaidGroup) {
   const text = `${group.title} ${group.boss}`;
@@ -57,9 +44,9 @@ export function RaidList({ groups, selectedId, query, onSelect }: Props) {
       </div>
 
       <div className="mt-4 grid gap-3">
-        {filtered.map((group, index) => {
+        {filtered.map((group) => {
           const confirmed = group.members.filter((m) => m.status === '已確認').length;
-          const palette = bossPalette[index % bossPalette.length];
+          const bossArt = getBossArtMeta(`${group.title} ${group.boss}`);
           const selected = selectedId === group.id;
           const difficulty = difficultyMeta(group);
           return (
@@ -72,9 +59,13 @@ export function RaidList({ groups, selectedId, query, onSelect }: Props) {
               )}
             >
               <div className="flex gap-3">
-                <div className={classNames('relative grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-3xl bg-gradient-to-br text-xl font-black text-white shadow-inner', palette)}>
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.35),transparent_32%),radial-gradient(circle_at_70%_80%,rgba(0,0,0,0.35),transparent_44%)]" />
-                  <span className="relative">{bossInitial(group)}</span>
+                <div className={classNames('relative h-16 w-16 shrink-0 overflow-hidden rounded-3xl bg-gradient-to-br shadow-xl', bossArt.accent, bossArt.glow)}>
+                  {bossArt.image ? (
+                    <img src={bossArt.image} alt={bossArt.label} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="grid h-full w-full place-items-center text-xl font-black text-white">{bossArt.label.slice(0, 1)}</div>
+                  )}
+                  <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.18),transparent_35%,rgba(15,23,42,0.18)_100%)]" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">

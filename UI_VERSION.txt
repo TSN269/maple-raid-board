@@ -1,1 +1,2 @@
-UI-V6: reduced party board to 3 teams and limited signup party selector to teams 1-3. Existing party 4-6 data is displayed under team 3 for compatibility.
+UI-V7
+Boss icons replaced with matching web images for Zakum, Horntail, Pink Bean, and Papulatus.

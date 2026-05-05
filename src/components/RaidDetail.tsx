@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { getBossArtMeta } from '../data/bossArt';
 import { statusOptions } from '../data/options';
 import type { MemberStatus, RaidGroup, RaidMember } from '../types';
 import { Button, Pill, Select, classNames } from './ui';
@@ -114,6 +115,7 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
   const pending = group.members.filter((m) => m.status === '待確認').length;
   const standby = group.members.filter((m) => m.status === '候補').length;
   const difficulty = difficultyMeta(group);
+  const bossArt = getBossArtMeta(`${group.title} ${group.boss}`);
 
   const roleCount = useMemo(() => {
     return group.members.reduce<Record<string, number>>((acc, m) => {
@@ -150,26 +152,34 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
         <section className="relative overflow-hidden rounded-[2rem] border border-orange-100 bg-slate-950 text-white shadow-[0_28px_80px_-48px_rgba(15,23,42,0.95)]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_68%_28%,rgba(239,68,68,0.52),transparent_26%),radial-gradient(circle_at_82%_75%,rgba(249,115,22,0.34),transparent_32%),linear-gradient(120deg,#09090b_0%,#1c1917_45%,#431407_100%)]" />
           <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_20%_20%,#fff_1px,transparent_1px)] [background-size:24px_24px]" />
-          <div className="absolute -right-14 bottom-0 top-0 hidden w-1/2 items-center justify-center text-[13rem] font-black text-red-500/15 lg:flex">楓</div>
-          <div className="absolute right-8 top-8 hidden rounded-3xl border border-white/10 bg-black/25 px-4 py-3 text-xs font-black text-orange-100 shadow-2xl backdrop-blur lg:block">Premium Raid Dashboard</div>
+          {bossArt.image ? <img src={bossArt.image} alt={bossArt.label} className="absolute -right-10 bottom-0 top-0 hidden h-full w-[36%] object-contain opacity-95 drop-shadow-[0_20px_30px_rgba(0,0,0,0.45)] lg:block" /> : null}
+          <div className="absolute right-8 top-8 hidden rounded-3xl border border-white/10 bg-black/25 px-4 py-3 text-xs font-black text-orange-100 shadow-2xl backdrop-blur lg:block">Boss Art UI-V7</div>
           <div className="relative p-6 md:p-8">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
+              <div className="min-w-0 max-w-4xl">
                 <div className="flex flex-wrap items-center gap-2">
                   <Pill tone={difficulty.tone}>{difficulty.label}</Pill>
                   <Pill tone="dark">{group.boss}</Pill>
-                  <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-black text-orange-100 ring-1 ring-white/20">新版 Hero 版型</span>
+                  <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-black text-orange-100 ring-1 ring-white/20">Boss 圖示已替換</span>
                 </div>
-                <h2 className="mt-4 truncate text-4xl font-black tracking-tight md:text-5xl">{group.title}</h2>
-                <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold text-orange-50/90">
-                  <span>📅 {group.raidDate}</span>
-                  <span>🕘 {group.raidTime}</span>
-                  <span>👤 隊長：{group.leader}</span>
-                </div>
-                <div className="mt-7 flex flex-wrap items-center gap-3">
-                  <span className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-black ring-1 ring-white/10">最低等級：{group.minLevel}</span>
-                  <Pill tone={group.members.length >= group.capacity ? 'red' : 'green'} className="px-4 py-2">{group.members.length >= group.capacity ? '額滿' : '招募中'}</Pill>
-                  <span className="text-sm font-black text-white/90">👥 {group.members.length} / {group.capacity}</span>
+                <div className="mt-5 flex items-start gap-4">
+                  <div className={classNames('relative hidden h-24 w-24 shrink-0 overflow-hidden rounded-[1.6rem] border border-white/10 bg-gradient-to-br shadow-2xl md:block', bossArt.accent, bossArt.glow)}>
+                    {bossArt.image ? <img src={bossArt.image} alt={bossArt.label} className="h-full w-full object-cover" /> : null}
+                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.2),transparent_38%,rgba(15,23,42,0.2)_100%)]" />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="truncate text-4xl font-black tracking-tight md:text-5xl">{group.title}</h2>
+                    <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold text-orange-50/90">
+                      <span>📅 {group.raidDate}</span>
+                      <span>🕘 {group.raidTime}</span>
+                      <span>👤 隊長：{group.leader}</span>
+                    </div>
+                    <div className="mt-7 flex flex-wrap items-center gap-3">
+                      <span className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-black ring-1 ring-white/10">最低等級：{group.minLevel}</span>
+                      <Pill tone={group.members.length >= group.capacity ? 'red' : 'green'} className="px-4 py-2">{group.members.length >= group.capacity ? '額滿' : '招募中'}</Pill>
+                      <span className="text-sm font-black text-white/90">👥 {group.members.length} / {group.capacity}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
