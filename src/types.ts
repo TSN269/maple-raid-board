@@ -120,16 +120,26 @@ export type Database = {
         Row: RaidGroupsRow;
         Insert: RaidGroupsInsert;
         Update: Partial<RaidGroupsInsert>;
+        Relationships: [];
       };
       raid_members: {
         Row: RaidMembersRow;
         Insert: RaidMembersInsert;
         Update: Partial<RaidMembersInsert>;
+        Relationships: [
+          {
+            foreignKeyName: 'raid_members_group_id_fkey';
+            columns: ['group_id'];
+            isOneToOne: false;
+            referencedRelation: 'raid_groups';
+            referencedColumns: ['id'];
+          }
+        ];
       };
     };
-    Views: Record<string, never>;
-    Functions: Record<string, never>;
-    Enums: Record<string, never>;
-    CompositeTypes: Record<string, never>;
+    Views: { [_ in never]: never };
+    Functions: { [_ in never]: never };
+    Enums: { [_ in never]: never };
+    CompositeTypes: { [_ in never]: never };
   };
 };
