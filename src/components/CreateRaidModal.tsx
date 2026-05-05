@@ -1,0 +1,104 @@
+import { useState } from 'react';
+import { bossOptions } from '../data/options';
+import type { NewRaidGroup } from '../types';
+import { Button, Field, Input, Select, Textarea } from './ui';
+
+function getDateOffset(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function slugify(text: string) {
+  const base = String(text || 'raid')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9\-\u4e00-\u9fa5]/g, '')
+    .replace(/-+/g, '-')
+    .slice(0, 28);
+  return `${base || 'raid'}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+type Props = {
+  onClose: () => void;
+  onCreate: (group: NewRaidGroup) => Promise<void>;
+};
+
+export function CreateRaidModal({ onClose, onCreate }: Props) {
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    title: '',
+    boss: bossOptions[0],
+    raidDate: getDateOffset(1),
+    raidTime: '22:00',
+    leader: '',
+    minLevel: 90,
+    capacity: 30,
+    notice: '',
+  });
+
+  const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
+      <div className="max-h-[92vh] w-full max-w-2xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-slate-950">新增突襲場次</h2>
+            <p className="mt-1 text-sm text-slate-500">建立後會產生可分享的 group 連結。</p>
+          </div>
+          <Button variant="ghost" onClick={onClose}>關閉</Button>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <Field label="標題">
+            <Input value={form.title} placeholder="例：炎魔固定團 - 週六" onChange={(e) => set('title', e.target.value)} />
+          </Field>
+          <Field label="Boss">
+            <Select value={form.boss} onChange={(e) => set('boss', e.target.value)}>
+              {bossOptions.map((b) => <option key={b}>{b}</option>)}
+            </Select>
+          </Field>
+          <Field label="日期">
+            <Input type="date" value={form.raidDate} onChange={(e) => set('raidDate', e.target.value)} />
+          </Field>
+          <Field label="時間">
+            <Input type="time" value={form.raidTime} onChange={(e) => set('raidTime', e.target.value)} />
+          </Field>
+          <Field label="團長">
+            <Input value={form.leader} placeholder="角色名或暱稱" onChange={(e) => set('leader', e.target.value)} />
+          </Field>
+          <Field label="最低等級">
+            <Input type="number" min="1" value={form.minLevel} onChange={(e) => set('minLevel', Number(e.target.value))} />
+          </Field>
+          <Field label="名額上限">
+            <Input type="number" min="1" max="60" value={form.capacity} onChange={(e) => set('capacity', Number(e.target.value))} />
+          </Field>
+          <div className="md:col-span-2">
+            <Field label="公告">
+              <Textarea value={form.notice} placeholder="集合地點、藥水、語音、分配規則..." onChange={(e) => set('notice', e.target.value)} />
+            </Field>
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>取消</Button>
+          <Button
+            disabled={saving || !form.title.trim() || !form.leader.trim()}
+            onClick={async () => {
+              setSaving(true);
+              try {
+                await onCreate({ ...form, id: slugify(form.title || form.boss), status: 'open' });
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            {saving ? '建立中' : '建立場次'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
