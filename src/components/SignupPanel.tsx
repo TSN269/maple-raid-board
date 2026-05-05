@@ -7,6 +7,7 @@ import { Button, Field, Input, Pill, Select, Textarea, classNames } from './ui';
 type Props = {
   group: RaidGroup;
   onSignup: (member: NewRaidMember) => Promise<void>;
+  initialSignupCode?: string;
 };
 
 const roleButtons = [
@@ -27,7 +28,7 @@ function getClientNonce() {
   return next;
 }
 
-export function SignupPanel({ group, onSignup }: Props) {
+export function SignupPanel({ group, onSignup, initialSignupCode = '' }: Props) {
   const [saving, setSaving] = useState(false);
   const [clientNonce] = useState(() => getClientNonce());
   const [form, setForm] = useState({
@@ -38,13 +39,18 @@ export function SignupPanel({ group, onSignup }: Props) {
     party: 0,
     status: '待確認' as const,
     note: '',
-    signupCode: '',
+    signupCode: initialSignupCode,
     website: '',
   });
 
   useEffect(() => {
-    setForm((prev) => ({ ...prev, level: Math.max(Number(prev.level || 0), Number(group.minLevel || 1)), signupCode: '', website: '' }));
-  }, [group.id, group.minLevel]);
+    setForm((prev) => ({
+      ...prev,
+      level: Math.max(Number(prev.level || 0), Number(group.minLevel || 1)),
+      signupCode: initialSignupCode,
+      website: '',
+    }));
+  }, [group.id, group.minLevel, initialSignupCode]);
 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((prev) => ({ ...prev, [key]: value }));
   const raidStatus = getRaidStatusMeta(group);
@@ -79,6 +85,11 @@ export function SignupPanel({ group, onSignup }: Props) {
       <div className="mt-5 grid gap-4">
         <Field label="報名邀請碼" required>
           <Input type="password" value={form.signupCode} placeholder="請向團長取得邀請碼" onChange={(e) => set('signupCode', e.target.value.trim())} />
+          {initialSignupCode ? (
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
+              已由團長分享連結自動帶入邀請碼。
+            </div>
+          ) : null}
         </Field>
 
         <Field label="角色名稱" required>
@@ -159,7 +170,7 @@ export function SignupPanel({ group, onSignup }: Props) {
                 clientNonce,
                 honeypot: form.website,
               });
-              setForm((prev) => ({ ...prev, name: '', note: '', signupCode: '', website: '' }));
+              setForm((prev) => ({ ...prev, name: '', note: '', signupCode: initialSignupCode, website: '' }));
             } finally {
               setSaving(false);
             }

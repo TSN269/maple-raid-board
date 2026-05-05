@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getBossArtMeta, getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta, getRaidStatusMeta } from '../data/bossArt';
 import { statusOptions } from '../data/options';
 import type { MemberStatus, RaidGroup, RaidMember, RaidStatus } from '../types';
-import { Button, Pill, Select, classNames } from './ui';
+import { Button, Input, Pill, Select, classNames } from './ui';
 
 type Props = {
   group: RaidGroup;
@@ -13,6 +13,9 @@ type Props = {
   isLeaderUnlocked: boolean;
   onLeaderUnlock: (code: string) => Promise<void>;
   onLeaderLock: () => void;
+  signupCode?: string;
+  onSignupCodeSave: (code: string) => void;
+  onSignupCodeForget: () => void;
 };
 
 const groupStatusOptions: Array<{ value: RaidStatus; label: string; helper: string }> = [
@@ -207,8 +210,10 @@ function LeaderAccessPanel({ isUnlocked, onUnlock, onLock }: { isUnlocked: boole
   );
 }
 
-export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemove, onDelete, isLeaderUnlocked, onLeaderUnlock, onLeaderLock }: Props) {
+export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemove, onDelete, isLeaderUnlocked, onLeaderUnlock, onLeaderLock, signupCode = '', onSignupCodeSave, onSignupCodeForget }: Props) {
   const [copied, setCopied] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [signupCodeDraft, setSignupCodeDraft] = useState(signupCode);
   const confirmed = group.members.filter((m) => m.status === '已確認').length;
   const pending = group.members.filter((m) => m.status === '待確認').length;
   const standby = group.members.filter((m) => m.status === '候補').length;
@@ -228,13 +233,31 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
   const shareUrl = useMemo(() => {
     const url = new URL(window.location.href);
     url.searchParams.set('group', group.id);
+    if (signupCode.trim()) {
+      url.searchParams.set('invite', signupCode.trim());
+    } else {
+      url.searchParams.delete('invite');
+      url.searchParams.delete('signupCode');
+      url.searchParams.delete('raidCode');
+    }
     return url.toString();
-  }, [group.id]);
+  }, [group.id, signupCode]);
+
+  useEffect(() => {
+    setSignupCodeDraft(signupCode);
+  }, [group.id, signupCode]);
 
   async function copyShareUrl() {
     await navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
+  }
+
+  async function copySignupCode() {
+    if (!signupCode.trim()) return;
+    await navigator.clipboard.writeText(signupCode.trim());
+    setCodeCopied(true);
+    window.setTimeout(() => setCodeCopied(false), 1600);
   }
 
   function exportJson() {
@@ -289,7 +312,7 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
-                <Button variant="secondary" onClick={copyShareUrl}>{copied ? '已複製' : '🔗 複製團連結'}</Button>
+                <Button variant="secondary" onClick={copyShareUrl}>{copied ? '已複製' : signupCode.trim() ? '🔗 複製報名連結' : '🔗 複製團連結'}</Button>
                 <Button variant="secondary" onClick={exportJson}>匯出 JSON</Button>
                 {isLeaderUnlocked ? <Button variant="danger" onClick={() => onDelete(group.id)}>刪除團</Button> : null}
               </div>
@@ -305,6 +328,34 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
         </div>
 
         <LeaderAccessPanel isUnlocked={isLeaderUnlocked} onUnlock={onLeaderUnlock} onLock={onLeaderLock} />
+
+        {isLeaderUnlocked ? (
+          <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-46px_rgba(124,45,18,0.8)] backdrop-blur-xl">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="min-w-0 flex-1">
+                <h3 className="text-lg font-black text-slate-950">報名連結邀請碼</h3>
+                <p className="mt-1 text-sm font-semibold text-slate-400">團長在這裡儲存報名邀請碼後，複製團連結會自動帶入 invite 參數，玩家開啟後會自動填入報名表單。</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                  <Input
+                    type="password"
+                    value={signupCodeDraft}
+                    placeholder="輸入此團報名邀請碼"
+                    onChange={(e) => setSignupCodeDraft(e.target.value.trim())}
+                  />
+                  <Button variant="secondary" disabled={signupCodeDraft.trim().length < 4} onClick={() => onSignupCodeSave(signupCodeDraft.trim())}>儲存邀請碼</Button>
+                  <Button variant="secondary" disabled={!signupCode.trim()} onClick={copySignupCode}>{codeCopied ? '已複製' : '複製邀請碼'}</Button>
+                </div>
+                <div className="mt-3 rounded-2xl bg-orange-50 px-4 py-3 text-xs font-semibold leading-6 text-orange-700">
+                  這個邀請碼只會儲存在團長目前瀏覽器的 localStorage，不會從資料庫反查明碼。若換裝置管理，請重新輸入一次邀請碼。
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" disabled={!signupCode.trim()} onClick={copyShareUrl}>{copied ? '已複製' : '複製含邀請碼連結'}</Button>
+                <Button variant="ghost" disabled={!signupCode.trim()} onClick={onSignupCodeForget}>清除此機邀請碼</Button>
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         <GroupStatusPanel group={group} onGroupStatusChange={onGroupStatusChange} canManage={isLeaderUnlocked} />
 

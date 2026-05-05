@@ -1,2 +1,2 @@
-UI-V14
-Left navigation notification center now includes raid reminders, status change notices, standby promotion detection, and standby queue reminders.
+UI-V15
+Leader copied signup links include invite code. Signup form auto-fills invite code from ?invite= when opening shared link.

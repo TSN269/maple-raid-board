@@ -16,6 +16,7 @@ function getInitialGroupId() {
 
 
 const LEADER_CODE_STORAGE_KEY = 'maple_raid_board_leader_codes_v12';
+const SIGNUP_CODE_STORAGE_KEY = 'maple_raid_board_signup_codes_v15';
 const NOTIFICATION_EVENTS_STORAGE_KEY = 'maple_raid_board_notifications_v14';
 const NOTIFICATION_READ_STORAGE_KEY = 'maple_raid_board_notification_reads_v14';
 const NOTIFICATION_SNAPSHOT_STORAGE_KEY = 'maple_raid_board_notification_snapshot_v14';
@@ -32,6 +33,38 @@ function loadLeaderCodes(): Record<string, string> {
 
 function saveLeaderCodes(codes: Record<string, string>) {
   localStorage.setItem(LEADER_CODE_STORAGE_KEY, JSON.stringify(codes));
+}
+
+function loadSignupCodes(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(SIGNUP_CODE_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSignupCodes(codes: Record<string, string>) {
+  localStorage.setItem(SIGNUP_CODE_STORAGE_KEY, JSON.stringify(codes));
+}
+
+function getInviteCodeFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return (params.get('invite') || params.get('signupCode') || params.get('raidCode') || '').trim();
+}
+
+function buildGroupShareUrl(groupId: string, signupCode?: string) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('group', groupId);
+  if (signupCode?.trim()) {
+    url.searchParams.set('invite', signupCode.trim());
+  } else {
+    url.searchParams.delete('invite');
+    url.searchParams.delete('signupCode');
+    url.searchParams.delete('raidCode');
+  }
+  return url.toString();
 }
 
 function loadJsonObject<T>(key: string, fallback: T): T {
@@ -171,6 +204,8 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [leaderCodes, setLeaderCodes] = useState<Record<string, string>>(() => loadLeaderCodes());
+  const [signupCodes, setSignupCodes] = useState<Record<string, string>>(() => loadSignupCodes());
+  const [initialInvite] = useState(() => ({ groupId: getInitialGroupId(), code: getInviteCodeFromUrl() }));
   const [localNotificationEvents, setLocalNotificationEvents] = useState<RaidNotification[]>(() => loadLocalNotificationEvents());
   const [notificationReadIds, setNotificationReadIds] = useState<string[]>(() => loadNotificationReadIds());
 
@@ -178,6 +213,7 @@ export default function App() {
   const selectedDifficulty = useMemo(() => selectedGroup ? getBossDifficultyMeta(`${selectedGroup.title} ${selectedGroup.boss}`) : null, [selectedGroup]);
   const selectedVisual = useMemo(() => selectedGroup ? getBossVisualMeta(`${selectedGroup.title} ${selectedGroup.boss}`) : null, [selectedGroup]);
   const selectedRaidStatus = useMemo(() => selectedGroup ? getRaidStatusMeta(selectedGroup) : null, [selectedGroup]);
+  const selectedSignupCode = selectedGroup ? signupCodes[selectedGroup.id] || (selectedGroup.id === initialInvite.groupId ? initialInvite.code : '') : '';
   const derivedNotifications = useMemo(() => buildDerivedNotifications(groups), [groups]);
   const notifications = useMemo(() => {
     const byId = new Map<string, RaidNotification>();
@@ -304,8 +340,26 @@ export default function App() {
     if (!selectedGroup) return;
     const url = new URL(window.location.href);
     url.searchParams.set('group', selectedGroup.id);
+    const codeForSelectedGroup = signupCodes[selectedGroup.id] || (selectedGroup.id === initialInvite.groupId ? initialInvite.code : '');
+    if (codeForSelectedGroup.trim()) {
+      url.searchParams.set('invite', codeForSelectedGroup.trim());
+    } else {
+      url.searchParams.delete('invite');
+      url.searchParams.delete('signupCode');
+      url.searchParams.delete('raidCode');
+    }
     window.history.replaceState({}, '', url.toString());
-  }, [selectedGroup]);
+  }, [selectedGroup, signupCodes, initialInvite]);
+
+  useEffect(() => {
+    if (!selectedGroup || selectedGroup.id !== initialInvite.groupId || !initialInvite.code) return;
+    setSignupCodes((prev) => {
+      if (prev[selectedGroup.id] === initialInvite.code) return prev;
+      const next = { ...prev, [selectedGroup.id]: initialInvite.code };
+      saveSignupCodes(next);
+      return next;
+    });
+  }, [selectedGroup, initialInvite]);
 
   async function runAction(action: () => Promise<void>) {
     setBusy(true);
@@ -334,6 +388,25 @@ export default function App() {
       const next = { ...prev };
       delete next[groupId];
       saveLeaderCodes(next);
+      return next;
+    });
+  }
+
+  function rememberSignupCode(groupId: string, code: string) {
+    const clean = code.trim();
+    if (!clean) return;
+    setSignupCodes((prev) => {
+      const next = { ...prev, [groupId]: clean };
+      saveSignupCodes(next);
+      return next;
+    });
+  }
+
+  function forgetSignupCode(groupId: string) {
+    setSignupCodes((prev) => {
+      const next = { ...prev };
+      delete next[groupId];
+      saveSignupCodes(next);
       return next;
     });
   }
@@ -375,6 +448,7 @@ export default function App() {
     await runAction(async () => {
       await insertRaidGroup(group);
       rememberLeaderCode(group.id, group.leaderCode);
+      rememberSignupCode(group.id, group.signupCode);
       setSelectedId(group.id);
       setShowCreate(false);
     });
@@ -423,7 +497,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">秋楓 UI-V14</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">秋楓 UI-V15</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
@@ -448,9 +522,7 @@ export default function App() {
               <Button
                 variant="secondary"
                 onClick={() => {
-                  const url = new URL(window.location.href);
-                  url.searchParams.set('group', selectedGroup.id);
-                  void navigator.clipboard.writeText(url.toString());
+                  void navigator.clipboard.writeText(buildGroupShareUrl(selectedGroup.id, selectedSignupCode));
                 }}
               >
                 🔗 複製團連結
@@ -511,6 +583,9 @@ export default function App() {
                 isLeaderUnlocked={Boolean(leaderCodes[selectedGroup.id])}
                 onLeaderUnlock={(code) => unlockLeader(selectedGroup.id, code)}
                 onLeaderLock={() => forgetLeaderCode(selectedGroup.id)}
+                signupCode={signupCodes[selectedGroup.id] || ''}
+                onSignupCodeSave={(code) => rememberSignupCode(selectedGroup.id, code)}
+                onSignupCodeForget={() => forgetSignupCode(selectedGroup.id)}
               />
             ) : (
               <div className="rounded-[2rem] border border-orange-100 bg-white/85 p-10 text-center text-slate-500 shadow-sm">沒有可顯示的場次。請先執行 Supabase SQL seed。</div>
@@ -530,7 +605,7 @@ export default function App() {
                     </div>
                   </div>
                 </section>
-                <SignupPanel group={selectedGroup} onSignup={addSignup} />
+                <SignupPanel group={selectedGroup} onSignup={addSignup} initialSignupCode={selectedSignupCode} />
               </div>
             ) : (
               <div className="rounded-[2rem] border border-orange-100 bg-white/85 p-10 text-center text-slate-500 shadow-sm">沒有可報名的場次。</div>
