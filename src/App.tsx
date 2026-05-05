@@ -493,11 +493,11 @@ export default function App() {
       <header className="sticky top-0 z-30 border-b border-orange-100/80 bg-white/85 shadow-sm backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1560px] flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 text-2xl text-white shadow-lg shadow-orange-500/20">楓</div>
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 text-sm font-black tracking-tight text-white shadow-lg shadow-orange-500/20">TSN</div>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">秋楓 UI-V15</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V16</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>

@@ -1,6 +1,6 @@
-# Maple Raid Board - 秋楓 UI-V6
+# Maple Raid Board - TSN UI-V16
 
-這包是 UI-V6 版型。部署後頁首應該看得到「秋楓 UI-V6」。如果看不到，代表 Vercel 沒部署到這份 commit。
+這包是 UI-V16 版型。部署後頁首應該看得到「TSN UI-V16」。如果看不到，代表 Vercel 沒部署到這份 commit。
 
 
 仿照突襲組隊報名看板的功能，做成可推 GitHub 的 Vite + React + TypeScript + Tailwind + Supabase 專案。

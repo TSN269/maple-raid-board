@@ -1,2 +1,2 @@
-UI-V15
-Leader copied signup links include invite code. Signup form auto-fills invite code from ?invite= when opening shared link.
+UI-V16
+Brand display changed from 秋楓 to TSN in the header marker and logo.
