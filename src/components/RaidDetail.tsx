@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { getBossArtMeta, getBossDifficultyMeta } from '../data/bossArt';
+import { getBossArtMeta, getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta } from '../data/bossArt';
 import { statusOptions } from '../data/options';
 import type { MemberStatus, RaidGroup, RaidMember } from '../types';
 import { Button, Pill, Select, classNames } from './ui';
@@ -40,12 +40,6 @@ function jobIcon(job: string) {
   return '◆';
 }
 
-function difficultyMeta(group: RaidGroup) {
-  const text = `${group.title} ${group.boss}`;
-  if (/困難|hard|chaos/i.test(text)) return { label: 'HARD', tone: 'red' as const };
-  if (/普通|normal|簡單|easy/i.test(text)) return { label: 'NORMAL', tone: 'green' as const };
-  return { label: 'NORMAL', tone: 'green' as const };
-}
 
 function MemberRow({ member, onStatusChange, onRemove }: { member: RaidMember; onStatusChange: Props['onStatusChange']; onRemove: Props['onRemove'] }) {
   return (
@@ -113,9 +107,10 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
   const confirmed = group.members.filter((m) => m.status === '已確認').length;
   const pending = group.members.filter((m) => m.status === '待確認').length;
   const standby = group.members.filter((m) => m.status === '候補').length;
-  const difficulty = difficultyMeta(group);
-  const bossArt = getBossArtMeta(`${group.title} ${group.boss}`);
-  const bossDifficulty = getBossDifficultyMeta(`${group.title} ${group.boss}`);
+  const bossText = `${group.title} ${group.boss}`;
+  const bossArt = getBossArtMeta(bossText);
+  const bossDifficulty = getBossDifficultyMeta(bossText);
+  const bossVisual = getBossVisualMeta(bossText);
 
   const roleCount = useMemo(() => {
     return group.members.reduce<Record<string, number>>((acc, m) => {
@@ -158,7 +153,8 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 max-w-4xl">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Pill tone="dark">{group.boss}</Pill>
+                  <span className={classNames('inline-flex items-center rounded-full px-3 py-1 text-xs font-black ring-1', bossVisual.bossPillClass)}>{getBossDisplayName(group.boss)}</span>
+                  <span className={classNames('inline-flex items-center rounded-full px-3 py-1 text-xs font-black ring-1', bossVisual.difficultyPillClass)}>{bossDifficulty.label}</span>
                   <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-black text-orange-100 ring-1 ring-white/20">Boss 圖示已替換</span>
                 </div>
                 <div className="mt-5 flex items-start gap-4">
@@ -170,7 +166,7 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-3">
                       <h2 className="truncate text-4xl font-black tracking-tight md:text-5xl">{group.title}</h2>
-                      <Pill tone={difficulty.tone} className="px-3 py-1 text-sm">{difficulty.label}</Pill>
+                      <span className={classNames('inline-flex items-center rounded-full px-3 py-1 text-sm font-black ring-1', bossVisual.difficultyPillClass)}>{bossDifficulty.label}</span>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold text-orange-50/90">
                       <span>📅 {group.raidDate}</span>

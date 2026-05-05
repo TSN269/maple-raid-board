@@ -1,2 +1,2 @@
-UI-V9
-Difficulty badges now show NORMAL/HARD beside raid titles, and create modal uses NORMAL/HARD options.
+UI-V10
+Boss and difficulty are shown separately, raid list supports NORMAL/HARD filtering, and boss-specific NORMAL/HARD badges and borders are applied.

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { bossOptions, difficultyOptions } from '../data/options';
+import { buildBossStorageValue, getBossArtMeta, getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta } from '../data/bossArt';
 import type { NewRaidGroup } from '../types';
 import { Button, Field, Input, Select, Textarea } from './ui';
 
@@ -40,6 +41,10 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
   });
 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((prev) => ({ ...prev, [key]: value }));
+  const previewText = `${form.boss} ${form.difficulty}`;
+  const bossArt = getBossArtMeta(previewText);
+  const difficultyMeta = getBossDifficultyMeta(previewText);
+  const visualMeta = getBossVisualMeta(previewText);
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
@@ -66,6 +71,22 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
               {difficultyOptions.map((d) => <option key={d}>{d}</option>)}
             </Select>
           </Field>
+          <div className="md:col-span-2 rounded-3xl border border-orange-100 bg-orange-50/60 p-4">
+            <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">顯示預覽</div>
+            <div className="mt-3 flex items-center gap-4">
+              <div className={`relative h-16 w-16 overflow-hidden rounded-3xl bg-gradient-to-br shadow-xl ring-2 ${bossArt.accent} ${bossArt.glow} ${difficultyMeta.ringClass}`}>
+                {bossArt.smallImage ? <img src={bossArt.smallImage} alt={bossArt.label} className="h-full w-full object-cover" /> : null}
+                <span className={`absolute left-1.5 top-1.5 rounded-md px-1.5 py-0.5 text-[9px] font-black tracking-wide shadow-sm ${difficultyMeta.chipClass}`}>{form.difficulty}</span>
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${visualMeta.bossPillClass}`}>{getBossDisplayName(form.boss)}</span>
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${visualMeta.difficultyPillClass}`}>{form.difficulty}</span>
+                </div>
+                <div className="mt-2 text-sm font-semibold text-slate-600">BOSS 與難度會分開顯示，儲存格式會自動處理。</div>
+              </div>
+            </div>
+          </div>
           <Field label="日期">
             <Input type="date" value={form.raidDate} onChange={(e) => set('raidDate', e.target.value)} />
           </Field>
@@ -98,7 +119,7 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
                 const { difficulty, ...payload } = form;
                 await onCreate({
                   ...payload,
-                  boss: `${payload.boss}｜${difficulty}`,
+                  boss: buildBossStorageValue(payload.boss, difficulty),
                   id: slugify(`${payload.title}-${difficulty}` || payload.boss),
                   status: 'open',
                 });

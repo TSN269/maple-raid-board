@@ -1,5 +1,6 @@
+import { useMemo, useState } from 'react';
 import type { RaidGroup } from '../types';
-import { getBossArtMeta, getBossDifficultyMeta } from '../data/bossArt';
+import { getBossArtMeta, getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta } from '../data/bossArt';
 import { Pill, classNames } from './ui';
 
 type Props = {
@@ -11,12 +12,6 @@ type Props = {
 };
 
 
-function difficultyMeta(group: RaidGroup) {
-  const text = `${group.title} ${group.boss}`;
-  if (/困難|hard|chaos/i.test(text)) return { label: 'HARD', tone: 'red' as const };
-  if (/普通|normal|簡單|easy/i.test(text)) return { label: 'NORMAL', tone: 'green' as const };
-  return { label: 'NORMAL', tone: 'green' as const };
-}
 
 function statusText(group: RaidGroup) {
   if (group.members.length >= group.capacity) return '額滿';
@@ -26,11 +21,14 @@ function statusText(group: RaidGroup) {
 }
 
 export function RaidList({ groups, selectedId, query, onSelect }: Props) {
-  const filtered = groups.filter((g) => {
+  const [difficultyFilter, setDifficultyFilter] = useState<'ALL' | 'NORMAL' | 'HARD'>('ALL');
+  const filtered = useMemo(() => groups.filter((g) => {
     const keyword = query.trim().toLowerCase();
-    if (!keyword) return true;
-    return [g.title, g.boss, g.leader, g.notice].some((x) => String(x || '').toLowerCase().includes(keyword));
-  });
+    const difficulty = getBossDifficultyMeta(`${g.title} ${g.boss}`).label;
+    const queryMatched = !keyword || [g.title, g.boss, g.leader, g.notice].some((x) => String(x || '').toLowerCase().includes(keyword));
+    const difficultyMatched = difficultyFilter === 'ALL' || difficulty === difficultyFilter;
+    return queryMatched && difficultyMatched;
+  }), [groups, query, difficultyFilter]);
 
   return (
     <aside className="rounded-[2rem] border border-orange-100/80 bg-white/75 p-4 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl lg:sticky lg:top-24 lg:h-[calc(100vh-112px)] lg:overflow-auto soft-scrollbar">
@@ -42,20 +40,43 @@ export function RaidList({ groups, selectedId, query, onSelect }: Props) {
         <span className="grid h-7 min-w-7 place-items-center rounded-full bg-slate-100 px-2 text-xs font-black text-slate-500">{groups.length}</span>
       </div>
 
+      <div className="mt-4 flex flex-wrap gap-2 px-1">
+        {(['ALL','NORMAL','HARD'] as const).map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => setDifficultyFilter(item)}
+            className={classNames(
+              'rounded-full px-3 py-1.5 text-xs font-black ring-1 transition',
+              difficultyFilter === item
+                ? item === 'ALL'
+                  ? 'bg-slate-900 text-white ring-slate-700'
+                  : item === 'NORMAL'
+                    ? 'bg-emerald-500 text-white ring-emerald-300'
+                    : 'bg-rose-600 text-white ring-rose-300'
+                : 'bg-white text-slate-500 ring-orange-100 hover:bg-orange-50 hover:text-orange-700'
+            )}
+          >
+            {item === 'ALL' ? '全部難度' : item}
+          </button>
+        ))}
+      </div>
+
       <div className="mt-4 grid gap-3">
         {filtered.map((group) => {
           const confirmed = group.members.filter((m) => m.status === '已確認').length;
-          const bossArt = getBossArtMeta(`${group.title} ${group.boss}`);
-          const bossDifficulty = getBossDifficultyMeta(`${group.title} ${group.boss}`);
+          const bossText = `${group.title} ${group.boss}`;
+          const bossArt = getBossArtMeta(bossText);
+          const bossDifficulty = getBossDifficultyMeta(bossText);
+          const bossVisual = getBossVisualMeta(bossText);
           const selected = selectedId === group.id;
-          const difficulty = difficultyMeta(group);
           return (
             <button
               key={group.id}
               onClick={() => onSelect(group.id)}
               className={classNames(
-                'group w-full rounded-3xl border p-3 text-left transition duration-200 hover:-translate-y-0.5 hover:border-orange-200 hover:bg-white hover:shadow-lg hover:shadow-orange-200/25',
-                selected ? 'border-orange-300 bg-orange-50/70 shadow-lg shadow-orange-200/30' : 'border-orange-100/70 bg-white/70',
+                'group w-full rounded-3xl border p-3 text-left transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-lg hover:shadow-orange-200/25',
+                selected ? 'bg-orange-50/70 shadow-lg shadow-orange-200/30 border-orange-300' : classNames('bg-white/70', bossVisual.cardBorderClass),
               )}
             >
               <div className="flex gap-3">
@@ -75,9 +96,12 @@ export function RaidList({ groups, selectedId, query, onSelect }: Props) {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 min-w-0">
                         <div className="truncate text-sm font-black text-slate-950">{group.title}</div>
-                        <Pill tone={difficulty.tone}>{difficulty.label}</Pill>
+                        <span className={classNames('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-black ring-1', bossVisual.difficultyPillClass)}>{bossDifficulty.label}</span>
                       </div>
-                      <div className="mt-1 truncate text-xs font-semibold text-slate-500">{group.raidDate}　{group.raidTime}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+                        <span className={classNames('inline-flex items-center rounded-full px-2 py-1 text-[11px] font-bold ring-1', bossVisual.bossPillClass)}>{getBossDisplayName(group.boss)}</span>
+                        <span>{group.raidDate}　{group.raidTime}</span>
+                      </div>
                     </div>
                   </div>
                   <div className="mt-1 truncate text-xs text-slate-500">隊長：{group.leader}</div>
