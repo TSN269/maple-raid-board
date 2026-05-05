@@ -1,2 +1,2 @@
-UI-V10
-Boss and difficulty are shown separately, raid list supports NORMAL/HARD filtering, and boss-specific NORMAL/HARD badges and borders are applied.
+UI-V11
+Based on UI-V10. Added manual raid status control and automatic status display when current time is past raid date/time.

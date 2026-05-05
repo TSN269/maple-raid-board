@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { deleteRaidGroup, deleteRaidMember, fetchRaidGroups, insertRaidGroup, insertRaidMember, updateRaidMemberStatus } from './api/raids';
+import { deleteRaidGroup, deleteRaidMember, fetchRaidGroups, insertRaidGroup, insertRaidMember, updateRaidGroupStatus, updateRaidMemberStatus } from './api/raids';
 import { CreateRaidModal } from './components/CreateRaidModal';
 import { RaidDetail } from './components/RaidDetail';
 import { RaidList } from './components/RaidList';
 import { SignupPanel } from './components/SignupPanel';
 import { Button, Pill, classNames } from './components/ui';
-import { getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta } from './data/bossArt';
+import { getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta, getRaidStatusMeta } from './data/bossArt';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
-import type { MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup } from './types';
+import type { MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup, RaidStatus } from './types';
 
 function getInitialGroupId() {
   return new URLSearchParams(window.location.search).get('group') || 'demo-zakum-soon';
@@ -76,6 +76,7 @@ export default function App() {
   const selectedGroup = useMemo(() => groups.find((g) => g.id === selectedId) || groups[0], [groups, selectedId]);
   const selectedDifficulty = useMemo(() => selectedGroup ? getBossDifficultyMeta(`${selectedGroup.title} ${selectedGroup.boss}`) : null, [selectedGroup]);
   const selectedVisual = useMemo(() => selectedGroup ? getBossVisualMeta(`${selectedGroup.title} ${selectedGroup.boss}`) : null, [selectedGroup]);
+  const selectedRaidStatus = useMemo(() => selectedGroup ? getRaidStatusMeta(selectedGroup) : null, [selectedGroup]);
 
   const loadGroups = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -152,6 +153,10 @@ export default function App() {
     await runAction(() => updateRaidMemberStatus(memberId, status));
   }
 
+  async function changeGroupStatus(groupId: string, status: RaidStatus) {
+    await runAction(() => updateRaidGroupStatus(groupId, status));
+  }
+
   async function removeMember(memberId: string) {
     await runAction(() => deleteRaidMember(memberId));
   }
@@ -177,7 +182,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">秋楓 UI-V10</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">秋楓 UI-V11</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
@@ -242,8 +247,8 @@ export default function App() {
                     {selectedGroup ? (
                       <div className="mt-6 rounded-3xl border border-orange-100 bg-white/90 p-4 text-left shadow-sm">
                         <div className="text-xs font-black uppercase tracking-[0.2em] text-orange-500">目前選取</div>
-                        <div className="mt-2 flex items-center gap-2"><div className="text-lg font-black text-slate-950">{selectedGroup.title}</div>{selectedDifficulty && selectedVisual ? <span className={classNames('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-black ring-1', selectedVisual.difficultyPillClass)}>{selectedDifficulty.label}</span> : null}</div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-500">{selectedVisual ? <span className={classNames('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1', selectedVisual.bossPillClass)}>{getBossDisplayName(selectedGroup.boss)}</span> : null}<span>{selectedGroup.raidDate} {selectedGroup.raidTime}</span></div>
+                        <div className="mt-2 flex items-center gap-2"><div className="text-lg font-black text-slate-950">{selectedGroup.title}</div>{selectedVisual && selectedDifficulty ? <span className={classNames('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-black ring-1', selectedVisual.difficultyPillClass)}>{selectedDifficulty.label}</span> : null}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-500">{selectedVisual ? <span className={classNames('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1', selectedVisual.bossPillClass)}>{getBossDisplayName(selectedGroup.boss)}</span> : null}<span>{selectedGroup.raidDate} {selectedGroup.raidTime}</span>{selectedRaidStatus ? <Pill tone={selectedRaidStatus.tone}>{selectedRaidStatus.label}</Pill> : null}</div>
                         <div className="mt-4 flex flex-wrap gap-2">
                           <Button onClick={() => setActivePanel('raid')}>查看楓突襲詳細</Button>
                           <Button variant="secondary" onClick={() => setActivePanel('signup')}>我要報名</Button>
@@ -259,6 +264,7 @@ export default function App() {
               <RaidDetail
                 group={selectedGroup}
                 onStatusChange={changeStatus}
+                onGroupStatusChange={changeGroupStatus}
                 onRemove={removeMember}
                 onDelete={removeGroup}
               />
@@ -271,7 +277,7 @@ export default function App() {
                 <section className="rounded-[2rem] border border-orange-100/80 bg-white/80 p-6 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
                   <div className="rounded-[1.5rem] bg-gradient-to-br from-slate-950 via-orange-950 to-amber-800 p-6 text-white shadow-inner">
                     <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-200">正在報名</div>
-                    <div className="mt-3 flex flex-wrap items-center gap-3"><h2 className="text-3xl font-black">{selectedGroup.title}</h2>{selectedDifficulty && selectedVisual ? <span className={classNames('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-black ring-1', selectedVisual.difficultyPillClass)}>{selectedDifficulty.label}</span> : null}</div>
+                    <div className="mt-3 flex flex-wrap items-center gap-3"><h2 className="text-3xl font-black">{selectedGroup.title}</h2>{selectedVisual && selectedDifficulty ? <span className={classNames('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-black ring-1', selectedVisual.difficultyPillClass)}>{selectedDifficulty.label}</span> : null}{selectedRaidStatus ? <Pill tone={selectedRaidStatus.tone}>{selectedRaidStatus.label}</Pill> : null}</div>
                     <p className="mt-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-orange-100">{selectedVisual ? <span className={classNames('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1', selectedVisual.bossPillClass)}>{getBossDisplayName(selectedGroup.boss)}</span> : null}<span>{selectedGroup.raidDate} {selectedGroup.raidTime} · 團長：{selectedGroup.leader}</span></p>
                     <p className="mt-5 text-sm leading-7 text-orange-50/90">此頁只放報名相關資訊。要看分隊、公告與狀態管理，請點左側「楓突襲」。</p>
                     <div className="mt-5 flex flex-wrap gap-2">

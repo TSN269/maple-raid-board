@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { bossOptions, difficultyOptions } from '../data/options';
 import { buildBossStorageValue, getBossArtMeta, getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta } from '../data/bossArt';
+import { bossOptions, difficultyOptions } from '../data/options';
 import type { NewRaidGroup } from '../types';
 import { Button, Field, Input, Select, Textarea } from './ui';
 
@@ -83,14 +83,14 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
                   <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${visualMeta.bossPillClass}`}>{getBossDisplayName(form.boss)}</span>
                   <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${visualMeta.difficultyPillClass}`}>{form.difficulty}</span>
                 </div>
-                <div className="mt-2 text-sm font-semibold text-slate-600">BOSS 與難度會分開顯示，儲存格式會自動處理。</div>
+                <div className="mt-2 text-sm font-semibold text-slate-600">BOSS 與難度會分開顯示，資料庫仍沿用既有欄位相容儲存。</div>
               </div>
             </div>
           </div>
           <Field label="日期">
             <Input type="date" value={form.raidDate} onChange={(e) => set('raidDate', e.target.value)} />
           </Field>
-          <Field label="時間">
+          <Field label="時間 / 招募截止時間">
             <Input type="time" value={form.raidTime} onChange={(e) => set('raidTime', e.target.value)} />
           </Field>
           <Field label="團長">

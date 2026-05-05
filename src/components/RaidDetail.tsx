@@ -1,15 +1,22 @@
 import { useMemo, useState } from 'react';
-import { getBossArtMeta, getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta } from '../data/bossArt';
+import { getBossArtMeta, getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta, getRaidStatusMeta } from '../data/bossArt';
 import { statusOptions } from '../data/options';
-import type { MemberStatus, RaidGroup, RaidMember } from '../types';
+import type { MemberStatus, RaidGroup, RaidMember, RaidStatus } from '../types';
 import { Button, Pill, Select, classNames } from './ui';
 
 type Props = {
   group: RaidGroup;
   onStatusChange: (memberId: string, status: MemberStatus) => Promise<void>;
+  onGroupStatusChange: (groupId: string, status: RaidStatus) => Promise<void>;
   onRemove: (memberId: string) => Promise<void>;
   onDelete: (groupId: string) => Promise<void>;
 };
+
+const groupStatusOptions: Array<{ value: RaidStatus; label: string; helper: string }> = [
+  { value: 'open', label: '招募中', helper: '允許玩家報名' },
+  { value: 'closed', label: '招募截止', helper: '保留團，但不再接受報名' },
+  { value: 'finished', label: '已結束', helper: '團已完成或過期' },
+];
 
 const roleAccent: Record<string, string> = {
   主坦: 'bg-slate-100 text-slate-700',
@@ -39,7 +46,6 @@ function jobIcon(job: string) {
   if (/拳|槍/i.test(job)) return '✹';
   return '◆';
 }
-
 
 function MemberRow({ member, onStatusChange, onRemove }: { member: RaidMember; onStatusChange: Props['onStatusChange']; onRemove: Props['onRemove'] }) {
   return (
@@ -102,7 +108,39 @@ function StatCard({ icon, label, value, suffix, tone }: { icon: string; label: s
   );
 }
 
-export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props) {
+function GroupStatusPanel({ group, onGroupStatusChange }: { group: RaidGroup; onGroupStatusChange: Props['onGroupStatusChange'] }) {
+  const raidStatus = getRaidStatusMeta(group);
+  const rawStatus = groupStatusOptions.find((x) => x.value === group.status) ?? groupStatusOptions[0];
+
+  return (
+    <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-46px_rgba(124,45,18,0.8)] backdrop-blur-xl">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-lg font-black text-slate-950">招募狀態</h3>
+            <Pill tone={raidStatus.tone}>{raidStatus.label}</Pill>
+            {raidStatus.isAuto ? <Pill tone="yellow">時間自動判定</Pill> : null}
+          </div>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
+            手動狀態：{rawStatus.label}。若目前時間已超過「日期 + 時間 / 招募截止時間」，前端會自動顯示為「已結束」。
+          </p>
+          {raidStatus.isAuto ? (
+            <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+              此團已超過招募時間，因此目前顯示「已結束」。資料庫狀態仍是 open；可在右側手動改成「已結束」固定保存。
+            </div>
+          ) : null}
+        </div>
+        <div className="w-full shrink-0 lg:w-64">
+          <Select value={group.status} onChange={(e) => onGroupStatusChange(group.id, e.target.value as RaidStatus)}>
+            {groupStatusOptions.map((item) => <option key={item.value} value={item.value}>{item.label} — {item.helper}</option>)}
+          </Select>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemove, onDelete }: Props) {
   const [copied, setCopied] = useState(false);
   const confirmed = group.members.filter((m) => m.status === '已確認').length;
   const pending = group.members.filter((m) => m.status === '待確認').length;
@@ -111,6 +149,7 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
   const bossArt = getBossArtMeta(bossText);
   const bossDifficulty = getBossDifficultyMeta(bossText);
   const bossVisual = getBossVisualMeta(bossText);
+  const raidStatus = getRaidStatusMeta(group);
 
   const roleCount = useMemo(() => {
     return group.members.reduce<Record<string, number>>((acc, m) => {
@@ -148,14 +187,15 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_68%_28%,rgba(239,68,68,0.52),transparent_26%),radial-gradient(circle_at_82%_75%,rgba(249,115,22,0.34),transparent_32%),linear-gradient(120deg,#09090b_0%,#1c1917_45%,#431407_100%)]" />
           <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_20%_20%,#fff_1px,transparent_1px)] [background-size:24px_24px]" />
           {bossArt.image ? <img src={bossArt.image} alt={bossArt.label} className="absolute -right-10 bottom-0 top-0 hidden h-full w-[36%] object-contain opacity-95 drop-shadow-[0_20px_30px_rgba(0,0,0,0.45)] lg:block" /> : null}
-          <div className="absolute right-8 top-8 hidden rounded-3xl border border-white/10 bg-black/25 px-4 py-3 text-xs font-black text-orange-100 shadow-2xl backdrop-blur lg:block">Boss Art UI-V7</div>
+          <div className="absolute right-8 top-8 hidden rounded-3xl border border-white/10 bg-black/25 px-4 py-3 text-xs font-black text-orange-100 shadow-2xl backdrop-blur lg:block">Status Control UI-V11</div>
           <div className="relative p-6 md:p-8">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 max-w-4xl">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={classNames('inline-flex items-center rounded-full px-3 py-1 text-xs font-black ring-1', bossVisual.bossPillClass)}>{getBossDisplayName(group.boss)}</span>
                   <span className={classNames('inline-flex items-center rounded-full px-3 py-1 text-xs font-black ring-1', bossVisual.difficultyPillClass)}>{bossDifficulty.label}</span>
-                  <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-black text-orange-100 ring-1 ring-white/20">Boss 圖示已替換</span>
+                  <Pill tone={raidStatus.tone}>{raidStatus.label}</Pill>
+                  {raidStatus.isAuto ? <Pill tone="yellow">自動</Pill> : null}
                 </div>
                 <div className="mt-5 flex items-start gap-4">
                   <div className={classNames('relative hidden h-24 w-24 shrink-0 overflow-hidden rounded-[1.6rem] border border-white/10 bg-gradient-to-br shadow-2xl ring-2 md:block', bossArt.accent, bossArt.glow, bossDifficulty.ringClass)}>
@@ -175,7 +215,7 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
                     </div>
                     <div className="mt-7 flex flex-wrap items-center gap-3">
                       <span className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-black ring-1 ring-white/10">最低等級：{group.minLevel}</span>
-                      <Pill tone={group.members.length >= group.capacity ? 'red' : 'green'} className="px-4 py-2">{group.members.length >= group.capacity ? '額滿' : '招募中'}</Pill>
+                      <Pill tone={raidStatus.tone} className="px-4 py-2">{raidStatus.label}</Pill>
                       <span className="text-sm font-black text-white/90">👥 {group.members.length} / {group.capacity}</span>
                     </div>
                   </div>
@@ -196,6 +236,8 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
           <StatCard icon="◴" label="待確認" value={pending} tone="yellow" />
           <StatCard icon="●" label="候補" value={standby} tone="blue" />
         </div>
+
+        <GroupStatusPanel group={group} onGroupStatusChange={onGroupStatusChange} />
 
         {group.notice ? (
           <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-46px_rgba(124,45,18,0.8)] backdrop-blur-xl">

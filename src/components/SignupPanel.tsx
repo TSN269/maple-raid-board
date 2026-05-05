@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getRaidStatusMeta } from '../data/bossArt';
 import { jobOptions, roleOptions } from '../data/options';
 import type { NewRaidMember, RaidGroup } from '../types';
 import { Button, Field, Input, Pill, Select, Textarea, classNames } from './ui';
@@ -32,7 +33,9 @@ export function SignupPanel({ group, onSignup }: Props) {
   }, [group.id, group.minLevel]);
 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((prev) => ({ ...prev, [key]: value }));
+  const raidStatus = getRaidStatusMeta(group);
   const isFull = group.members.length >= group.capacity;
+  const canSignup = raidStatus.canSignup && !isFull;
   const selectedParty = form.party === 0 ? Math.max(1, Math.min(3, Math.ceil((group.members.length + 1) / 6))) : form.party;
 
   return (
@@ -99,13 +102,13 @@ export function SignupPanel({ group, onSignup }: Props) {
           </div>
         </Field>
 
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-800">
-          ⓘ 報名後需經隊長確認，狀態將顯示於名單中。
+        <div className={classNames('rounded-2xl border px-4 py-3 text-sm font-semibold leading-6', canSignup ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-rose-200 bg-rose-50 text-rose-700')}>
+          {canSignup ? 'ⓘ 報名後需經隊長確認，狀態將顯示於名單中。' : `目前狀態：${raidStatus.label}，暫停報名。`}
         </div>
 
         <Button
           className="w-full py-4 text-base"
-          disabled={saving || isFull || !form.name.trim() || Number(form.level) < Number(group.minLevel)}
+          disabled={saving || !canSignup || !form.name.trim() || Number(form.level) < Number(group.minLevel)}
           onClick={async () => {
             setSaving(true);
             try {
@@ -120,7 +123,7 @@ export function SignupPanel({ group, onSignup }: Props) {
         </Button>
 
         <div className="flex items-center justify-between text-xs font-bold text-slate-400">
-          <span>{isFull ? <Pill tone="red">已滿</Pill> : <Pill tone="green">可報名</Pill>}</span>
+          <span><Pill tone={raidStatus.tone}>{raidStatus.label}</Pill></span>
           <span>預計加入：隊伍 {selectedParty}</span>
         </div>
 

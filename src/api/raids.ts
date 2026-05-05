@@ -128,3 +128,8 @@ export async function deleteRaidMember(memberId: string): Promise<void> {
   const { error } = await db.from('raid_members').delete().eq('id', memberId);
   if (error) throw new Error(error.message);
 }
+
+export async function updateRaidGroupStatus(groupId: string, status: RaidGroup['status']): Promise<void> {
+  const { error } = await db.from('raid_groups').update({ status }).eq('id', groupId);
+  if (error) throw new Error(error.message);
+}
