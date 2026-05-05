@@ -62,7 +62,7 @@ function mapGroup(row: RaidGroupRow): RaidGroup {
     raidTime: row.raid_time.slice(0, 5),
     leader: row.leader,
     minLevel: row.min_level,
-    capacity: row.capacity,
+    capacity: Math.min(18, Math.max(1, Number(row.capacity || 18))),
     status: row.status,
     notice: row.notice,
     createdAt: row.created_at,
@@ -83,24 +83,38 @@ export async function fetchRaidGroups(): Promise<RaidGroup[]> {
 }
 
 export async function insertRaidGroup(group: NewRaidGroup): Promise<void> {
-  const { error } = await db.from('raid_groups').insert({
-    id: group.id,
-    title: group.title,
-    boss: group.boss,
-    raid_date: group.raidDate,
-    raid_time: group.raidTime,
-    leader: group.leader,
-    min_level: group.minLevel,
-    capacity: group.capacity,
-    status: group.status,
-    notice: group.notice,
+  const { error } = await db.rpc('create_raid_group_with_code', {
+    p_id: group.id,
+    p_title: group.title,
+    p_boss: group.boss,
+    p_raid_date: group.raidDate,
+    p_raid_time: group.raidTime,
+    p_leader: group.leader,
+    p_min_level: group.minLevel,
+    p_capacity: Math.min(18, Math.max(1, Number(group.capacity || 18))),
+    p_status: group.status,
+    p_notice: group.notice,
+    p_leader_code: group.leaderCode,
   });
 
   if (error) throw new Error(error.message);
 }
 
-export async function deleteRaidGroup(groupId: string): Promise<void> {
-  const { error } = await db.from('raid_groups').delete().eq('id', groupId);
+export async function verifyLeaderCode(groupId: string, leaderCode: string): Promise<boolean> {
+  const { data, error } = await db.rpc('verify_raid_leader_code', {
+    p_group_id: groupId,
+    p_leader_code: leaderCode,
+  });
+
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
+export async function deleteRaidGroup(groupId: string, leaderCode: string): Promise<void> {
+  const { error } = await db.rpc('delete_raid_group_with_code', {
+    p_group_id: groupId,
+    p_leader_code: leaderCode,
+  });
   if (error) throw new Error(error.message);
 }
 
@@ -111,25 +125,36 @@ export async function insertRaidMember(member: NewRaidMember): Promise<void> {
     job: member.job,
     level: member.level,
     role: member.role,
-    party: member.party,
-    status: member.status,
+    party: Math.min(3, Math.max(1, Number(member.party || 1))),
+    status: '待確認',
     note: member.note,
   });
 
   if (error) throw new Error(error.message);
 }
 
-export async function updateRaidMemberStatus(memberId: string, status: MemberStatus): Promise<void> {
-  const { error } = await db.from('raid_members').update({ status }).eq('id', memberId);
+export async function updateRaidMemberStatus(memberId: string, status: MemberStatus, leaderCode: string): Promise<void> {
+  const { error } = await db.rpc('update_raid_member_status_with_code', {
+    p_member_id: memberId,
+    p_status: status,
+    p_leader_code: leaderCode,
+  });
   if (error) throw new Error(error.message);
 }
 
-export async function deleteRaidMember(memberId: string): Promise<void> {
-  const { error } = await db.from('raid_members').delete().eq('id', memberId);
+export async function deleteRaidMember(memberId: string, leaderCode: string): Promise<void> {
+  const { error } = await db.rpc('delete_raid_member_with_code', {
+    p_member_id: memberId,
+    p_leader_code: leaderCode,
+  });
   if (error) throw new Error(error.message);
 }
 
-export async function updateRaidGroupStatus(groupId: string, status: RaidGroup['status']): Promise<void> {
-  const { error } = await db.from('raid_groups').update({ status }).eq('id', groupId);
+export async function updateRaidGroupStatus(groupId: string, status: RaidGroup['status'], leaderCode: string): Promise<void> {
+  const { error } = await db.rpc('update_raid_group_status_with_code', {
+    p_group_id: groupId,
+    p_status: status,
+    p_leader_code: leaderCode,
+  });
   if (error) throw new Error(error.message);
 }

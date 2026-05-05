@@ -42,6 +42,7 @@ export type NewRaidGroup = {
   capacity: number;
   status: RaidStatus;
   notice: string;
+  leaderCode: string;
 };
 
 export type NewRaidMember = {

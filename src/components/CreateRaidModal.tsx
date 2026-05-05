@@ -36,7 +36,8 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
     raidTime: '22:00',
     leader: '',
     minLevel: 90,
-    capacity: 30,
+    capacity: 18,
+    leaderCode: '',
     notice: '',
   });
 
@@ -83,7 +84,7 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
                   <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${visualMeta.bossPillClass}`}>{getBossDisplayName(form.boss)}</span>
                   <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${visualMeta.difficultyPillClass}`}>{form.difficulty}</span>
                 </div>
-                <div className="mt-2 text-sm font-semibold text-slate-600">BOSS 與難度會分開顯示，資料庫仍沿用既有欄位相容儲存。</div>
+                <div className="mt-2 text-sm font-semibold text-slate-600">BOSS 與難度會分開顯示；管理碼只用於團長修改狀態、刪除成員或刪除團。</div>
               </div>
             </div>
           </div>
@@ -96,11 +97,14 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
           <Field label="團長">
             <Input value={form.leader} placeholder="角色名或暱稱" onChange={(e) => set('leader', e.target.value)} />
           </Field>
+          <Field label="團長管理碼">
+            <Input type="password" value={form.leaderCode} placeholder="至少 4 碼，用於管理此團" onChange={(e) => set('leaderCode', e.target.value)} />
+          </Field>
           <Field label="最低等級">
             <Input type="number" min="1" value={form.minLevel} onChange={(e) => set('minLevel', Number(e.target.value))} />
           </Field>
           <Field label="名額上限">
-            <Input type="number" min="1" max="60" value={form.capacity} onChange={(e) => set('capacity', Number(e.target.value))} />
+            <Input type="number" min="1" max="18" value={form.capacity} onChange={(e) => set('capacity', Math.min(18, Math.max(1, Number(e.target.value))))} />
           </Field>
           <div className="md:col-span-2">
             <Field label="公告">
@@ -112,13 +116,14 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>取消</Button>
           <Button
-            disabled={saving || !form.title.trim() || !form.leader.trim()}
+            disabled={saving || !form.title.trim() || !form.leader.trim() || form.leaderCode.trim().length < 4}
             onClick={async () => {
               setSaving(true);
               try {
                 const { difficulty, ...payload } = form;
                 await onCreate({
                   ...payload,
+                  capacity: Math.min(18, Math.max(1, Number(payload.capacity || 18))),
                   boss: buildBossStorageValue(payload.boss, difficulty),
                   id: slugify(`${payload.title}-${difficulty}` || payload.boss),
                   status: 'open',

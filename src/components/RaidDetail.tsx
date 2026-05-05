@@ -10,6 +10,9 @@ type Props = {
   onGroupStatusChange: (groupId: string, status: RaidStatus) => Promise<void>;
   onRemove: (memberId: string) => Promise<void>;
   onDelete: (groupId: string) => Promise<void>;
+  isLeaderUnlocked: boolean;
+  onLeaderUnlock: (code: string) => Promise<void>;
+  onLeaderLock: () => void;
 };
 
 const groupStatusOptions: Array<{ value: RaidStatus; label: string; helper: string }> = [
@@ -47,7 +50,7 @@ function jobIcon(job: string) {
   return '◆';
 }
 
-function MemberRow({ member, onStatusChange, onRemove }: { member: RaidMember; onStatusChange: Props['onStatusChange']; onRemove: Props['onRemove'] }) {
+function MemberRow({ member, onStatusChange, onRemove, canManage }: { member: RaidMember; onStatusChange: Props['onStatusChange']; onRemove: Props['onRemove']; canManage: boolean }) {
   return (
     <div className="group/member grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-2 rounded-2xl border border-transparent bg-white/70 px-2.5 py-2 transition hover:border-orange-100 hover:bg-white hover:shadow-sm">
       <div className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-slate-800 to-slate-600 text-xs font-black text-white shadow-inner">{jobIcon(member.job)}</div>
@@ -60,14 +63,18 @@ function MemberRow({ member, onStatusChange, onRemove }: { member: RaidMember; o
       </div>
       <div className="flex items-center gap-1">
         <span className={classNames('rounded-full px-2 py-1 text-[11px] font-black', roleAccent[member.role] ?? 'bg-slate-100 text-slate-600')}>{member.role}</span>
-        <button className="hidden rounded-lg px-1.5 py-1 text-[10px] font-bold text-rose-400 hover:bg-rose-50 group-hover/member:block" onClick={() => onRemove(member.id)}>
-          移除
-        </button>
+        {canManage ? (
+          <button className="hidden rounded-lg px-1.5 py-1 text-[10px] font-bold text-rose-400 hover:bg-rose-50 group-hover/member:block" onClick={() => onRemove(member.id)}>
+            移除
+          </button>
+        ) : null}
       </div>
-      <div className="col-span-3 hidden pt-1 group-hover/member:block">
-        <Select className="py-2 text-xs" value={member.status} onChange={(e) => onStatusChange(member.id, e.target.value as MemberStatus)}>
-          {statusOptions.map((s) => <option key={s}>{s}</option>)}
-        </Select>
+      <div className={classNames('col-span-3 pt-1', canManage ? 'hidden group-hover/member:block' : member.note ? 'block' : 'hidden')}>
+        {canManage ? (
+          <Select className="py-2 text-xs" value={member.status} onChange={(e) => onStatusChange(member.id, e.target.value as MemberStatus)}>
+            {statusOptions.map((s) => <option key={s}>{s}</option>)}
+          </Select>
+        ) : null}
         {member.note ? <div className="mt-2 rounded-xl bg-orange-50 px-3 py-2 text-xs text-slate-600">{member.note}</div> : null}
       </div>
     </div>
@@ -108,7 +115,7 @@ function StatCard({ icon, label, value, suffix, tone }: { icon: string; label: s
   );
 }
 
-function GroupStatusPanel({ group, onGroupStatusChange }: { group: RaidGroup; onGroupStatusChange: Props['onGroupStatusChange'] }) {
+function GroupStatusPanel({ group, onGroupStatusChange, canManage }: { group: RaidGroup; onGroupStatusChange: Props['onGroupStatusChange']; canManage: boolean }) {
   const raidStatus = getRaidStatusMeta(group);
   const rawStatus = groupStatusOptions.find((x) => x.value === group.status) ?? groupStatusOptions[0];
 
@@ -131,16 +138,76 @@ function GroupStatusPanel({ group, onGroupStatusChange }: { group: RaidGroup; on
           ) : null}
         </div>
         <div className="w-full shrink-0 lg:w-64">
-          <Select value={group.status} onChange={(e) => onGroupStatusChange(group.id, e.target.value as RaidStatus)}>
-            {groupStatusOptions.map((item) => <option key={item.value} value={item.value}>{item.label} — {item.helper}</option>)}
-          </Select>
+          {canManage ? (
+            <Select value={group.status} onChange={(e) => onGroupStatusChange(group.id, e.target.value as RaidStatus)}>
+              {groupStatusOptions.map((item) => <option key={item.value} value={item.value}>{item.label} — {item.helper}</option>)}
+            </Select>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500">團長模式解鎖後可手動修改狀態</div>
+          )}
         </div>
       </div>
     </section>
   );
 }
 
-export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemove, onDelete }: Props) {
+function LeaderAccessPanel({ isUnlocked, onUnlock, onLock }: { isUnlocked: boolean; onUnlock: Props['onLeaderUnlock']; onLock: Props['onLeaderLock'] }) {
+  const [code, setCode] = useState('');
+  const [checking, setChecking] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  return (
+    <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-46px_rgba(124,45,18,0.8)] backdrop-blur-xl">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-lg font-black text-slate-950">團長管理</h3>
+            <Pill tone={isUnlocked ? 'green' : 'slate'}>{isUnlocked ? '已解鎖' : '一般玩家模式'}</Pill>
+          </div>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
+            一般玩家只能報名。輸入團長管理碼後，才能刪除成員、修改成員狀態、修改招募狀態或刪除團。
+          </p>
+          {message ? <div className="mt-2 text-sm font-bold text-rose-600">{message}</div> : null}
+        </div>
+        <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-[420px]">
+          {isUnlocked ? (
+            <Button variant="secondary" className="w-full" onClick={onLock}>鎖定團長模式</Button>
+          ) : (
+            <>
+              <input
+                type="password"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                className="w-full rounded-2xl border border-orange-100 bg-white/90 px-3.5 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-orange-300 focus:ring-4 focus:ring-orange-100/80"
+                placeholder="輸入團長管理碼"
+              />
+              <Button
+                className="shrink-0"
+                disabled={checking || code.trim().length < 4}
+                onClick={async () => {
+                  setChecking(true);
+                  setMessage(null);
+                  try {
+                    await onUnlock(code.trim());
+                    setCode('');
+                  } catch (err) {
+                    setMessage(err instanceof Error ? err.message : '管理碼驗證失敗');
+                  } finally {
+                    setChecking(false);
+                  }
+                }}
+              >
+                {checking ? '驗證中' : '解鎖'}
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemove, onDelete, isLeaderUnlocked, onLeaderUnlock, onLeaderLock }: Props) {
   const [copied, setCopied] = useState(false);
   const confirmed = group.members.filter((m) => m.status === '已確認').length;
   const pending = group.members.filter((m) => m.status === '待確認').length;
@@ -187,7 +254,7 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_68%_28%,rgba(239,68,68,0.52),transparent_26%),radial-gradient(circle_at_82%_75%,rgba(249,115,22,0.34),transparent_32%),linear-gradient(120deg,#09090b_0%,#1c1917_45%,#431407_100%)]" />
           <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_20%_20%,#fff_1px,transparent_1px)] [background-size:24px_24px]" />
           {bossArt.image ? <img src={bossArt.image} alt={bossArt.label} className="absolute -right-10 bottom-0 top-0 hidden h-full w-[36%] object-contain opacity-95 drop-shadow-[0_20px_30px_rgba(0,0,0,0.45)] lg:block" /> : null}
-          <div className="absolute right-8 top-8 hidden rounded-3xl border border-white/10 bg-black/25 px-4 py-3 text-xs font-black text-orange-100 shadow-2xl backdrop-blur lg:block">Status Control UI-V11</div>
+          <div className="absolute right-8 top-8 hidden rounded-3xl border border-white/10 bg-black/25 px-4 py-3 text-xs font-black text-orange-100 shadow-2xl backdrop-blur lg:block">Leader Mode UI-V12</div>
           <div className="relative p-6 md:p-8">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 max-w-4xl">
@@ -224,7 +291,7 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
               <div className="flex shrink-0 flex-wrap gap-2">
                 <Button variant="secondary" onClick={copyShareUrl}>{copied ? '已複製' : '🔗 複製團連結'}</Button>
                 <Button variant="secondary" onClick={exportJson}>匯出 JSON</Button>
-                <Button variant="danger" onClick={() => onDelete(group.id)}>刪除團</Button>
+                {isLeaderUnlocked ? <Button variant="danger" onClick={() => onDelete(group.id)}>刪除團</Button> : null}
               </div>
             </div>
           </div>
@@ -237,7 +304,9 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
           <StatCard icon="●" label="候補" value={standby} tone="blue" />
         </div>
 
-        <GroupStatusPanel group={group} onGroupStatusChange={onGroupStatusChange} />
+        <LeaderAccessPanel isUnlocked={isLeaderUnlocked} onUnlock={onLeaderUnlock} onLock={onLeaderLock} />
+
+        <GroupStatusPanel group={group} onGroupStatusChange={onGroupStatusChange} canManage={isLeaderUnlocked} />
 
         {group.notice ? (
           <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-46px_rgba(124,45,18,0.8)] backdrop-blur-xl">
@@ -260,7 +329,7 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
                 <span className="text-orange-600">♟</span>
                 <h3 className="text-lg font-black text-slate-950">隊伍配置</h3>
               </div>
-              <p className="mt-1 text-sm font-semibold text-slate-400">共 3 隊，每隊最多 6 人；hover 成員可調整狀態或移除。</p>
+              <p className="mt-1 text-sm font-semibold text-slate-400">共 3 隊，每隊最多 6 人；一般玩家只能查看與報名，團長模式才可調整狀態或移除。</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {Object.entries(roleCount).map(([role, count]) => <Pill key={role}>{role} {count}</Pill>)}
@@ -280,7 +349,7 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
                     <span className="text-xs font-black text-slate-400">{members.length}/6</span>
                   </div>
                   <div className="grid gap-2">
-                    {members.map((m) => <MemberRow key={m.id} member={m} onStatusChange={onStatusChange} onRemove={onRemove} />)}
+                    {members.map((m) => <MemberRow key={m.id} member={m} onStatusChange={onStatusChange} onRemove={onRemove} canManage={isLeaderUnlocked} />)}
                     {Array.from({ length: Math.min(missing, 6) }).map((_, i) => <EmptySlot key={i} role={emptyRoles[i] ?? '自由'} />)}
                   </div>
                 </div>

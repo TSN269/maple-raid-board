@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { deleteRaidGroup, deleteRaidMember, fetchRaidGroups, insertRaidGroup, insertRaidMember, updateRaidGroupStatus, updateRaidMemberStatus } from './api/raids';
+import { deleteRaidGroup, deleteRaidMember, fetchRaidGroups, insertRaidGroup, insertRaidMember, updateRaidGroupStatus, updateRaidMemberStatus, verifyLeaderCode } from './api/raids';
 import { CreateRaidModal } from './components/CreateRaidModal';
 import { RaidDetail } from './components/RaidDetail';
 import { RaidList } from './components/RaidList';
@@ -11,6 +11,23 @@ import type { MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup, RaidStatus }
 
 function getInitialGroupId() {
   return new URLSearchParams(window.location.search).get('group') || 'demo-zakum-soon';
+}
+
+
+const LEADER_CODE_STORAGE_KEY = 'maple_raid_board_leader_codes_v12';
+
+function loadLeaderCodes(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(LEADER_CODE_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLeaderCodes(codes: Record<string, string>) {
+  localStorage.setItem(LEADER_CODE_STORAGE_KEY, JSON.stringify(codes));
 }
 
 type ActivePanel = 'home' | 'raid' | 'signup' | 'favorite' | 'notice' | 'settings';
@@ -72,6 +89,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [leaderCodes, setLeaderCodes] = useState<Record<string, string>>(() => loadLeaderCodes());
 
   const selectedGroup = useMemo(() => groups.find((g) => g.id === selectedId) || groups[0], [groups, selectedId]);
   const selectedDifficulty = useMemo(() => selectedGroup ? getBossDifficultyMeta(`${selectedGroup.title} ${selectedGroup.boss}`) : null, [selectedGroup]);
@@ -137,9 +155,40 @@ export default function App() {
     }
   }
 
+
+  function rememberLeaderCode(groupId: string, code: string) {
+    setLeaderCodes((prev) => {
+      const next = { ...prev, [groupId]: code };
+      saveLeaderCodes(next);
+      return next;
+    });
+  }
+
+  function forgetLeaderCode(groupId: string) {
+    setLeaderCodes((prev) => {
+      const next = { ...prev };
+      delete next[groupId];
+      saveLeaderCodes(next);
+      return next;
+    });
+  }
+
+  async function unlockLeader(groupId: string, code: string) {
+    const ok = await verifyLeaderCode(groupId, code);
+    if (!ok) throw new Error('團長管理碼錯誤');
+    rememberLeaderCode(groupId, code);
+  }
+
+  function requireLeaderCode(groupId: string) {
+    const code = leaderCodes[groupId];
+    if (!code) throw new Error('請先在楓突襲頁輸入團長管理碼');
+    return code;
+  }
+
   async function createGroup(group: NewRaidGroup) {
     await runAction(async () => {
       await insertRaidGroup(group);
+      rememberLeaderCode(group.id, group.leaderCode);
       setSelectedId(group.id);
       setShowCreate(false);
     });
@@ -150,21 +199,27 @@ export default function App() {
   }
 
   async function changeStatus(memberId: string, status: MemberStatus) {
-    await runAction(() => updateRaidMemberStatus(memberId, status));
+    if (!selectedGroup) return;
+    const code = requireLeaderCode(selectedGroup.id);
+    await runAction(() => updateRaidMemberStatus(memberId, status, code));
   }
 
   async function changeGroupStatus(groupId: string, status: RaidStatus) {
-    await runAction(() => updateRaidGroupStatus(groupId, status));
+    const code = requireLeaderCode(groupId);
+    await runAction(() => updateRaidGroupStatus(groupId, status, code));
   }
 
   async function removeMember(memberId: string) {
-    await runAction(() => deleteRaidMember(memberId));
+    if (!selectedGroup) return;
+    const code = requireLeaderCode(selectedGroup.id);
+    await runAction(() => deleteRaidMember(memberId, code));
   }
 
   async function removeGroup(groupId: string) {
     const ok = window.confirm('確定刪除此團？成員會一起刪除。');
     if (!ok) return;
-    await runAction(() => deleteRaidGroup(groupId));
+    const code = requireLeaderCode(groupId);
+    await runAction(() => deleteRaidGroup(groupId, code));
   }
 
   return (
@@ -182,7 +237,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">秋楓 UI-V11</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">秋楓 UI-V12</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
@@ -267,6 +322,9 @@ export default function App() {
                 onGroupStatusChange={changeGroupStatus}
                 onRemove={removeMember}
                 onDelete={removeGroup}
+                isLeaderUnlocked={Boolean(leaderCodes[selectedGroup.id])}
+                onLeaderUnlock={(code) => unlockLeader(selectedGroup.id, code)}
+                onLeaderLock={() => forgetLeaderCode(selectedGroup.id)}
               />
             ) : (
               <div className="rounded-[2rem] border border-orange-100 bg-white/85 p-10 text-center text-slate-500 shadow-sm">沒有可顯示的場次。請先執行 Supabase SQL seed。</div>
