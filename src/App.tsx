@@ -3,6 +3,7 @@ import { deleteRaidGroup, deleteRaidMember, fetchRaidGroups, insertRaidGroup, in
 import { CreateRaidModal } from './components/CreateRaidModal';
 import { RaidDetail } from './components/RaidDetail';
 import { RaidList } from './components/RaidList';
+import { SignupPanel } from './components/SignupPanel';
 import { Button, classNames } from './components/ui';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import type { MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup } from './types';
@@ -11,39 +12,61 @@ function getInitialGroupId() {
   return new URLSearchParams(window.location.search).get('group') || 'demo-zakum-soon';
 }
 
-function NavigationRail() {
-  const items = [
-    { icon: '⌂', label: '首頁' },
-    { icon: '楓', label: '突襲', active: true },
-    { icon: '▣', label: '我的報名' },
-    { icon: '☆', label: '收藏' },
-    { icon: '●', label: '通知', badge: '3' },
-    { icon: '⚙', label: '設定' },
+type ActivePanel = 'home' | 'signup' | 'my' | 'favorite' | 'notice' | 'settings';
+
+function NavigationRail({ activePanel, onChange }: { activePanel: ActivePanel; onChange: (panel: ActivePanel) => void }) {
+  const items: Array<{ icon: string; label: string; panel: ActivePanel; badge?: string; helper?: string }> = [
+    { icon: '⌂', label: '首頁', panel: 'home', helper: '突襲場次' },
+    { icon: '✎', label: '我要報名', panel: 'signup', helper: '報名表單' },
+    { icon: '▣', label: '我的報名', panel: 'my', helper: '下一階段' },
+    { icon: '☆', label: '收藏', panel: 'favorite', helper: '下一階段' },
+    { icon: '●', label: '通知', panel: 'notice', badge: '3', helper: '下一階段' },
+    { icon: '⚙', label: '設定', panel: 'settings', helper: '下一階段' },
   ];
 
   return (
-    <nav className="hidden rounded-[2rem] border border-orange-100/80 bg-white/80 p-2 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.8)] backdrop-blur-xl lg:flex lg:h-[calc(100vh-112px)] lg:flex-col lg:items-center lg:gap-2 lg:sticky lg:top-24">
-      {items.map((item) => (
-        <button
-          key={item.label}
-          className={classNames(
-            'relative grid w-full place-items-center gap-1 rounded-2xl px-2 py-3 text-[11px] font-bold transition',
-            item.active ? 'bg-orange-100 text-orange-700 shadow-inner' : 'text-slate-500 hover:bg-orange-50 hover:text-orange-700',
-          )}
-        >
-          <span className="text-xl leading-none">{item.icon}</span>
-          <span className="whitespace-nowrap">{item.label}</span>
-          {item.badge ? <span className="absolute right-2 top-2 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] text-white">{item.badge}</span> : null}
-        </button>
-      ))}
+    <nav className="flex overflow-x-auto rounded-[2rem] border border-orange-100/80 bg-white/80 p-2 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.8)] backdrop-blur-xl lg:h-[calc(100vh-112px)] lg:flex-col lg:items-center lg:gap-2 lg:sticky lg:top-24">
+      {items.map((item) => {
+        const active = activePanel === item.panel;
+        return (
+          <button
+            key={item.label}
+            type="button"
+            onClick={() => onChange(item.panel)}
+            className={classNames(
+              'relative grid min-w-[78px] place-items-center gap-1 rounded-2xl px-2 py-3 text-[11px] font-bold transition lg:w-full lg:min-w-0',
+              active ? 'bg-orange-100 text-orange-700 shadow-inner' : 'text-slate-500 hover:bg-orange-50 hover:text-orange-700',
+            )}
+            title={item.helper}
+          >
+            <span className="text-xl leading-none">{item.icon}</span>
+            <span className="whitespace-nowrap">{item.label}</span>
+            {item.badge ? <span className="absolute right-2 top-2 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] text-white">{item.badge}</span> : null}
+          </button>
+        );
+      })}
     </nav>
   );
 }
 
+function PlaceholderPanel({ title, description }: { title: string; description: string }) {
+  return (
+    <aside className="rounded-[2rem] border border-orange-100/80 bg-white/75 p-5 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl lg:sticky lg:top-24 lg:h-[calc(100vh-112px)]">
+      <div className="grid h-full place-items-center rounded-3xl border border-dashed border-orange-200 bg-orange-50/60 p-6 text-center">
+        <div>
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-3xl bg-white text-2xl shadow-sm">楓</div>
+          <h2 className="mt-4 text-lg font-black text-slate-950">{title}</h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">{description}</p>
+        </div>
+      </div>
+    </aside>
+  );
+}
 export default function App() {
   const [groups, setGroups] = useState<RaidGroup[]>([]);
   const [selectedId, setSelectedId] = useState(getInitialGroupId);
   const [query, setQuery] = useState('');
+  const [activePanel, setActivePanel] = useState<ActivePanel>('home');
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -151,10 +174,10 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">秋楓 UI-V2</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">秋楓 UI-V3</span>
                 <span className="text-orange-500">✦</span>
               </div>
-              <p className="text-xs font-semibold text-slate-500">新版視覺：左導覽＋Hero＋右側報名面板</p>
+              <p className="text-xs font-semibold text-slate-500">新版視覺：左導覽按鈕切換突襲場次／我要報名</p>
             </div>
           </div>
 
@@ -200,13 +223,26 @@ export default function App() {
       {loading ? (
         <div className="mx-auto max-w-[1560px] px-4 py-10 text-slate-500">載入中...</div>
       ) : (
-        <div className="mx-auto grid max-w-[1560px] gap-4 px-4 py-4 lg:grid-cols-[76px_320px_minmax(0,1fr)] xl:grid-cols-[76px_340px_minmax(0,1fr)]">
-          <NavigationRail />
-          <RaidList groups={groups} selectedId={selectedGroup?.id} onSelect={setSelectedId} query={query} setQuery={setQuery} />
+        <div className="mx-auto grid max-w-[1560px] gap-4 px-4 py-4 lg:grid-cols-[86px_360px_minmax(0,1fr)] xl:grid-cols-[86px_380px_minmax(0,1fr)]">
+          <NavigationRail activePanel={activePanel} onChange={setActivePanel} />
+
+          {activePanel === 'home' ? (
+            <RaidList groups={groups} selectedId={selectedGroup?.id} onSelect={setSelectedId} query={query} setQuery={setQuery} />
+          ) : activePanel === 'signup' && selectedGroup ? (
+            <SignupPanel group={selectedGroup} onSignup={addSignup} />
+          ) : activePanel === 'my' ? (
+            <PlaceholderPanel title="我的報名" description="下一階段可做成只顯示自己報名過的團與狀態。" />
+          ) : activePanel === 'favorite' ? (
+            <PlaceholderPanel title="收藏" description="下一階段可做成常用 Boss、固定團與收藏場次。" />
+          ) : activePanel === 'notice' ? (
+            <PlaceholderPanel title="通知" description="下一階段可做成開團提醒、狀態變更與候補轉正通知。" />
+          ) : (
+            <PlaceholderPanel title="設定" description="下一階段可做成公會名稱、管理碼、權限與顯示偏好。" />
+          )}
+
           {selectedGroup ? (
             <RaidDetail
               group={selectedGroup}
-              onSignup={addSignup}
               onStatusChange={changeStatus}
               onRemove={removeMember}
               onDelete={removeGroup}
@@ -218,7 +254,7 @@ export default function App() {
       )}
 
       <footer className="mx-auto max-w-[1560px] px-4 pb-8 text-xs text-slate-400">
-        UI-V2 visible marker：如果你看不到『秋楓 UI-V2』，代表 Vercel 沒部署到新版 commit。Demo mode：目前 SQL policy 開放匿名 CRUD。正式站請改成登入制、管理員權限與每團邀請碼。
+        UI-V3 visible marker：左側『首頁』顯示突襲場次，左側『我要報名』顯示報名表單。Demo mode：目前 SQL policy 開放匿名 CRUD。正式站請改成登入制、管理員權限與每團邀請碼。
       </footer>
 
       {showCreate ? <CreateRaidModal onClose={() => setShowCreate(false)} onCreate={createGroup} /> : null}

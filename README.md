@@ -141,3 +141,11 @@ This project intentionally keeps the Supabase client untyped in `src/lib/supabas
 ```
 
 Vercel should run `npm run build`, not `npm run typecheck`.
+
+
+## UI-V3 更新
+
+- 左側「首頁」按鈕顯示突襲場次清單。
+- 左側「我要報名」按鈕顯示目前選取團的報名表單。
+- 中央主內容只保留團隊 Hero、公告、統計與隊伍配置。
+- 不需要重新執行 Supabase SQL。

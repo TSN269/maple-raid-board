@@ -1,12 +1,10 @@
 import { useMemo, useState } from 'react';
 import { statusOptions } from '../data/options';
-import type { MemberStatus, RaidGroup, RaidMember, NewRaidMember } from '../types';
+import type { MemberStatus, RaidGroup, RaidMember } from '../types';
 import { Button, Pill, Select, classNames } from './ui';
-import { SignupPanel } from './SignupPanel';
 
 type Props = {
   group: RaidGroup;
-  onSignup: (member: NewRaidMember) => Promise<void>;
   onStatusChange: (memberId: string, status: MemberStatus) => Promise<void>;
   onRemove: (memberId: string) => Promise<void>;
   onDelete: (groupId: string) => Promise<void>;
@@ -102,7 +100,7 @@ function StatCard({ icon, label, value, suffix, tone }: { icon: string; label: s
   );
 }
 
-export function RaidDetail({ group, onSignup, onStatusChange, onRemove, onDelete }: Props) {
+export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props) {
   const [copied, setCopied] = useState(false);
   const confirmed = group.members.filter((m) => m.status === '已確認').length;
   const pending = group.members.filter((m) => m.status === '待確認').length;
@@ -138,7 +136,7 @@ export function RaidDetail({ group, onSignup, onStatusChange, onRemove, onDelete
   }
 
   return (
-    <main className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <main className="grid min-w-0 gap-4">
       <section className="grid min-w-0 gap-4">
         <section className="relative overflow-hidden rounded-[2rem] border border-orange-100 bg-slate-950 text-white shadow-[0_28px_80px_-48px_rgba(15,23,42,0.95)]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_68%_28%,rgba(239,68,68,0.52),transparent_26%),radial-gradient(circle_at_82%_75%,rgba(249,115,22,0.34),transparent_32%),linear-gradient(120deg,#09090b_0%,#1c1917_45%,#431407_100%)]" />
@@ -238,8 +236,6 @@ export function RaidDetail({ group, onSignup, onStatusChange, onRemove, onDelete
           </div>
         </section>
       </section>
-
-      <SignupPanel group={group} onSignup={onSignup} />
     </main>
   );
 }
