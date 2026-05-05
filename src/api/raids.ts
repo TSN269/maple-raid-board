@@ -95,6 +95,7 @@ export async function insertRaidGroup(group: NewRaidGroup): Promise<void> {
     p_status: group.status,
     p_notice: group.notice,
     p_leader_code: group.leaderCode,
+    p_signup_code: group.signupCode,
   });
 
   if (error) throw new Error(error.message);
@@ -119,15 +120,17 @@ export async function deleteRaidGroup(groupId: string, leaderCode: string): Prom
 }
 
 export async function insertRaidMember(member: NewRaidMember): Promise<void> {
-  const { error } = await db.from('raid_members').insert({
-    group_id: member.groupId,
-    name: member.name,
-    job: member.job,
-    level: member.level,
-    role: member.role,
-    party: Math.min(3, Math.max(1, Number(member.party || 1))),
-    status: '待確認',
-    note: member.note,
+  const { error } = await db.rpc('create_raid_member_with_code', {
+    p_group_id: member.groupId,
+    p_name: member.name,
+    p_job: member.job,
+    p_level: member.level,
+    p_role: member.role,
+    p_party: Math.min(3, Math.max(1, Number(member.party || 1))),
+    p_note: member.note,
+    p_signup_code: member.signupCode,
+    p_client_nonce: member.clientNonce,
+    p_honeypot: member.honeypot || '',
   });
 
   if (error) throw new Error(error.message);

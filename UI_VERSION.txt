@@ -1,2 +1,2 @@
-UI-V11
-Based on UI-V10. Added manual raid status control and automatic status display when current time is past raid date/time.
+UI-V13 SQLFIX2
+Fixes schema migration failure when existing raid titles/leaders/member data violate new V13 constraints.

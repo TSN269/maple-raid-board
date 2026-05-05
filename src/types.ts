@@ -43,6 +43,7 @@ export type NewRaidGroup = {
   status: RaidStatus;
   notice: string;
   leaderCode: string;
+  signupCode: string;
 };
 
 export type NewRaidMember = {
@@ -54,6 +55,9 @@ export type NewRaidMember = {
   party: number;
   status: MemberStatus;
   note: string;
+  signupCode: string;
+  clientNonce: string;
+  honeypot?: string;
 };
 
 type RaidGroupsRow = {

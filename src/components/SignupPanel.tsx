@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getRaidStatusMeta } from '../data/bossArt';
 import { jobOptions, roleOptions } from '../data/options';
 import type { NewRaidMember, RaidGroup } from '../types';
@@ -16,8 +16,20 @@ const roleButtons = [
   { value: '補師', icon: '✚', label: '補師', cls: 'border-sky-200 bg-sky-50 text-sky-700' },
 ];
 
+const namePattern = /^[A-Za-z0-9_\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]{2,16}$/;
+
+function getClientNonce() {
+  const key = 'maple_raid_board_client_nonce_v13';
+  const existing = localStorage.getItem(key);
+  if (existing && existing.length >= 16) return existing;
+  const next = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  localStorage.setItem(key, next);
+  return next;
+}
+
 export function SignupPanel({ group, onSignup }: Props) {
   const [saving, setSaving] = useState(false);
+  const [clientNonce] = useState(() => getClientNonce());
   const [form, setForm] = useState({
     name: '',
     job: jobOptions[0],
@@ -26,33 +38,53 @@ export function SignupPanel({ group, onSignup }: Props) {
     party: 0,
     status: '待確認' as const,
     note: '',
+    signupCode: '',
+    website: '',
   });
 
   useEffect(() => {
-    setForm((prev) => ({ ...prev, level: Math.max(Number(prev.level || 0), Number(group.minLevel || 1)) }));
+    setForm((prev) => ({ ...prev, level: Math.max(Number(prev.level || 0), Number(group.minLevel || 1)), signupCode: '', website: '' }));
   }, [group.id, group.minLevel]);
 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((prev) => ({ ...prev, [key]: value }));
   const raidStatus = getRaidStatusMeta(group);
   const isFull = group.members.length >= group.capacity;
-  const canSignup = raidStatus.canSignup && !isFull;
   const selectedParty = form.party === 0 ? Math.max(1, Math.min(3, Math.ceil((group.members.length + 1) / 6))) : form.party;
+
+  const validationMessage = useMemo(() => {
+    if (!raidStatus.canSignup || isFull) return `目前狀態：${raidStatus.label}，暫停報名。`;
+    if (!form.signupCode.trim()) return '請輸入報名邀請碼。';
+    if (form.signupCode.trim().length < 4) return '報名邀請碼至少 4 碼。';
+    if (!form.name.trim()) return '請輸入角色名稱。';
+    if (!namePattern.test(form.name.trim())) return '角色名稱限 2～16 字，可用中文、日文、英文、數字與底線。';
+    if (group.members.some((m) => m.name.trim().toLowerCase() === form.name.trim().toLowerCase())) return '此角色已在名單內，請勿重複報名。';
+    if (Number(form.level) < Number(group.minLevel)) return `等級低於此團門檻 Lv.${group.minLevel}。`;
+    if (Number(form.level) > 300) return '等級不可超過 300。';
+    if (form.note.length > 100) return '備註不可超過 100 字。';
+    return '';
+  }, [form, group.members, group.minLevel, isFull, raidStatus.canSignup, raidStatus.label]);
+
+  const canSignup = !validationMessage;
 
   return (
     <aside className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_70px_-48px_rgba(124,45,18,0.9)] backdrop-blur-xl xl:sticky xl:top-24 xl:h-[calc(100vh-112px)] xl:overflow-auto soft-scrollbar">
       <div className="flex items-start justify-between gap-3 border-b border-orange-100 pb-4">
         <div>
           <h3 className="text-2xl font-black text-slate-950">我要報名</h3>
-          <p className="mt-1 text-sm font-semibold text-slate-400">填寫角色資訊，加入這場突襲！</p>
+          <p className="mt-1 text-sm font-semibold text-slate-400">輸入邀請碼與角色資訊，送出後由團長確認。</p>
         </div>
         <div className="grid h-10 w-10 place-items-center rounded-2xl bg-orange-50 text-xl text-orange-600">▣</div>
       </div>
 
       <div className="mt-5 grid gap-4">
+        <Field label="報名邀請碼" required>
+          <Input type="password" value={form.signupCode} placeholder="請向團長取得邀請碼" onChange={(e) => set('signupCode', e.target.value.trim())} />
+        </Field>
+
         <Field label="角色名稱" required>
           <div className="relative">
-            <Input maxLength={12} value={form.name} placeholder="請輸入角色名稱" onChange={(e) => set('name', e.target.value)} />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300">{form.name.length}/12</span>
+            <Input maxLength={16} value={form.name} placeholder="2～16 字，例：阿楓123" onChange={(e) => set('name', e.target.value.trim())} />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300">{form.name.length}/16</span>
           </div>
         </Field>
 
@@ -63,7 +95,7 @@ export function SignupPanel({ group, onSignup }: Props) {
         </Field>
 
         <Field label="等級" required>
-          <Input type="number" min="1" value={form.level} onChange={(e) => set('level', Number(e.target.value))} />
+          <Input type="number" min="1" max="300" value={form.level} onChange={(e) => set('level', Math.min(300, Math.max(1, Number(e.target.value))))} />
         </Field>
 
         <Field label="角色定位" required>
@@ -102,18 +134,32 @@ export function SignupPanel({ group, onSignup }: Props) {
           </div>
         </Field>
 
+        <div className="hidden" aria-hidden="true">
+          <label>
+            Website
+            <input tabIndex={-1} autoComplete="off" value={form.website} onChange={(e) => set('website', e.target.value)} />
+          </label>
+        </div>
+
         <div className={classNames('rounded-2xl border px-4 py-3 text-sm font-semibold leading-6', canSignup ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-rose-200 bg-rose-50 text-rose-700')}>
-          {canSignup ? 'ⓘ 報名後需經隊長確認，狀態將顯示於名單中。' : `目前狀態：${raidStatus.label}，暫停報名。`}
+          {canSignup ? 'ⓘ 已通過前端檢查；送出後資料庫仍會再驗證邀請碼、重複角色與送出頻率。' : validationMessage}
         </div>
 
         <Button
           className="w-full py-4 text-base"
-          disabled={saving || !canSignup || !form.name.trim() || Number(form.level) < Number(group.minLevel)}
+          disabled={saving || !canSignup}
           onClick={async () => {
             setSaving(true);
             try {
-              await onSignup({ ...form, party: selectedParty, groupId: group.id });
-              setForm((prev) => ({ ...prev, name: '', note: '' }));
+              await onSignup({
+                ...form,
+                party: selectedParty,
+                groupId: group.id,
+                signupCode: form.signupCode.trim(),
+                clientNonce,
+                honeypot: form.website,
+              });
+              setForm((prev) => ({ ...prev, name: '', note: '', signupCode: '', website: '' }));
             } finally {
               setSaving(false);
             }
@@ -126,10 +172,6 @@ export function SignupPanel({ group, onSignup }: Props) {
           <span><Pill tone={raidStatus.tone}>{raidStatus.label}</Pill></span>
           <span>預計加入：隊伍 {selectedParty}</span>
         </div>
-
-        {Number(form.level) < Number(group.minLevel) ? (
-          <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">等級低於此團門檻 Lv.{group.minLevel}。</div>
-        ) : null}
       </div>
     </aside>
   );

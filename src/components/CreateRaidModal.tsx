@@ -38,6 +38,7 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
     minLevel: 90,
     capacity: 18,
     leaderCode: '',
+    signupCode: '',
     notice: '',
   });
 
@@ -84,7 +85,7 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
                   <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${visualMeta.bossPillClass}`}>{getBossDisplayName(form.boss)}</span>
                   <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${visualMeta.difficultyPillClass}`}>{form.difficulty}</span>
                 </div>
-                <div className="mt-2 text-sm font-semibold text-slate-600">BOSS 與難度會分開顯示；管理碼只用於團長修改狀態、刪除成員或刪除團。</div>
+                <div className="mt-2 text-sm font-semibold text-slate-600">BOSS 與難度會分開顯示；團長管理碼給管理用，報名邀請碼給玩家報名用。</div>
               </div>
             </div>
           </div>
@@ -98,7 +99,10 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
             <Input value={form.leader} placeholder="角色名或暱稱" onChange={(e) => set('leader', e.target.value)} />
           </Field>
           <Field label="團長管理碼">
-            <Input type="password" value={form.leaderCode} placeholder="至少 4 碼，用於管理此團" onChange={(e) => set('leaderCode', e.target.value)} />
+            <Input type="password" value={form.leaderCode} placeholder="至少 4 碼，用於管理此團" onChange={(e) => set('leaderCode', e.target.value.trim())} />
+          </Field>
+          <Field label="報名邀請碼">
+            <Input type="password" value={form.signupCode} placeholder="至少 4 碼，玩家報名時需要輸入" onChange={(e) => set('signupCode', e.target.value.trim())} />
           </Field>
           <Field label="最低等級">
             <Input type="number" min="1" value={form.minLevel} onChange={(e) => set('minLevel', Number(e.target.value))} />
@@ -116,7 +120,7 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>取消</Button>
           <Button
-            disabled={saving || !form.title.trim() || !form.leader.trim() || form.leaderCode.trim().length < 4}
+            disabled={saving || !form.title.trim() || !form.leader.trim() || form.leaderCode.trim().length < 4 || form.signupCode.trim().length < 4}
             onClick={async () => {
               setSaving(true);
               try {
