@@ -1,5 +1,5 @@
 import type { RaidGroup } from '../types';
-import { getBossArtMeta } from '../data/bossArt';
+import { getBossArtMeta, getBossDifficultyMeta } from '../data/bossArt';
 import { Pill, classNames } from './ui';
 
 type Props = {
@@ -47,6 +47,7 @@ export function RaidList({ groups, selectedId, query, onSelect }: Props) {
         {filtered.map((group) => {
           const confirmed = group.members.filter((m) => m.status === '已確認').length;
           const bossArt = getBossArtMeta(`${group.title} ${group.boss}`);
+          const bossDifficulty = getBossDifficultyMeta(`${group.title} ${group.boss}`);
           const selected = selectedId === group.id;
           const difficulty = difficultyMeta(group);
           return (
@@ -59,13 +60,16 @@ export function RaidList({ groups, selectedId, query, onSelect }: Props) {
               )}
             >
               <div className="flex gap-3">
-                <div className={classNames('relative h-16 w-16 shrink-0 overflow-hidden rounded-3xl bg-gradient-to-br shadow-xl', bossArt.accent, bossArt.glow)}>
-                  {bossArt.image ? (
+                <div className={classNames('relative h-16 w-16 shrink-0 overflow-hidden rounded-3xl bg-gradient-to-br shadow-xl ring-2', bossArt.accent, bossArt.glow, bossDifficulty.ringClass)}>
+                  {bossArt.smallImage ? (
+                    <img src={bossArt.smallImage} alt={`${bossArt.label} ${bossDifficulty.label}`} className="h-full w-full object-cover" />
+                  ) : bossArt.image ? (
                     <img src={bossArt.image} alt={bossArt.label} className="h-full w-full object-cover" />
                   ) : (
                     <div className="grid h-full w-full place-items-center text-xl font-black text-white">{bossArt.label.slice(0, 1)}</div>
                   )}
-                  <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.18),transparent_35%,rgba(15,23,42,0.18)_100%)]" />
+                  <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.16),transparent_35%,rgba(15,23,42,0.18)_100%)]" />
+                  <span className={classNames('absolute left-1.5 top-1.5 rounded-md px-1.5 py-0.5 text-[9px] font-black tracking-wide shadow-sm', bossDifficulty.chipClass)}>{bossDifficulty.label}</span>
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">

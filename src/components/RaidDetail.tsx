@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { getBossArtMeta } from '../data/bossArt';
+import { getBossArtMeta, getBossDifficultyMeta } from '../data/bossArt';
 import { statusOptions } from '../data/options';
 import type { MemberStatus, RaidGroup, RaidMember } from '../types';
 import { Button, Pill, Select, classNames } from './ui';
@@ -116,6 +116,7 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
   const standby = group.members.filter((m) => m.status === '候補').length;
   const difficulty = difficultyMeta(group);
   const bossArt = getBossArtMeta(`${group.title} ${group.boss}`);
+  const bossDifficulty = getBossDifficultyMeta(`${group.title} ${group.boss}`);
 
   const roleCount = useMemo(() => {
     return group.members.reduce<Record<string, number>>((acc, m) => {
@@ -163,9 +164,10 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
                   <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-black text-orange-100 ring-1 ring-white/20">Boss 圖示已替換</span>
                 </div>
                 <div className="mt-5 flex items-start gap-4">
-                  <div className={classNames('relative hidden h-24 w-24 shrink-0 overflow-hidden rounded-[1.6rem] border border-white/10 bg-gradient-to-br shadow-2xl md:block', bossArt.accent, bossArt.glow)}>
-                    {bossArt.image ? <img src={bossArt.image} alt={bossArt.label} className="h-full w-full object-cover" /> : null}
+                  <div className={classNames('relative hidden h-24 w-24 shrink-0 overflow-hidden rounded-[1.6rem] border border-white/10 bg-gradient-to-br shadow-2xl ring-2 md:block', bossArt.accent, bossArt.glow, bossDifficulty.ringClass)}>
+                    {bossArt.smallImage ? <img src={bossArt.smallImage} alt={`${bossArt.label} ${bossDifficulty.label}`} className="h-full w-full object-cover" /> : bossArt.image ? <img src={bossArt.image} alt={bossArt.label} className="h-full w-full object-cover" /> : null}
                     <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.2),transparent_38%,rgba(15,23,42,0.2)_100%)]" />
+                    <span className={classNames('absolute left-2 top-2 rounded-md px-2 py-1 text-[10px] font-black tracking-wide shadow-sm', bossDifficulty.chipClass)}>{bossDifficulty.label}</span>
                   </div>
                   <div className="min-w-0">
                     <h2 className="truncate text-4xl font-black tracking-tight md:text-5xl">{group.title}</h2>

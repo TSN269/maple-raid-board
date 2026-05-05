@@ -1,2 +1,2 @@
-UI-V7
-Boss icons replaced with matching web images for Zakum, Horntail, Pink Bean, and Papulatus.
+UI-V8
+Small boss icons now use difficulty-matched entry artwork with NORMAL/HARD badges.
