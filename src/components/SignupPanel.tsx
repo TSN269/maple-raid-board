@@ -33,7 +33,7 @@ export function SignupPanel({ group, onSignup }: Props) {
 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((prev) => ({ ...prev, [key]: value }));
   const isFull = group.members.length >= group.capacity;
-  const selectedParty = form.party === 0 ? Math.max(1, Math.min(6, Math.ceil((group.members.length + 1) / 6))) : form.party;
+  const selectedParty = form.party === 0 ? Math.max(1, Math.min(3, Math.ceil((group.members.length + 1) / 6))) : form.party;
 
   return (
     <aside className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_70px_-48px_rgba(124,45,18,0.9)] backdrop-blur-xl xl:sticky xl:top-24 xl:h-[calc(100vh-112px)] xl:overflow-auto soft-scrollbar">
@@ -88,7 +88,7 @@ export function SignupPanel({ group, onSignup }: Props) {
         <Field label="希望加入的隊伍">
           <Select value={form.party} onChange={(e) => set('party', Number(e.target.value))}>
             <option value={0}>不指定（由系統暫分）</option>
-            {[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>隊伍 {n}</option>)}
+            {[1, 2, 3].map((n) => <option key={n} value={n}>隊伍 {n}</option>)}
           </Select>
         </Field>
 

@@ -41,7 +41,7 @@ function mapMember(row: RaidMemberRow): RaidMember {
     job: row.job,
     level: row.level,
     role: row.role,
-    party: row.party,
+    party: Math.min(3, Math.max(1, Number(row.party || 1))),
     status: row.status,
     note: row.note,
     createdAt: row.created_at,

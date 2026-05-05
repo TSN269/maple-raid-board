@@ -1,1 +1,1 @@
-UI-V5: removed footer policy text, removed left nav my-signup button, added simple/hard difficulty option in create raid modal.
+UI-V6: reduced party board to 3 teams and limited signup party selector to teams 1-3. Existing party 4-6 data is displayed under team 3 for compatibility.

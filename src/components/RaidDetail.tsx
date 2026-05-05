@@ -209,7 +209,7 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
                 <span className="text-orange-600">♟</span>
                 <h3 className="text-lg font-black text-slate-950">隊伍配置</h3>
               </div>
-              <p className="mt-1 text-sm font-semibold text-slate-400">每隊最多 6 人；hover 成員可調整狀態或移除。</p>
+              <p className="mt-1 text-sm font-semibold text-slate-400">共 3 隊，每隊最多 6 人；hover 成員可調整狀態或移除。</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {Object.entries(roleCount).map(([role, count]) => <Pill key={role}>{role} {count}</Pill>)}
@@ -217,8 +217,8 @@ export function RaidDetail({ group, onStatusChange, onRemove, onDelete }: Props)
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
-            {[1, 2, 3, 4, 5, 6].map((partyNo) => {
+          <div className="mt-5 grid gap-4 xl:grid-cols-3">
+            {[1, 2, 3].map((partyNo) => {
               const members = group.members.filter((m) => Number(m.party) === partyNo);
               const missing = Math.max(0, 6 - members.length);
               const emptyRoles = ['副坦', '輸出', '輸出', '輸出', '補師', '自由'];
