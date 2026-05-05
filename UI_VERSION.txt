@@ -1,1 +1,1 @@
-UI-V3: left navigation now switches the side panel. Home shows raid list; Signup shows the signup form.
+UI-V4: left navigation panels changed. Home shows only raid list; Maple Raid shows selected raid detail; Signup shows signup form.

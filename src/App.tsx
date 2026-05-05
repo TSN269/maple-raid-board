@@ -12,11 +12,12 @@ function getInitialGroupId() {
   return new URLSearchParams(window.location.search).get('group') || 'demo-zakum-soon';
 }
 
-type ActivePanel = 'home' | 'signup' | 'my' | 'favorite' | 'notice' | 'settings';
+type ActivePanel = 'home' | 'raid' | 'signup' | 'my' | 'favorite' | 'notice' | 'settings';
 
 function NavigationRail({ activePanel, onChange }: { activePanel: ActivePanel; onChange: (panel: ActivePanel) => void }) {
   const items: Array<{ icon: string; label: string; panel: ActivePanel; badge?: string; helper?: string }> = [
-    { icon: '⌂', label: '首頁', panel: 'home', helper: '突襲場次' },
+    { icon: '⌂', label: '首頁', panel: 'home', helper: '突襲場次清單' },
+    { icon: '🍁', label: '楓突襲', panel: 'raid', helper: '突襲詳細內容' },
     { icon: '✎', label: '我要報名', panel: 'signup', helper: '報名表單' },
     { icon: '▣', label: '我的報名', panel: 'my', helper: '下一階段' },
     { icon: '☆', label: '收藏', panel: 'favorite', helper: '下一階段' },
@@ -174,10 +175,10 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">秋楓 UI-V3</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">秋楓 UI-V4</span>
                 <span className="text-orange-500">✦</span>
               </div>
-              <p className="text-xs font-semibold text-slate-500">新版視覺：左導覽按鈕切換突襲場次／我要報名</p>
+              <p className="text-xs font-semibold text-slate-500">左導覽分頁：首頁＝場次清單；楓突襲＝團隊詳細；我要報名＝報名表單</p>
             </div>
           </div>
 
@@ -223,13 +224,66 @@ export default function App() {
       {loading ? (
         <div className="mx-auto max-w-[1560px] px-4 py-10 text-slate-500">載入中...</div>
       ) : (
-        <div className="mx-auto grid max-w-[1560px] gap-4 px-4 py-4 lg:grid-cols-[86px_360px_minmax(0,1fr)] xl:grid-cols-[86px_380px_minmax(0,1fr)]">
+        <div className="mx-auto grid max-w-[1560px] gap-4 px-4 py-4 lg:grid-cols-[86px_minmax(0,1fr)]">
           <NavigationRail activePanel={activePanel} onChange={setActivePanel} />
 
           {activePanel === 'home' ? (
-            <RaidList groups={groups} selectedId={selectedGroup?.id} onSelect={setSelectedId} query={query} setQuery={setQuery} />
-          ) : activePanel === 'signup' && selectedGroup ? (
-            <SignupPanel group={selectedGroup} onSignup={addSignup} />
+            <div className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
+              <RaidList groups={groups} selectedId={selectedGroup?.id} onSelect={setSelectedId} query={query} setQuery={setQuery} />
+              <section className="rounded-[2rem] border border-orange-100/80 bg-white/80 p-6 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
+                <div className="grid min-h-[calc(100vh-154px)] place-items-center rounded-[1.5rem] border border-dashed border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 p-8 text-center">
+                  <div className="max-w-xl">
+                    <div className="mx-auto grid h-20 w-20 place-items-center rounded-[1.7rem] bg-white text-4xl shadow-sm">🍁</div>
+                    <h2 className="mt-5 text-2xl font-black text-slate-950">首頁：突襲場次清單</h2>
+                    <p className="mt-3 text-sm font-semibold leading-7 text-slate-600">
+                      這裡只放場次列表與搜尋。選好左側場次後，點左邊導覽的「楓突襲」查看該團詳細資訊；點「我要報名」進入報名表單。
+                    </p>
+                    {selectedGroup ? (
+                      <div className="mt-6 rounded-3xl border border-orange-100 bg-white/90 p-4 text-left shadow-sm">
+                        <div className="text-xs font-black uppercase tracking-[0.2em] text-orange-500">目前選取</div>
+                        <div className="mt-2 text-lg font-black text-slate-950">{selectedGroup.title}</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-500">{selectedGroup.boss} · {selectedGroup.raidDate} {selectedGroup.raidTime}</div>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Button onClick={() => setActivePanel('raid')}>查看楓突襲詳細</Button>
+                          <Button variant="secondary" onClick={() => setActivePanel('signup')}>我要報名</Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </section>
+            </div>
+          ) : activePanel === 'raid' ? (
+            selectedGroup ? (
+              <RaidDetail
+                group={selectedGroup}
+                onStatusChange={changeStatus}
+                onRemove={removeMember}
+                onDelete={removeGroup}
+              />
+            ) : (
+              <div className="rounded-[2rem] border border-orange-100 bg-white/85 p-10 text-center text-slate-500 shadow-sm">沒有可顯示的場次。請先執行 Supabase SQL seed。</div>
+            )
+          ) : activePanel === 'signup' ? (
+            selectedGroup ? (
+              <div className="mx-auto grid w-full max-w-5xl gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+                <section className="rounded-[2rem] border border-orange-100/80 bg-white/80 p-6 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
+                  <div className="rounded-[1.5rem] bg-gradient-to-br from-slate-950 via-orange-950 to-amber-800 p-6 text-white shadow-inner">
+                    <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-200">正在報名</div>
+                    <h2 className="mt-3 text-3xl font-black">{selectedGroup.title}</h2>
+                    <p className="mt-3 text-sm font-semibold text-orange-100">{selectedGroup.boss} · {selectedGroup.raidDate} {selectedGroup.raidTime} · 團長：{selectedGroup.leader}</p>
+                    <p className="mt-5 text-sm leading-7 text-orange-50/90">此頁只放報名相關資訊。要看分隊、公告與狀態管理，請點左側「楓突襲」。</p>
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <Button variant="secondary" onClick={() => setActivePanel('raid')}>查看楓突襲詳細</Button>
+                      <Button variant="secondary" onClick={() => setActivePanel('home')}>返回場次清單</Button>
+                    </div>
+                  </div>
+                </section>
+                <SignupPanel group={selectedGroup} onSignup={addSignup} />
+              </div>
+            ) : (
+              <div className="rounded-[2rem] border border-orange-100 bg-white/85 p-10 text-center text-slate-500 shadow-sm">沒有可報名的場次。</div>
+            )
           ) : activePanel === 'my' ? (
             <PlaceholderPanel title="我的報名" description="下一階段可做成只顯示自己報名過的團與狀態。" />
           ) : activePanel === 'favorite' ? (
@@ -239,22 +293,11 @@ export default function App() {
           ) : (
             <PlaceholderPanel title="設定" description="下一階段可做成公會名稱、管理碼、權限與顯示偏好。" />
           )}
-
-          {selectedGroup ? (
-            <RaidDetail
-              group={selectedGroup}
-              onStatusChange={changeStatus}
-              onRemove={removeMember}
-              onDelete={removeGroup}
-            />
-          ) : (
-            <div className="rounded-[2rem] border border-orange-100 bg-white/85 p-10 text-center text-slate-500 shadow-sm">沒有可顯示的場次。請先執行 Supabase SQL seed。</div>
-          )}
         </div>
       )}
 
       <footer className="mx-auto max-w-[1560px] px-4 pb-8 text-xs text-slate-400">
-        UI-V3 visible marker：左側『首頁』顯示突襲場次，左側『我要報名』顯示報名表單。Demo mode：目前 SQL policy 開放匿名 CRUD。正式站請改成登入制、管理員權限與每團邀請碼。
+        UI-V4 visible marker：左側『首頁』只顯示突襲場次清單；左側『楓突襲』顯示突襲詳細內容；左側『我要報名』顯示報名表單。Demo mode：目前 SQL policy 開放匿名 CRUD。正式站請改成登入制、管理員權限與每團邀請碼。
       </footer>
 
       {showCreate ? <CreateRaidModal onClose={() => setShowCreate(false)} onCreate={createGroup} /> : null}

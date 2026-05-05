@@ -149,3 +149,11 @@ Vercel should run `npm run build`, not `npm run typecheck`.
 - 左側「我要報名」按鈕顯示目前選取團的報名表單。
 - 中央主內容只保留團隊 Hero、公告、統計與隊伍配置。
 - 不需要重新執行 Supabase SQL。
+
+
+## UI-V4 調整
+
+- 左側「首頁」只顯示突襲場次清單與搜尋。
+- 左側「楓突襲」顯示目前選取團隊的詳細內容、公告、統計與隊伍配置。
+- 左側「我要報名」顯示目前選取團隊的報名表單。
+- 不需要重跑 Supabase schema。
