@@ -1,6 +1,8 @@
 import { supabase } from '../lib/supabase';
 import type { MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup, RaidMember } from '../types';
 
+const db = supabase as any;
+
 type RaidGroupRow = {
   id: string;
   title: string;
@@ -70,7 +72,7 @@ function mapGroup(row: RaidGroupRow): RaidGroup {
 }
 
 export async function fetchRaidGroups(): Promise<RaidGroup[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('raid_groups')
     .select('*, raid_members(*)')
     .order('raid_date', { ascending: true })
@@ -81,7 +83,7 @@ export async function fetchRaidGroups(): Promise<RaidGroup[]> {
 }
 
 export async function insertRaidGroup(group: NewRaidGroup): Promise<void> {
-  const { error } = await supabase.from('raid_groups').insert({
+  const { error } = await db.from('raid_groups').insert({
     id: group.id,
     title: group.title,
     boss: group.boss,
@@ -98,12 +100,12 @@ export async function insertRaidGroup(group: NewRaidGroup): Promise<void> {
 }
 
 export async function deleteRaidGroup(groupId: string): Promise<void> {
-  const { error } = await supabase.from('raid_groups').delete().eq('id', groupId);
+  const { error } = await db.from('raid_groups').delete().eq('id', groupId);
   if (error) throw new Error(error.message);
 }
 
 export async function insertRaidMember(member: NewRaidMember): Promise<void> {
-  const { error } = await supabase.from('raid_members').insert({
+  const { error } = await db.from('raid_members').insert({
     group_id: member.groupId,
     name: member.name,
     job: member.job,
@@ -118,11 +120,11 @@ export async function insertRaidMember(member: NewRaidMember): Promise<void> {
 }
 
 export async function updateRaidMemberStatus(memberId: string, status: MemberStatus): Promise<void> {
-  const { error } = await supabase.from('raid_members').update({ status }).eq('id', memberId);
+  const { error } = await db.from('raid_members').update({ status }).eq('id', memberId);
   if (error) throw new Error(error.message);
 }
 
 export async function deleteRaidMember(memberId: string): Promise<void> {
-  const { error } = await supabase.from('raid_members').delete().eq('id', memberId);
+  const { error } = await db.from('raid_members').delete().eq('id', memberId);
   if (error) throw new Error(error.message);
 }

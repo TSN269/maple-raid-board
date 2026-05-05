@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import type { Database } from '../types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -11,4 +10,7 @@ export const isSupabaseConfigured = Boolean(
     !supabaseAnonKey.includes('your-anon-public-key'),
 );
 
-export const supabase = createClient<Database>(supabaseUrl || 'https://example.supabase.co', supabaseAnonKey || 'missing-key');
+// Intentionally keep the Supabase client untyped here.
+// The app still uses its own RaidGroup/RaidMember types in src/types.ts.
+// This avoids Vercel/TypeScript build failures caused by Supabase generic inference.
+export const supabase = createClient(supabaseUrl || 'https://example.supabase.co', supabaseAnonKey || 'missing-key');

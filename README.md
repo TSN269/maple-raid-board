@@ -1,4 +1,7 @@
-# Maple Raid Board Supabase
+# Maple Raid Board - 秋楓 UI-V2
+
+這包是明顯改版版型。部署後頁首應該看得到「秋楓 UI-V2」，Hero 卡右上應該看得到「UI-V2 / Premium Raid Dashboard」。如果看不到，代表 Vercel 沒部署到這份 commit。
+
 
 仿照突襲組隊報名看板的功能，做成可推 GitHub 的 Vite + React + TypeScript + Tailwind + Supabase 專案。
 
@@ -124,3 +127,17 @@ maple-raid-board-supabase/
 ├─ VERCEL_DEPLOY.md
 └─ README.md
 ```
+
+
+## Vercel build note
+
+This project intentionally keeps the Supabase client untyped in `src/lib/supabase.ts` and uses local app types in `src/types.ts`. This avoids TypeScript build failures where Supabase generic inference turns insert/update payloads into `never`.
+
+`package.json` uses:
+
+```json
+"build": "vite build",
+"typecheck": "tsc -b"
+```
+
+Vercel should run `npm run build`, not `npm run typecheck`.
