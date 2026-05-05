@@ -4,7 +4,9 @@
 --   - raid leader: manage one raid by leader management code through RPC functions
 -- Run this whole file once in Supabase SQL Editor after deploying UI-V12.
 
-create extension if not exists pgcrypto;
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
+set search_path = public, extensions;
 
 create table if not exists public.raid_groups (
   id text primary key,
@@ -77,7 +79,7 @@ create or replace function public.is_raid_leader(p_group_id text, p_leader_code 
 returns boolean
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select exists (
     select 1
@@ -93,7 +95,7 @@ create or replace function public.can_signup_to_group(p_group_id text)
 returns boolean
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select exists (
     select 1
@@ -121,7 +123,7 @@ create or replace function public.create_raid_group_with_code(
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if p_leader_code is null or length(p_leader_code) < 4 then
@@ -150,7 +152,7 @@ create or replace function public.verify_raid_leader_code(p_group_id text, p_lea
 returns boolean
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select public.is_raid_leader(p_group_id, p_leader_code);
 $$;
@@ -159,7 +161,7 @@ create or replace function public.update_raid_group_status_with_code(p_group_id 
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if not public.is_raid_leader(p_group_id, p_leader_code) then
@@ -180,7 +182,7 @@ create or replace function public.update_raid_member_status_with_code(p_member_i
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_group_id text;
@@ -208,7 +210,7 @@ create or replace function public.delete_raid_member_with_code(p_member_id uuid,
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_group_id text;
@@ -230,7 +232,7 @@ create or replace function public.delete_raid_group_with_code(p_group_id text, p
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if not public.is_raid_leader(p_group_id, p_leader_code) then
