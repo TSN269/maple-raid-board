@@ -145,6 +145,7 @@ type RojhuRoom = {
 };
 
 const ROJHU_PLAYERS: RojhuPlayerId[] = ['101', '102', '103', '104'];
+const ROJHU_SELECTED_PLAYER_STORAGE_KEY = 'maple_raid_board_rojhu_selected_player_v21';
 
 function createEmptyRoutes(): RojhuRoutes {
   return {
@@ -153,6 +154,15 @@ function createEmptyRoutes(): RojhuRoutes {
     '103': Array(10).fill(null),
     '104': Array(10).fill(null),
   };
+}
+
+function loadRojhuSelectedPlayers(): Record<string, RojhuPlayerId> {
+  const parsed = loadJsonObject<Record<string, RojhuPlayerId>>(ROJHU_SELECTED_PLAYER_STORAGE_KEY, {});
+  return parsed && typeof parsed === 'object' ? parsed : {};
+}
+
+function saveRojhuSelectedPlayers(value: Record<string, RojhuPlayerId>) {
+  localStorage.setItem(ROJHU_SELECTED_PLAYER_STORAGE_KEY, JSON.stringify(value));
 }
 
 function normalizeRojhuRoutes(value: unknown): RojhuRoutes {
@@ -182,9 +192,10 @@ function normalizeRojhuRoom(row: any, password: string): RojhuRoom {
   };
 }
 
-async function createRemoteRojhuRoom(password: string): Promise<RojhuRoom> {
+async function createRemoteRojhuRoom(password: string, code?: string): Promise<RojhuRoom> {
   const { data, error } = await (supabase as any).rpc('create_rojhu_room', {
     p_password: password.trim() || null,
+    p_code: code?.trim() || null,
   });
 
   if (error) throw new Error(error.message);
@@ -369,18 +380,29 @@ function LinkFavoritesPanel({ selectedGroup, selectedSignupCode, onGoSettings }:
 
 
 function RojhuToolsPanel() {
+  const [roomCodeInput, setRoomCodeInput] = useState('');
   const [roomPasswordInput, setRoomPasswordInput] = useState('');
   const [joinCode, setJoinCode] = useState(() => getRojhuRoomCodeFromUrl());
   const [joinPassword, setJoinPassword] = useState(() => getRojhuRoomPasswordFromUrl());
   const [currentRoom, setCurrentRoom] = useState<RojhuRoom | null>(null);
   const [activePlayer, setActivePlayer] = useState<RojhuPlayerId>('101');
+  const [selectedPlayersByRoom, setSelectedPlayersByRoom] = useState<Record<string, RojhuPlayerId>>(() => loadRojhuSelectedPlayers());
   const [rojhuMessage, setRojhuMessage] = useState<string>('');
   const [rojhuBusy, setRojhuBusy] = useState(false);
-  const onlineCount = currentRoom ? 185 : 181;
+  const selectedPlayer = currentRoom ? selectedPlayersByRoom[currentRoom.code] : undefined;
 
   function flashMessage(message: string) {
     setRojhuMessage(message);
     window.setTimeout(() => setRojhuMessage(''), 1800);
+  }
+
+  function updateSelectedPlayerForRoom(roomCode: string, player: RojhuPlayerId) {
+    setSelectedPlayersByRoom((prev) => {
+      const next = { ...prev, [roomCode]: player };
+      saveRojhuSelectedPlayers(next);
+      return next;
+    });
+    setActivePlayer(player);
   }
 
   async function runRojhuAction(action: () => Promise<RojhuRoom | void>, successMessage?: string) {
@@ -391,6 +413,8 @@ function RojhuToolsPanel() {
         setCurrentRoom(result);
         setJoinCode(result.code);
         setJoinPassword(result.password);
+        const savedPlayer = selectedPlayersByRoom[result.code];
+        if (savedPlayer) setActivePlayer(savedPlayer);
       }
       if (successMessage) flashMessage(successMessage);
     } catch (err) {
@@ -402,7 +426,7 @@ function RojhuToolsPanel() {
 
   async function createRoom() {
     await runRojhuAction(async () => {
-      const room = await createRemoteRojhuRoom(roomPasswordInput);
+      const room = await createRemoteRojhuRoom(roomPasswordInput, roomCodeInput);
       const url = new URL(window.location.href);
       url.searchParams.set('tool', 'rojhu');
       url.searchParams.set('rojhuRoom', room.code);
@@ -424,10 +448,25 @@ function RojhuToolsPanel() {
     }, '已加入房間並啟用即時同步');
   }
 
-  async function refreshRoom() {
-    if (!currentRoom) return;
-    const next = await joinRemoteRojhuRoom(currentRoom.code, currentRoom.password);
-    setCurrentRoom(next);
+  function exitRoom() {
+    if (currentRoom) {
+      setSelectedPlayersByRoom((prev) => {
+        const next = { ...prev };
+        delete next[currentRoom.code];
+        saveRojhuSelectedPlayers(next);
+        return next;
+      });
+    }
+    setCurrentRoom(null);
+    setActivePlayer('101');
+    const url = new URL(window.location.href);
+    url.searchParams.delete('tool');
+    url.searchParams.delete('rojhuRoom');
+    url.searchParams.delete('rojhuPass');
+    url.searchParams.delete('room');
+    url.searchParams.delete('pass');
+    window.history.replaceState({}, '', url.toString());
+    flashMessage('已退出目前房間');
   }
 
   useEffect(() => {
@@ -457,7 +496,11 @@ function RojhuToolsPanel() {
 
   async function applyRoute(rowIndex: number, columnIndex: number) {
     if (!currentRoom) return;
-    await runRojhuAction(() => updateRemoteRojhuRoute(currentRoom.code, currentRoom.password, activePlayer, rowIndex, columnIndex));
+    if (!selectedPlayer) {
+      flashMessage('請先選擇你的角色。每人只能選一個角色。');
+      return;
+    }
+    await runRojhuAction(() => updateRemoteRojhuRoute(currentRoom.code, currentRoom.password, selectedPlayer, rowIndex, columnIndex));
   }
 
   async function resetAllRoutes() {
@@ -481,49 +524,68 @@ function RojhuToolsPanel() {
 
   const currentPathLabel = useMemo(() => {
     if (!currentRoom) return '尚未加入房間';
-    return currentRoom.routes[activePlayer].map((value) => (value == null ? '?' : String(value + 1))).join(' → ');
-  }, [currentRoom, activePlayer]);
+    const routeOwner = selectedPlayer || activePlayer;
+    return currentRoom.routes[routeOwner].map((value) => (value == null ? '?' : String(value + 1))).join(' → ');
+  }, [currentRoom, activePlayer, selectedPlayer]);
 
-  const playerColors: Record<RojhuPlayerId, string> = {
+  const playerButtonClasses: Record<RojhuPlayerId, string> = {
     '101': 'bg-rose-400 text-white',
     '102': 'bg-emerald-400 text-white',
     '103': 'bg-sky-400 text-white',
     '104': 'bg-violet-400 text-white',
   };
 
-  const playerDotColors: Record<RojhuPlayerId, string> = {
-    '101': 'bg-rose-400 text-white',
-    '102': 'bg-emerald-400 text-white',
-    '103': 'bg-sky-400 text-white',
-    '104': 'bg-violet-400 text-white',
+  const playerCellClasses: Record<RojhuPlayerId, string> = {
+    '101': 'bg-rose-400 text-white border-rose-300',
+    '102': 'bg-emerald-400 text-white border-emerald-300',
+    '103': 'bg-sky-400 text-white border-sky-300',
+    '104': 'bg-violet-400 text-white border-violet-300',
   };
+
+  function multiPlayerCellStyle(players: RojhuPlayerId[]) {
+    if (players.length <= 1) return undefined;
+    const colorMap: Record<RojhuPlayerId, string> = {
+      '101': '#fb7185',
+      '102': '#4ade80',
+      '103': '#38bdf8',
+      '104': '#c084fc',
+    };
+    const step = 100 / players.length;
+    const segments = players.map((player, index) => {
+      const start = Math.round(index * step);
+      const end = Math.round((index + 1) * step);
+      return `${colorMap[player]} ${start}% ${end}%`;
+    }).join(', ');
+    return { background: `linear-gradient(135deg, ${segments})` };
+  }
 
   return (
     <section className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
-      <div className="rounded-[2rem] border border-violet-200/50 bg-[radial-gradient(circle_at_top,#1f1b45,transparent_35%),linear-gradient(180deg,#14112f_0%,#0c0a1d_100%)] p-5 text-white shadow-[0_25px_80px_-40px_rgba(76,29,149,0.65)]">
-        <div className="rounded-[1.6rem] border border-white/10 bg-white/5 p-5 shadow-inner backdrop-blur">
-          <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-gradient-to-br from-red-300 via-white to-red-500 text-5xl shadow-[0_18px_40px_-18px_rgba(239,68,68,0.9)]">🍄</div>
-          <h2 className="mt-5 bg-gradient-to-r from-violet-200 to-fuchsia-400 bg-clip-text text-center text-3xl font-black text-transparent">Artale・羅茱跳台協作工具</h2>
-          <p className="mt-2 text-center text-lg font-semibold text-violet-100/75">Artale - YzY公會</p>
-          <div className="mt-3 flex items-center justify-center gap-2 text-sm font-semibold text-violet-100/80">
-            <span>🌐 線上: {onlineCount} 人</span>
-            <span className="grid h-6 w-6 place-items-center rounded-lg bg-white/10">🔄</span>
-          </div>
+      <div className="rounded-[2rem] border border-orange-100/80 bg-white/85 p-5 text-slate-900 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
+        <div className="rounded-[1.6rem] border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-5 shadow-inner">
+          <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-gradient-to-br from-orange-100 via-white to-red-100 text-5xl shadow-[0_18px_40px_-24px_rgba(234,88,12,0.75)]">🍄</div>
+          <h2 className="mt-5 bg-gradient-to-r from-orange-600 to-red-500 bg-clip-text text-center text-3xl font-black text-transparent">羅茱跳台協作工具</h2>
 
-          <div className="mt-8 space-y-4">
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            <Input
+              value={roomCodeInput}
+              onChange={(e) => setRoomCodeInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="自訂房號（6位，留空自動）"
+              className="bg-white"
+            />
             <Input
               value={roomPasswordInput}
               onChange={(e) => setRoomPasswordInput(e.target.value.replace(/\D/g, '').slice(0, 8))}
-              placeholder="自訂密碼（4-8位數字，留空自動產生）"
-              className="border-white/10 bg-white/5 text-white placeholder:text-violet-200/45 focus:border-violet-400 focus:ring-violet-400/20"
+              placeholder="自訂密碼（4-8位，留空自動）"
+              className="bg-white"
             />
-            <Button className="w-full rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 py-4 text-lg shadow-[0_18px_35px_-16px_rgba(139,92,246,0.95)] hover:from-violet-400 hover:to-fuchsia-500" onClick={createRoom} disabled={rojhuBusy || !isSupabaseConfigured}>✨ 建立房間</Button>
           </div>
+          <Button className="mt-3 w-full rounded-2xl py-4 text-lg shadow-[0_18px_35px_-16px_rgba(234,88,12,0.8)]" onClick={createRoom} disabled={rojhuBusy || !isSupabaseConfigured}>✨ 建立房間</Button>
 
-          <div className="my-8 flex items-center gap-4 text-sm font-bold text-violet-200/60">
-            <div className="h-px flex-1 bg-white/10" />
+          <div className="my-8 flex items-center gap-4 text-sm font-bold text-slate-400">
+            <div className="h-px flex-1 bg-orange-100" />
             <span>或加入已有房間</span>
-            <div className="h-px flex-1 bg-white/10" />
+            <div className="h-px flex-1 bg-orange-100" />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -531,84 +593,96 @@ function RojhuToolsPanel() {
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="輸入6位房間代碼"
-              className="border-white/10 bg-white/5 text-white placeholder:text-violet-200/45 focus:border-violet-400 focus:ring-violet-400/20"
+              className="bg-white"
             />
             <Input
               value={joinPassword}
               onChange={(e) => setJoinPassword(e.target.value.replace(/\D/g, '').slice(0, 8))}
               placeholder="房間密碼"
-              className="border-white/10 bg-white/5 text-white placeholder:text-violet-200/45 focus:border-violet-400 focus:ring-violet-400/20"
+              className="bg-white"
             />
           </div>
 
-          <Button variant="secondary" className="mt-3 w-full rounded-2xl border-0 bg-white/10 py-4 text-lg text-white ring-1 ring-white/10 hover:bg-white/15 hover:text-white" onClick={joinRoom} disabled={rojhuBusy || !isSupabaseConfigured}>🚪 加入房間</Button>
+          <Button variant="secondary" className="mt-3 w-full rounded-2xl py-4 text-lg" onClick={joinRoom} disabled={rojhuBusy || !isSupabaseConfigured}>🚪 加入房間</Button>
 
           {currentRoom ? (
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <Button variant="secondary" className="border-0 bg-white/10 text-white ring-1 ring-white/10 hover:bg-white/15 hover:text-white" onClick={copyRoomInfo}>📋 複製房碼密碼</Button>
-              <Button variant="secondary" className="border-0 bg-white/10 text-white ring-1 ring-white/10 hover:bg-white/15 hover:text-white" onClick={copyShareLink}>🔗 複製分享連結</Button>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <Button variant="secondary" className="text-xs" onClick={copyRoomInfo}>📋 複製房碼</Button>
+              <Button variant="secondary" className="text-xs" onClick={copyShareLink}>🔗 分享連結</Button>
+              <Button variant="ghost" className="text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={exitRoom}>退出房間</Button>
             </div>
           ) : null}
 
-          {rojhuMessage ? <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm font-semibold text-emerald-100">{rojhuMessage}</div> : null}
+          {rojhuMessage ? <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{rojhuMessage}</div> : null}
 
-          <div className="mt-8 rounded-[1.4rem] border border-violet-400/15 bg-violet-500/5 p-5">
-            <div className="text-lg font-black text-violet-100">使用方法</div>
-            <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm font-medium leading-7 text-violet-100/75">
+          <div className="mt-8 rounded-[1.4rem] border border-orange-100 bg-white/80 p-5">
+            <div className="text-lg font-black text-slate-950">使用方法</div>
+            <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm font-medium leading-7 text-slate-600">
               <li>一人建立房間，將分享連結或房碼密碼給隊友</li>
               <li>隊友從分享連結或輸入房碼密碼加入</li>
-              <li>每人選擇自己的角色（101-104）</li>
+              <li>每人只能選擇一個角色（101-104）</li>
               <li>找到正確平台後點擊對應方塊標記</li>
-              <li>路徑會透過 Supabase 即時同步</li>
+              <li>路徑會透過 Supabase 自動即時同步</li>
               <li>不同角色顏色會保留顯示，除非按重置全清除</li>
             </ol>
           </div>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-[2rem] border border-violet-200/40 bg-[radial-gradient(circle_at_top,#1b163d,transparent_35%),linear-gradient(180deg,#0d0b23_0%,#050712_100%)] text-white shadow-[0_25px_80px_-40px_rgba(59,130,246,0.55)]">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-4">
-          <div className="flex flex-wrap items-center gap-3 text-sm font-black text-violet-100">
-            <button type="button" className="text-xl text-violet-200/80">←</button>
-            <span>房間 <span className="text-2xl tracking-widest text-violet-200">{currentRoom?.code || '------'}</span></span>
-            <span className="text-violet-200/60">密碼</span>
-            <span className="text-2xl tracking-widest text-violet-200">{currentRoom?.password || '----'}</span>
-            <button type="button" onClick={copyRoomInfo} disabled={!currentRoom} className="grid h-8 w-8 place-items-center rounded-lg bg-white/10 text-lg disabled:opacity-40">📋</button>
+      <div className="overflow-hidden rounded-[2rem] border border-orange-100/80 bg-white/85 text-slate-900 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-orange-100 px-4 py-4">
+          <div className="flex flex-wrap items-center gap-3 text-sm font-black text-slate-700">
+            <button type="button" onClick={exitRoom} className="text-xl text-slate-400 hover:text-orange-600">←</button>
+            <span>房間 <span className="text-2xl tracking-widest text-orange-700">{currentRoom?.code || '------'}</span></span>
+            <span className="text-slate-400">密碼</span>
+            <span className="text-2xl tracking-widest text-orange-700">{currentRoom?.password || '----'}</span>
+            <button type="button" onClick={copyRoomInfo} disabled={!currentRoom} className="grid h-8 w-8 place-items-center rounded-lg bg-orange-50 text-lg disabled:opacity-40">📋</button>
           </div>
-          <div className="flex items-center gap-4 text-xl">
-            <span>👤</span>
-            <span className="inline-block h-3 w-3 rounded-full bg-rose-500 shadow-[0_0_0_6px_rgba(244,63,94,0.16)]" />
+          <div className="flex flex-wrap items-center gap-2 text-xs font-black text-slate-500">
+            <span>自動同步中</span>
+            <span className="inline-block h-3 w-3 rounded-full bg-emerald-500 shadow-[0_0_0_6px_rgba(16,185,129,0.16)]" />
           </div>
         </div>
 
-        <div className="border-b border-white/10 px-4 py-4">
-          <div className="text-lg font-black text-white">我的路徑 <span className="ml-2 text-violet-200/85">{currentPathLabel}</span></div>
+        <div className="border-b border-orange-100 px-4 py-4">
+          <div className="text-lg font-black text-slate-950">我的路徑 <span className="ml-2 text-slate-500">{currentPathLabel}</span></div>
         </div>
 
         <div className="px-4 py-4">
           <div className="flex flex-wrap items-center gap-3">
-            {ROJHU_PLAYERS.map((player) => (
-              <button
-                key={player}
-                type="button"
-                onClick={() => setActivePlayer(player)}
-                className={classNames(
-                  'rounded-2xl px-5 py-3 text-xl font-black shadow-lg ring-1 transition',
-                  playerColors[player],
-                  activePlayer === player ? 'scale-105 ring-white/40' : 'opacity-75 ring-white/10 hover:opacity-100',
-                )}
-              >
-                {player}
-              </button>
-            ))}
+            {ROJHU_PLAYERS.map((player) => {
+              const lockedByAnother = Boolean(currentRoom && selectedPlayer && selectedPlayer !== player);
+              return (
+                <button
+                  key={player}
+                  type="button"
+                  onClick={() => {
+                    if (!currentRoom) {
+                      setActivePlayer(player);
+                      return;
+                    }
+                    if (!selectedPlayer) updateSelectedPlayerForRoom(currentRoom.code, player);
+                  }}
+                  disabled={lockedByAnother}
+                  className={classNames(
+                    'rounded-2xl px-5 py-3 text-xl font-black shadow-lg ring-1 transition disabled:cursor-not-allowed disabled:opacity-35',
+                    playerButtonClasses[player],
+                    (selectedPlayer || activePlayer) === player ? 'scale-105 ring-slate-900/20' : 'opacity-75 ring-slate-200 hover:opacity-100',
+                  )}
+                  title={lockedByAnother ? '每人只能選擇一個角色。退出房間後可重選。' : '選擇我的角色'}
+                >
+                  {player}
+                </button>
+              );
+            })}
             <div className="ml-auto flex flex-wrap gap-2">
-              <Button variant="secondary" className="rounded-2xl border-0 bg-white/10 px-4 py-3 text-violet-100 ring-1 ring-white/10 hover:bg-white/15 hover:text-white" onClick={refreshRoom} disabled={!currentRoom || rojhuBusy}>🔄 同步</Button>
-              <Button variant="secondary" className="rounded-2xl border-0 bg-rose-500/15 px-4 py-3 text-rose-100 ring-1 ring-rose-400/20 hover:bg-rose-500/25 hover:text-white" onClick={resetAllRoutes} disabled={!currentRoom || rojhuBusy}>🧹 重置全清除</Button>
+              <Button variant="secondary" className="rounded-2xl px-4 py-3" onClick={resetAllRoutes} disabled={!currentRoom || rojhuBusy}>🧹 重置全清除</Button>
+              <Button variant="ghost" className="rounded-2xl px-4 py-3 text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={exitRoom} disabled={!currentRoom}>退出房間</Button>
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-3 text-xs font-bold text-violet-100/80">
-            {ROJHU_PLAYERS.map((player) => <span key={player} className="inline-flex items-center gap-2"><span className={classNames('h-3 w-3 rounded-full', playerDotColors[player])} />{player}</span>)}
+          <div className="mt-4 flex flex-wrap gap-3 text-xs font-bold text-slate-500">
+            {ROJHU_PLAYERS.map((player) => <span key={player} className="inline-flex items-center gap-2"><span className={classNames('h-3 w-3 rounded-full', playerButtonClasses[player])} />{player}</span>)}
           </div>
 
           <div className="mt-6 grid gap-2">
@@ -616,30 +690,27 @@ function RojhuToolsPanel() {
               const floor = 10 - rowIndex;
               return (
                 <div key={floor} className="grid grid-cols-[24px_repeat(4,minmax(0,1fr))] items-center gap-2">
-                  <div className="text-center text-lg font-semibold text-violet-100">{floor}</div>
+                  <div className="text-center text-lg font-semibold text-slate-600">{floor}</div>
                   {Array.from({ length: 4 }, (_, columnIndex) => {
                     const selectedPlayers = currentRoom ? ROJHU_PLAYERS.filter((player) => currentRoom.routes[player][rowIndex] === columnIndex) : [];
-                    const activeSelected = selectedPlayers.includes(activePlayer);
+                    const activeSelected = selectedPlayer ? selectedPlayers.includes(selectedPlayer) : false;
+                    const singlePlayer = selectedPlayers.length === 1 ? selectedPlayers[0] : null;
                     return (
                       <button
                         key={`${floor}-${columnIndex}`}
                         type="button"
                         onClick={() => applyRoute(rowIndex, columnIndex)}
                         disabled={!currentRoom || rojhuBusy}
+                        style={selectedPlayers.length > 1 ? multiPlayerCellStyle(selectedPlayers) : undefined}
                         className={classNames(
-                          'relative h-20 rounded-2xl border border-white/10 bg-white/[0.04] p-2 text-3xl font-black text-violet-200/35 shadow-inner transition',
+                          'relative h-20 rounded-2xl border border-orange-100 bg-orange-50/65 p-2 text-3xl font-black text-slate-300 shadow-inner transition',
                           !currentRoom && 'cursor-not-allowed opacity-50',
-                          currentRoom && selectedPlayers.length > 0 && 'bg-white/[0.10] text-violet-100 shadow-[0_16px_30px_-16px_rgba(255,255,255,0.18)]',
-                          activeSelected && 'ring-2 ring-white/35',
-                          currentRoom && selectedPlayers.length === 0 && 'hover:bg-white/[0.08] hover:text-violet-100/90'
+                          singlePlayer && playerCellClasses[singlePlayer],
+                          activeSelected && 'ring-2 ring-slate-900/25',
+                          currentRoom && selectedPlayers.length === 0 && 'hover:bg-orange-100 hover:text-orange-700'
                         )}
                       >
-                        <span className="absolute left-2 top-1.5 text-sm font-black text-violet-200/35">{columnIndex + 1}</span>
-                        <div className="flex h-full flex-wrap items-center justify-center gap-1">
-                          {selectedPlayers.length > 0 ? selectedPlayers.map((player) => (
-                            <span key={player} className={classNames('rounded-lg px-2 py-1 text-xs font-black shadow-sm', playerDotColors[player])}>{player}</span>
-                          )) : <span>{columnIndex + 1}</span>}
-                        </div>
+                        <span className={classNames('absolute left-2 top-1.5 text-sm font-black', selectedPlayers.length > 0 ? 'text-white/80' : 'text-slate-400')}>{columnIndex + 1}</span>
                       </button>
                     );
                   })}
@@ -1039,7 +1110,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V20</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V21</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>

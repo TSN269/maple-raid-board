@@ -639,7 +639,7 @@ as $$
   );
 $$;
 
-create or replace function public.create_rojhu_room(p_password text default null)
+create or replace function public.create_rojhu_room(p_password text default null, p_code text default null)
 returns jsonb
 language plpgsql
 security definer
@@ -647,10 +647,23 @@ set search_path = public, extensions
 as $$
 declare
   v_password text := public.rojhu_validate_password(p_password);
+  v_requested_code text := btrim(coalesce(p_code, ''));
   v_code text;
   v_room public.rojhu_rooms;
   v_attempts integer := 0;
 begin
+  if v_requested_code <> '' then
+    if v_requested_code !~ '^[0-9]{6}$' then
+      raise exception '房間代碼需為 6 位數字';
+    end if;
+
+    insert into public.rojhu_rooms (code, password_hash, routes)
+    values (v_requested_code, crypt(v_password, gen_salt('bf')), public.rojhu_empty_routes())
+    returning * into v_room;
+
+    return public.rojhu_room_payload(v_room, v_password);
+  end if;
+
   loop
     v_code := lpad(floor(random() * 1000000)::int::text, 6, '0');
     v_attempts := v_attempts + 1;
@@ -667,6 +680,8 @@ begin
       end if;
     end;
   end loop;
+exception when unique_violation then
+  raise exception '此房間代碼已存在，請換一組';
 end;
 $$;
 
@@ -786,7 +801,7 @@ end;
 $$;
 
 grant execute on function public.rojhu_validate_password(text) to anon, authenticated;
-grant execute on function public.create_rojhu_room(text) to anon, authenticated;
+grant execute on function public.create_rojhu_room(text, text) to anon, authenticated;
 grant execute on function public.join_rojhu_room(text, text) to anon, authenticated;
 grant execute on function public.update_rojhu_route_cell(text, text, text, integer, integer) to anon, authenticated;
 grant execute on function public.reset_rojhu_room_routes(text, text) to anon, authenticated;

@@ -1,2 +1,2 @@
-UI-V19
-Rojhu Tools page now has a two-column room create/join panel and route puzzle tool.
+UI-V21
+Rojhu Tools style aligned with main site, auto sync only, manual room code/password creation, one role per user, color-filled route cells, and exit room.
