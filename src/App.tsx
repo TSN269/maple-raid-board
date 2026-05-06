@@ -166,7 +166,7 @@ function NavigationRail({ activePanel, onChange, noticeCount }: { activePanel: A
     { icon: '⌂', label: '首頁', panel: 'home', helper: '突襲場次清單' },
     { icon: '🍁', label: '楓突襲', panel: 'raid', helper: '突襲詳細內容' },
     { icon: '✎', label: '我要報名', panel: 'signup', helper: '報名表單' },
-    { icon: '☆', label: '收藏', panel: 'favorite', helper: '下一階段' },
+    { icon: '☆', label: '團連結收藏', panel: 'favorite', helper: '團連結 / 帶邀請碼連結快速收藏' },
     { icon: '●', label: '通知', panel: 'notice', badge: noticeCount > 0 ? String(Math.min(99, noticeCount)) : undefined, helper: '開團提醒 / 狀態變更 / 候補轉正' },
     { icon: '🧰', label: '羅茱工具', panel: 'rojhuTools', helper: '常用連結與快速操作' },
     { icon: '⚙', label: '設定', panel: 'settings', helper: '本機保存的團管理碼 / 邀請碼 / 邀請連結' },
@@ -211,7 +211,7 @@ function PlaceholderPanel({ title, description }: { title: string; description: 
   );
 }
 
-function RojhuToolsPanel({ selectedGroup, selectedSignupCode, onGoSettings }: { selectedGroup?: RaidGroup; selectedSignupCode: string; onGoSettings: () => void }) {
+function LinkFavoritesPanel({ selectedGroup, selectedSignupCode, onGoSettings }: { selectedGroup?: RaidGroup; selectedSignupCode: string; onGoSettings: () => void }) {
   const [copied, setCopied] = useState<string | null>(null);
 
   async function copyText(label: string, value: string) {
@@ -227,9 +227,9 @@ function RojhuToolsPanel({ selectedGroup, selectedSignupCode, onGoSettings }: { 
     <section className="rounded-[2rem] border border-orange-100/80 bg-white/80 p-6 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
-          <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">Rojhu Tools</div>
-          <h2 className="mt-2 text-2xl font-black text-slate-950">羅茱工具</h2>
-          <p className="mt-2 max-w-2xl text-sm font-semibold leading-7 text-slate-500">放常用的團務工具與連結複製。這裡不會修改資料庫，只使用目前瀏覽器已保存的團資料。</p>
+          <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">Raid Link Favorites</div>
+          <h2 className="mt-2 text-2xl font-black text-slate-950">團連結收藏</h2>
+          <p className="mt-2 max-w-2xl text-sm font-semibold leading-7 text-slate-500">集中保存與複製目前選取團的一般團連結、帶邀請碼連結。這裡不會修改資料庫，只使用目前瀏覽器已保存的團資料。</p>
         </div>
         <Button variant="secondary" onClick={onGoSettings}>查看設定 / 邀請碼</Button>
       </div>
@@ -253,6 +253,28 @@ function RojhuToolsPanel({ selectedGroup, selectedSignupCode, onGoSettings }: { 
       ) : (
         <div className="mt-6 rounded-3xl border border-dashed border-orange-200 bg-orange-50 p-8 text-center text-sm font-semibold text-slate-500">尚未選取任何突襲場次。</div>
       )}
+    </section>
+  );
+}
+
+
+function RojhuToolsPanel({ onGoFavorites, onGoSettings }: { onGoFavorites: () => void; onGoSettings: () => void }) {
+  return (
+    <section className="rounded-[2rem] border border-orange-100/80 bg-white/80 p-6 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
+      <div className="grid min-h-[calc(100vh-160px)] place-items-center rounded-3xl border border-dashed border-orange-200 bg-orange-50/60 p-8 text-center">
+        <div className="max-w-xl">
+          <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-white text-3xl shadow-sm">🧰</div>
+          <div className="mt-5 text-xs font-black uppercase tracking-[0.22em] text-orange-500">Rojhu Tools</div>
+          <h2 className="mt-2 text-2xl font-black text-slate-950">羅茱工具</h2>
+          <p className="mt-3 text-sm font-semibold leading-7 text-slate-600">
+            原本的團連結複製功能已移到「團連結收藏」。這個按鈕保留作為後續工具入口，例如排程工具、職業配置檢查、缺人提醒或快速開團模板。
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <Button onClick={onGoFavorites}>前往團連結收藏</Button>
+            <Button variant="secondary" onClick={onGoSettings}>查看設定 / 邀請碼</Button>
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
@@ -643,7 +665,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V17</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V18</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
@@ -757,7 +779,7 @@ export default function App() {
               <div className="rounded-[2rem] border border-orange-100 bg-white/85 p-10 text-center text-slate-500 shadow-sm">沒有可報名的場次。</div>
             )
           ) : activePanel === 'favorite' ? (
-            <PlaceholderPanel title="收藏" description="下一階段可做成常用 Boss、固定團與收藏場次。" />
+            <LinkFavoritesPanel selectedGroup={selectedGroup} selectedSignupCode={selectedSignupCode} onGoSettings={() => setActivePanel('settings')} />
           ) : activePanel === 'notice' ? (
             <NotificationCenter
               groups={groups}
@@ -771,7 +793,7 @@ export default function App() {
               onClearLocalEvents={clearLocalNotificationEvents}
             />
           ) : activePanel === 'rojhuTools' ? (
-            <RojhuToolsPanel selectedGroup={selectedGroup} selectedSignupCode={selectedSignupCode} onGoSettings={() => setActivePanel('settings')} />
+            <RojhuToolsPanel onGoFavorites={() => setActivePanel('favorite')} onGoSettings={() => setActivePanel('settings')} />
           ) : (
             <SettingsPanel
               groups={groups}

@@ -1,2 +1,2 @@
-UI-V17
-Logo square uses maple leaf icon, nav adds Rojhu Tools, settings lists locally saved leader codes, invite codes, and invite links.
+UI-V18
+Move raid link copy/favorite functions into 團連結收藏 while keeping 羅茱工具 as a separate tools entry.
