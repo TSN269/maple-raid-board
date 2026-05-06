@@ -775,31 +775,37 @@ function RojhuToolsPanel() {
     return { background: `linear-gradient(135deg, ${segments})` };
   }
 
-  function renderMiniRouteGrid(player: RojhuPlayerId, route: Array<number | null>) {
-    const safeRoute = Array.isArray(route) ? route : Array(10).fill(null);
+  function renderLastRoutesMiniGrid() {
+    const routes = currentRoom?.lastRoutes;
 
     return (
-      <div className="grid gap-[2px]" title={`上次路徑：${formatRojhuRoute(safeRoute)}`}>
-        {Array.from({ length: 10 }, (_, rowIndex) => {
-          const floor = 10 - rowIndex;
-          const routeIndex = floor - 1;
-          return (
-            <div key={`${player}-mini-${floor}`} className="grid grid-cols-4 gap-[2px]">
-              {Array.from({ length: 4 }, (_, columnIndex) => {
-                const active = safeRoute[routeIndex] === columnIndex;
-                return (
-                  <span
-                    key={`${player}-mini-${floor}-${columnIndex}`}
-                    className={classNames(
-                      'grid h-2.5 w-2.5 place-items-center rounded-[3px] border border-orange-100 bg-white text-[7px] font-black leading-none text-slate-300',
-                      active && playerCellClasses[player],
-                    )}
-                  />
-                );
-              })}
-            </div>
-          );
-        })}
+      <div className="rounded-2xl border border-orange-100 bg-white/85 p-2 shadow-inner">
+        <div className="mb-1 text-center text-[10px] font-black text-slate-400">上次路徑迷你圖</div>
+        <div className="grid gap-[2px]">
+          {Array.from({ length: 10 }, (_, rowIndex) => {
+            const floor = 10 - rowIndex;
+            const routeIndex = floor - 1;
+            return (
+              <div key={`last-mini-${floor}`} className="grid grid-cols-4 gap-[2px]">
+                {Array.from({ length: 4 }, (_, columnIndex) => {
+                  const selectedPlayers = routes ? ROJHU_PLAYERS.filter((player) => routes[player]?.[routeIndex] === columnIndex) : [];
+                  const singlePlayer = selectedPlayers.length === 1 ? selectedPlayers[0] : null;
+
+                  return (
+                    <span
+                      key={`last-mini-${floor}-${columnIndex}`}
+                      style={selectedPlayers.length > 1 ? multiPlayerCellStyle(selectedPlayers) : undefined}
+                      className={classNames(
+                        'grid h-3 w-3 place-items-center rounded-[3px] border border-orange-100 bg-orange-50 text-[7px] font-black leading-none text-slate-300',
+                        singlePlayer && playerCellClasses[singlePlayer],
+                      )}
+                    />
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
@@ -905,17 +911,19 @@ function RojhuToolsPanel() {
                 <Button variant="ghost" className="px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={clearLastRoutes} disabled={!currentRoom || rojhuBusy || !hasAnyRojhuRoute(currentRoom?.lastRoutes)}>清除此欄紀錄</Button>
               </div>
             </div>
-            <div className="mt-3 grid gap-2 text-xs font-bold text-slate-500 xl:grid-cols-2">
-              {lastPathLabels.map(({ player, label, route }) => (
-                <div key={player} className="grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl bg-orange-50/70 px-3 py-2">
-                  <span className={classNames('h-3 w-3 shrink-0 rounded-full', playerButtonClasses[player])} />
-                  <span className="font-black text-slate-700">{player}</span>
-                  <span className="min-w-0 truncate font-mono text-slate-500">{label}</span>
-                  <div className="shrink-0 rounded-lg border border-orange-100 bg-white/80 p-1">
-                    {renderMiniRouteGrid(player, route)}
+            <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+              <div className="grid gap-2 text-xs font-bold text-slate-500 xl:grid-cols-2">
+                {lastPathLabels.map(({ player, label }) => (
+                  <div key={player} className="flex min-w-0 items-center gap-2 rounded-xl bg-orange-50/70 px-3 py-2">
+                    <span className={classNames('h-3 w-3 shrink-0 rounded-full', playerButtonClasses[player])} />
+                    <span className="font-black text-slate-700">{player}</span>
+                    <span className="min-w-0 truncate font-mono text-slate-500">{label}</span>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+              <div className="shrink-0 justify-self-start lg:justify-self-end">
+                {renderLastRoutesMiniGrid()}
+              </div>
             </div>
           </div>
         </div>
@@ -966,7 +974,7 @@ function RojhuToolsPanel() {
               const floor = 10 - rowIndex;
               const routeIndex = floor - 1;
               return (
-                <div key={floor} className="grid grid-cols-[24px_repeat(4,minmax(0,1fr))] items-center gap-2">
+                <div key={floor} className="grid grid-cols-[24px_repeat(4,60px)] items-center justify-start gap-2">
                   <div className="text-center text-lg font-semibold text-slate-600">{floor}</div>
                   {Array.from({ length: 4 }, (_, columnIndex) => {
                     const selectedPlayers = currentRoom ? ROJHU_PLAYERS.filter((player) => currentRoom.routes[player][routeIndex] === columnIndex) : [];
@@ -980,14 +988,14 @@ function RojhuToolsPanel() {
                         disabled={!currentRoom || rojhuBusy}
                         style={selectedPlayers.length > 1 ? multiPlayerCellStyle(selectedPlayers) : undefined}
                         className={classNames(
-                          'relative grid h-12 place-items-center rounded-xl border border-orange-100 bg-orange-50/65 p-0 text-3xl font-black text-slate-300 shadow-inner transition sm:h-14 sm:text-4xl',
+                          'relative grid h-[50px] w-[60px] place-items-center rounded-xl border border-orange-100 bg-orange-50/65 p-0 text-2xl font-black text-slate-300 shadow-inner transition',
                           !currentRoom && 'cursor-not-allowed opacity-50',
                           singlePlayer && playerCellClasses[singlePlayer],
                           activeSelected && 'ring-2 ring-orange-300 shadow-[0_16px_30px_-16px_rgba(249,115,22,0.45)]',
                           currentRoom && selectedPlayers.length === 0 && 'hover:bg-orange-100 hover:text-orange-700'
                         )}
                       >
-                        <span className={classNames('pointer-events-none absolute inset-0 flex select-none items-center justify-center text-3xl font-black leading-none sm:text-4xl', selectedPlayers.length > 0 ? 'text-white' : 'text-slate-300')}>
+                        <span className={classNames('pointer-events-none absolute inset-0 flex select-none items-center justify-center text-2xl font-black leading-none', selectedPlayers.length > 0 ? 'text-white' : 'text-slate-300')}>
                           {columnIndex + 1}
                         </span>
                       </button>
@@ -1433,7 +1441,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V35</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V36</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>

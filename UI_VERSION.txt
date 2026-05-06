@@ -1,2 +1,2 @@
-UI-V35
-Rojhu path cells are smaller, and last path rows include a mini 10x4 route grid.
+UI-V36
+Rojhu path cells are fixed small size and last path mini route is a single aggregate 10x4 grid.

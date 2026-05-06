@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-V35
+# Maple Raid Board — TSN UI-V36
 
-> 版本基準：UI-V35  
+> 版本基準：UI-V36  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,27 +72,28 @@
 
 ---
 
-## 3. 目前 UI-V35 主要變更
+## 3. 目前 UI-V36 主要變更
 
-UI-V35 是以 UI-V34 為基礎，新增與調整：
+UI-V36 是以 UI-V35 為基礎，修正：
 
 ```text
-1. 羅茱工具路徑格子縮小
-   - 主路徑格子由大型方塊改為較小方塊
-   - 大小約略比 101 / 102 / 103 / 104 角色按鈕大一點
-   - 保留數字置中與角色顏色填色
+1. 羅茱工具路徑格子再次縮小
+   - 主路徑格子改成固定寬高
+   - 不再撐滿右欄寬度
+   - 大小縮到約比 101 / 102 / 103 / 104 角色按鈕大 2px
 
-2. 上次路徑新增迷你路徑格子
-   - 上次路徑欄位右側新增 10 × 4 迷你格子
-   - 依照上次保存的路徑顯示對應位置
-   - 迷你格子使用該角色顏色標示
+2. 上次路徑迷你格子改為總共一個
+   - 不再每個角色各顯示一組 10 × 4 迷你格子
+   - 上次路徑欄位右側只顯示一個總覽迷你路徑格子
+   - 迷你格子會用各角色顏色顯示上次保存的路徑
+   - 多角色同格時使用漸層顏色顯示
 
 3. 頁首版本顯示
-   - TSN UI-V35
+   - TSN UI-V36
 ```
 
-UI-V35 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V35 不需要重跑 SQL。
+UI-V36 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V36 不需要重跑 SQL。
 
 ---
 
@@ -159,7 +160,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v35"
+git commit -m "deploy ui v36"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -169,7 +170,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v35"
+git commit -m "deploy ui v36"
 git push
 ```
 
@@ -686,6 +687,14 @@ on conflict update 同步更新 role_requirements
 羅茱工具路徑格子縮小至比角色按鈕大一點
 上次路徑欄位右側新增迷你路徑格子
 迷你路徑格子會顯示已保存的上次路徑
+```
+
+### UI-V36
+
+```text
+羅茱工具主路徑格子改為固定小尺寸，不再撐滿右欄
+上次路徑迷你格子改為總共一個 10 × 4 總覽
+迷你總覽可顯示所有角色的上次路徑顏色
 目前最新版本
 ```
 
@@ -735,7 +744,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v35"
+git commit -m "deploy ui v36"
 git push
 ```
 
