@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-V34
+# Maple Raid Board — TSN UI-V35
 
-> 版本基準：UI-V34  
+> 版本基準：UI-V35  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,29 +72,27 @@
 
 ---
 
-## 3. 目前 UI-V34 主要變更
+## 3. 目前 UI-V35 主要變更
 
-UI-V34 是以 UI-V33 SQLFIX1 為基礎，新增與修正：
+UI-V35 是以 UI-V34 為基礎，新增與調整：
 
 ```text
-1. 新增突襲的名額上限改成下拉式
-   - 可選 1～18 人
-   - 避免手動輸入造成格式錯誤
+1. 羅茱工具路徑格子縮小
+   - 主路徑格子由大型方塊改為較小方塊
+   - 大小約略比 101 / 102 / 103 / 104 角色按鈕大一點
+   - 保留數字置中與角色顏色填色
 
-2. 修正首頁手機瀏覽器無法左右滑動問題
-   - 首頁保留左右欄
-   - 手機窄螢幕可橫向捲動看到右欄
+2. 上次路徑新增迷你路徑格子
+   - 上次路徑欄位右側新增 10 × 4 迷你格子
+   - 依照上次保存的路徑顯示對應位置
+   - 迷你格子使用該角色顏色標示
 
-3. 修正羅茱工具手機瀏覽器無法左右滑動問題
-   - 羅茱工具保留左右欄
-   - 手機窄螢幕可橫向捲動看到右欄
-
-4. 頁首版本顯示
-   - TSN UI-V34
+3. 頁首版本顯示
+   - TSN UI-V35
 ```
 
-UI-V34 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V34 不需要重跑 SQL。
+UI-V35 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V35 不需要重跑 SQL。
 
 ---
 
@@ -161,7 +159,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v34"
+git commit -m "deploy ui v35"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -171,7 +169,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v34"
+git commit -m "deploy ui v35"
 git push
 ```
 
@@ -680,6 +678,14 @@ on conflict update 同步更新 role_requirements
 新增突襲名額上限改為 1～18 下拉式選單
 修正首頁手機瀏覽器無法左右滑動導致看不到右欄
 修正羅茱工具手機瀏覽器無法左右滑動導致看不到右欄
+```
+
+### UI-V35
+
+```text
+羅茱工具路徑格子縮小至比角色按鈕大一點
+上次路徑欄位右側新增迷你路徑格子
+迷你路徑格子會顯示已保存的上次路徑
 目前最新版本
 ```
 
@@ -729,7 +735,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v34"
+git commit -m "deploy ui v35"
 git push
 ```
 

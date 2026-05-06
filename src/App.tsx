@@ -724,10 +724,14 @@ function RojhuToolsPanel() {
   }, [currentRoom, activePlayer, selectedPlayer]);
 
   const lastPathLabels = useMemo(() => {
-    return ROJHU_PLAYERS.map((player) => ({
-      player,
-      label: currentRoom ? formatRojhuRoute(currentRoom.lastRoutes[player]) : formatRojhuRoute(),
-    }));
+    return ROJHU_PLAYERS.map((player) => {
+      const route = currentRoom?.lastRoutes[player] || Array(10).fill(null);
+      return {
+        player,
+        route,
+        label: formatRojhuRoute(route),
+      };
+    });
   }, [currentRoom]);
 
   async function saveLastRoutes() {
@@ -769,6 +773,35 @@ function RojhuToolsPanel() {
       return `${colorMap[player]} ${start}% ${end}%`;
     }).join(', ');
     return { background: `linear-gradient(135deg, ${segments})` };
+  }
+
+  function renderMiniRouteGrid(player: RojhuPlayerId, route: Array<number | null>) {
+    const safeRoute = Array.isArray(route) ? route : Array(10).fill(null);
+
+    return (
+      <div className="grid gap-[2px]" title={`上次路徑：${formatRojhuRoute(safeRoute)}`}>
+        {Array.from({ length: 10 }, (_, rowIndex) => {
+          const floor = 10 - rowIndex;
+          const routeIndex = floor - 1;
+          return (
+            <div key={`${player}-mini-${floor}`} className="grid grid-cols-4 gap-[2px]">
+              {Array.from({ length: 4 }, (_, columnIndex) => {
+                const active = safeRoute[routeIndex] === columnIndex;
+                return (
+                  <span
+                    key={`${player}-mini-${floor}-${columnIndex}`}
+                    className={classNames(
+                      'grid h-2.5 w-2.5 place-items-center rounded-[3px] border border-orange-100 bg-white text-[7px] font-black leading-none text-slate-300',
+                      active && playerCellClasses[player],
+                    )}
+                  />
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    );
   }
 
   return (
@@ -873,11 +906,14 @@ function RojhuToolsPanel() {
               </div>
             </div>
             <div className="mt-3 grid gap-2 text-xs font-bold text-slate-500 xl:grid-cols-2">
-              {lastPathLabels.map(({ player, label }) => (
-                <div key={player} className="flex min-w-0 items-center gap-2 rounded-xl bg-orange-50/70 px-3 py-2">
+              {lastPathLabels.map(({ player, label, route }) => (
+                <div key={player} className="grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl bg-orange-50/70 px-3 py-2">
                   <span className={classNames('h-3 w-3 shrink-0 rounded-full', playerButtonClasses[player])} />
                   <span className="font-black text-slate-700">{player}</span>
                   <span className="min-w-0 truncate font-mono text-slate-500">{label}</span>
+                  <div className="shrink-0 rounded-lg border border-orange-100 bg-white/80 p-1">
+                    {renderMiniRouteGrid(player, route)}
+                  </div>
                 </div>
               ))}
             </div>
@@ -944,14 +980,14 @@ function RojhuToolsPanel() {
                         disabled={!currentRoom || rojhuBusy}
                         style={selectedPlayers.length > 1 ? multiPlayerCellStyle(selectedPlayers) : undefined}
                         className={classNames(
-                          'relative grid h-16 place-items-center rounded-2xl border border-orange-100 bg-orange-50/65 p-0 text-4xl font-black text-slate-300 shadow-inner transition sm:h-20 sm:text-5xl',
+                          'relative grid h-12 place-items-center rounded-xl border border-orange-100 bg-orange-50/65 p-0 text-3xl font-black text-slate-300 shadow-inner transition sm:h-14 sm:text-4xl',
                           !currentRoom && 'cursor-not-allowed opacity-50',
                           singlePlayer && playerCellClasses[singlePlayer],
                           activeSelected && 'ring-2 ring-orange-300 shadow-[0_16px_30px_-16px_rgba(249,115,22,0.45)]',
                           currentRoom && selectedPlayers.length === 0 && 'hover:bg-orange-100 hover:text-orange-700'
                         )}
                       >
-                        <span className={classNames('pointer-events-none absolute inset-0 flex select-none items-center justify-center text-4xl font-black leading-none sm:text-5xl', selectedPlayers.length > 0 ? 'text-white' : 'text-slate-300')}>
+                        <span className={classNames('pointer-events-none absolute inset-0 flex select-none items-center justify-center text-3xl font-black leading-none sm:text-4xl', selectedPlayers.length > 0 ? 'text-white' : 'text-slate-300')}>
                           {columnIndex + 1}
                         </span>
                       </button>
@@ -1397,7 +1433,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V34</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V35</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>

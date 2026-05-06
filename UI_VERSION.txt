@@ -1,2 +1,2 @@
-UI-V34
-Create raid capacity is a 1-18 dropdown. Home and Rojhu pages keep fixed columns but can scroll horizontally on mobile.
+UI-V35
+Rojhu path cells are smaller, and last path rows include a mini 10x4 route grid.
