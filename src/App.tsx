@@ -133,20 +133,20 @@ function saveNotificationSnapshot(snapshot: NotificationSnapshot) {
 
 
 
-const ROJHU_ROOMS_STORAGE_KEY = 'maple_raid_board_rojhu_rooms_v19';
 
 type RojhuPlayerId = '101' | '102' | '103' | '104';
+type RojhuRoutes = Record<RojhuPlayerId, Array<number | null>>;
 type RojhuRoom = {
   code: string;
   password: string;
   createdAt: string;
   updatedAt: string;
-  routes: Record<RojhuPlayerId, Array<number | null>>;
+  routes: RojhuRoutes;
 };
 
 const ROJHU_PLAYERS: RojhuPlayerId[] = ['101', '102', '103', '104'];
 
-function createEmptyRoutes(): Record<RojhuPlayerId, Array<number | null>> {
+function createEmptyRoutes(): RojhuRoutes {
   return {
     '101': Array(10).fill(null),
     '102': Array(10).fill(null),
@@ -155,27 +155,91 @@ function createEmptyRoutes(): Record<RojhuPlayerId, Array<number | null>> {
   };
 }
 
-function loadRojhuRooms(): Record<string, RojhuRoom> {
-  return loadJsonObject<Record<string, RojhuRoom>>(ROJHU_ROOMS_STORAGE_KEY, {});
+function normalizeRojhuRoutes(value: unknown): RojhuRoutes {
+  const fallback = createEmptyRoutes();
+  if (!value || typeof value !== 'object') return fallback;
+  const source = value as Record<string, unknown>;
+  const next = createEmptyRoutes();
+
+  for (const player of ROJHU_PLAYERS) {
+    const raw = Array.isArray(source[player]) ? source[player] as unknown[] : [];
+    next[player] = Array.from({ length: 10 }, (_, index) => {
+      const item = raw[index];
+      return typeof item === 'number' && Number.isInteger(item) && item >= 0 && item <= 3 ? item : null;
+    });
+  }
+
+  return next;
 }
 
-function saveRojhuRooms(rooms: Record<string, RojhuRoom>) {
-  localStorage.setItem(ROJHU_ROOMS_STORAGE_KEY, JSON.stringify(rooms));
-}
-
-function randomDigits(length: number) {
-  return Array.from({ length }, () => Math.floor(Math.random() * 10)).join('');
-}
-
-function buildNewRojhuRoom(password?: string): RojhuRoom {
-  const now = new Date().toISOString();
+function normalizeRojhuRoom(row: any, password: string): RojhuRoom {
   return {
-    code: randomDigits(6),
-    password: password?.trim() || randomDigits(4),
-    createdAt: now,
-    updatedAt: now,
-    routes: createEmptyRoutes(),
+    code: String(row?.code || ''),
+    password,
+    createdAt: String(row?.created_at || row?.createdAt || new Date().toISOString()),
+    updatedAt: String(row?.updated_at || row?.updatedAt || new Date().toISOString()),
+    routes: normalizeRojhuRoutes(row?.routes),
   };
+}
+
+async function createRemoteRojhuRoom(password: string): Promise<RojhuRoom> {
+  const { data, error } = await (supabase as any).rpc('create_rojhu_room', {
+    p_password: password.trim() || null,
+  });
+
+  if (error) throw new Error(error.message);
+  return normalizeRojhuRoom(data, String(data?.password || password));
+}
+
+async function joinRemoteRojhuRoom(code: string, password: string): Promise<RojhuRoom> {
+  const { data, error } = await (supabase as any).rpc('join_rojhu_room', {
+    p_code: code.trim(),
+    p_password: password.trim(),
+  });
+
+  if (error) throw new Error(error.message);
+  return normalizeRojhuRoom(data, password.trim());
+}
+
+async function updateRemoteRojhuRoute(code: string, password: string, player: RojhuPlayerId, row: number, col: number): Promise<RojhuRoom> {
+  const { data, error } = await (supabase as any).rpc('update_rojhu_route_cell', {
+    p_code: code,
+    p_password: password,
+    p_player: player,
+    p_row_index: row,
+    p_col_index: col,
+  });
+
+  if (error) throw new Error(error.message);
+  return normalizeRojhuRoom(data, password);
+}
+
+async function resetRemoteRojhuRoom(code: string, password: string): Promise<RojhuRoom> {
+  const { data, error } = await (supabase as any).rpc('reset_rojhu_room_routes', {
+    p_code: code,
+    p_password: password,
+  });
+
+  if (error) throw new Error(error.message);
+  return normalizeRojhuRoom(data, password);
+}
+
+function getRojhuRoomCodeFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return (params.get('rojhuRoom') || params.get('room') || '').trim();
+}
+
+function getRojhuRoomPasswordFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return (params.get('rojhuPass') || params.get('pass') || '').trim();
+}
+
+function buildRojhuShareUrl(room: RojhuRoom) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('tool', 'rojhu');
+  url.searchParams.set('rojhuRoom', room.code);
+  url.searchParams.set('rojhuPass', room.password);
+  return url.toString();
 }
 
 function MapleLeafLogo() {
@@ -305,65 +369,102 @@ function LinkFavoritesPanel({ selectedGroup, selectedSignupCode, onGoSettings }:
 
 
 function RojhuToolsPanel() {
-  const [rooms, setRooms] = useState<Record<string, RojhuRoom>>(() => loadRojhuRooms());
   const [roomPasswordInput, setRoomPasswordInput] = useState('');
-  const [joinCode, setJoinCode] = useState('');
-  const [joinPassword, setJoinPassword] = useState('');
-  const [currentRoomCode, setCurrentRoomCode] = useState<string | null>(null);
+  const [joinCode, setJoinCode] = useState(() => getRojhuRoomCodeFromUrl());
+  const [joinPassword, setJoinPassword] = useState(() => getRojhuRoomPasswordFromUrl());
+  const [currentRoom, setCurrentRoom] = useState<RojhuRoom | null>(null);
   const [activePlayer, setActivePlayer] = useState<RojhuPlayerId>('101');
   const [rojhuMessage, setRojhuMessage] = useState<string>('');
-  const currentRoom = currentRoomCode ? rooms[currentRoomCode] : null;
-  const onlineCount = Object.keys(rooms).length * 4 + 181;
-
-  function updateRooms(next: Record<string, RojhuRoom>) {
-    setRooms(next);
-    saveRojhuRooms(next);
-  }
+  const [rojhuBusy, setRojhuBusy] = useState(false);
+  const onlineCount = currentRoom ? 185 : 181;
 
   function flashMessage(message: string) {
     setRojhuMessage(message);
     window.setTimeout(() => setRojhuMessage(''), 1800);
   }
 
-  function createRoom() {
-    const room = buildNewRojhuRoom(roomPasswordInput);
-    const next = { ...rooms, [room.code]: room };
-    updateRooms(next);
-    setCurrentRoomCode(room.code);
-    setJoinCode(room.code);
-    setJoinPassword(room.password);
-    flashMessage(`已建立房間 ${room.code}`);
-  }
-
-  function joinRoom() {
-    const code = joinCode.trim();
-    const room = rooms[code];
-    if (!room) {
-      flashMessage('找不到此房間代碼');
-      return;
+  async function runRojhuAction(action: () => Promise<RojhuRoom | void>, successMessage?: string) {
+    setRojhuBusy(true);
+    try {
+      const result = await action();
+      if (result) {
+        setCurrentRoom(result);
+        setJoinCode(result.code);
+        setJoinPassword(result.password);
+      }
+      if (successMessage) flashMessage(successMessage);
+    } catch (err) {
+      flashMessage(err instanceof Error ? err.message : '羅茱工具操作失敗');
+    } finally {
+      setRojhuBusy(false);
     }
-    if (joinPassword.trim() !== room.password) {
-      flashMessage('房間密碼錯誤');
-      return;
-    }
-    setCurrentRoomCode(code);
-    flashMessage(`已加入房間 ${code}`);
   }
 
-  function applyRoute(rowIndex: number, columnIndex: number) {
-    if (!currentRoom) return;
-    const nextRoutes = { ...currentRoom.routes, [activePlayer]: [...currentRoom.routes[activePlayer]] };
-    nextRoutes[activePlayer][rowIndex] = columnIndex;
-    const nextRoom: RojhuRoom = { ...currentRoom, routes: nextRoutes, updatedAt: new Date().toISOString() };
-    updateRooms({ ...rooms, [currentRoom.code]: nextRoom });
+  async function createRoom() {
+    await runRojhuAction(async () => {
+      const room = await createRemoteRojhuRoom(roomPasswordInput);
+      const url = new URL(window.location.href);
+      url.searchParams.set('tool', 'rojhu');
+      url.searchParams.set('rojhuRoom', room.code);
+      url.searchParams.set('rojhuPass', room.password);
+      window.history.replaceState({}, '', url.toString());
+      return room;
+    }, '已建立房間並啟用即時同步');
   }
 
-  function resetActivePlayerRoute() {
+  async function joinRoom() {
+    await runRojhuAction(async () => {
+      const room = await joinRemoteRojhuRoom(joinCode, joinPassword);
+      const url = new URL(window.location.href);
+      url.searchParams.set('tool', 'rojhu');
+      url.searchParams.set('rojhuRoom', room.code);
+      url.searchParams.set('rojhuPass', room.password);
+      window.history.replaceState({}, '', url.toString());
+      return room;
+    }, '已加入房間並啟用即時同步');
+  }
+
+  async function refreshRoom() {
     if (!currentRoom) return;
-    const nextRoutes = { ...currentRoom.routes, [activePlayer]: Array(10).fill(null) };
-    const nextRoom: RojhuRoom = { ...currentRoom, routes: nextRoutes, updatedAt: new Date().toISOString() };
-    updateRooms({ ...rooms, [currentRoom.code]: nextRoom });
-    flashMessage(`已重置 ${activePlayer} 的路徑`);
+    const next = await joinRemoteRojhuRoom(currentRoom.code, currentRoom.password);
+    setCurrentRoom(next);
+  }
+
+  useEffect(() => {
+    const code = getRojhuRoomCodeFromUrl();
+    const password = getRojhuRoomPasswordFromUrl();
+    if (!code || !password || currentRoom) return;
+    void runRojhuAction(() => joinRemoteRojhuRoom(code, password), '已由分享連結加入房間');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!currentRoom || !isSupabaseConfigured) return;
+
+    const channel = supabase
+      .channel(`rojhu-room-${currentRoom.code}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rojhu_rooms', filter: `code=eq.${currentRoom.code}` }, () => {
+        void joinRemoteRojhuRoom(currentRoom.code, currentRoom.password)
+          .then(setCurrentRoom)
+          .catch(() => undefined);
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [currentRoom?.code, currentRoom?.password]);
+
+  async function applyRoute(rowIndex: number, columnIndex: number) {
+    if (!currentRoom) return;
+    await runRojhuAction(() => updateRemoteRojhuRoute(currentRoom.code, currentRoom.password, activePlayer, rowIndex, columnIndex));
+  }
+
+  async function resetAllRoutes() {
+    if (!currentRoom) return;
+    const ok = window.confirm('確定重置全隊路徑？101～104 的紀錄都會清空。');
+    if (!ok) return;
+    await runRojhuAction(() => resetRemoteRojhuRoom(currentRoom.code, currentRoom.password), '已重置全隊路徑');
   }
 
   async function copyRoomInfo() {
@@ -372,12 +473,25 @@ function RojhuToolsPanel() {
     flashMessage('已複製房間資訊');
   }
 
+  async function copyShareLink() {
+    if (!currentRoom) return;
+    await navigator.clipboard.writeText(buildRojhuShareUrl(currentRoom));
+    flashMessage('已複製房間分享連結');
+  }
+
   const currentPathLabel = useMemo(() => {
     if (!currentRoom) return '尚未加入房間';
     return currentRoom.routes[activePlayer].map((value) => (value == null ? '?' : String(value + 1))).join(' → ');
   }, [currentRoom, activePlayer]);
 
   const playerColors: Record<RojhuPlayerId, string> = {
+    '101': 'bg-rose-400 text-white',
+    '102': 'bg-emerald-400 text-white',
+    '103': 'bg-sky-400 text-white',
+    '104': 'bg-violet-400 text-white',
+  };
+
+  const playerDotColors: Record<RojhuPlayerId, string> = {
     '101': 'bg-rose-400 text-white',
     '102': 'bg-emerald-400 text-white',
     '103': 'bg-sky-400 text-white',
@@ -399,11 +513,11 @@ function RojhuToolsPanel() {
           <div className="mt-8 space-y-4">
             <Input
               value={roomPasswordInput}
-              onChange={(e) => setRoomPasswordInput(e.target.value)}
-              placeholder="自訂密碼（留空自動產生）"
+              onChange={(e) => setRoomPasswordInput(e.target.value.replace(/\D/g, '').slice(0, 8))}
+              placeholder="自訂密碼（4-8位數字，留空自動產生）"
               className="border-white/10 bg-white/5 text-white placeholder:text-violet-200/45 focus:border-violet-400 focus:ring-violet-400/20"
             />
-            <Button className="w-full rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 py-4 text-lg shadow-[0_18px_35px_-16px_rgba(139,92,246,0.95)] hover:from-violet-400 hover:to-fuchsia-500" onClick={createRoom}>✨ 建立房間</Button>
+            <Button className="w-full rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 py-4 text-lg shadow-[0_18px_35px_-16px_rgba(139,92,246,0.95)] hover:from-violet-400 hover:to-fuchsia-500" onClick={createRoom} disabled={rojhuBusy || !isSupabaseConfigured}>✨ 建立房間</Button>
           </div>
 
           <div className="my-8 flex items-center gap-4 text-sm font-bold text-violet-200/60">
@@ -427,18 +541,26 @@ function RojhuToolsPanel() {
             />
           </div>
 
-          <Button variant="secondary" className="mt-3 w-full rounded-2xl border-0 bg-white/10 py-4 text-lg text-white ring-1 ring-white/10 hover:bg-white/15 hover:text-white" onClick={joinRoom}>🚪 加入房間</Button>
+          <Button variant="secondary" className="mt-3 w-full rounded-2xl border-0 bg-white/10 py-4 text-lg text-white ring-1 ring-white/10 hover:bg-white/15 hover:text-white" onClick={joinRoom} disabled={rojhuBusy || !isSupabaseConfigured}>🚪 加入房間</Button>
+
+          {currentRoom ? (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <Button variant="secondary" className="border-0 bg-white/10 text-white ring-1 ring-white/10 hover:bg-white/15 hover:text-white" onClick={copyRoomInfo}>📋 複製房碼密碼</Button>
+              <Button variant="secondary" className="border-0 bg-white/10 text-white ring-1 ring-white/10 hover:bg-white/15 hover:text-white" onClick={copyShareLink}>🔗 複製分享連結</Button>
+            </div>
+          ) : null}
 
           {rojhuMessage ? <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm font-semibold text-emerald-100">{rojhuMessage}</div> : null}
 
           <div className="mt-8 rounded-[1.4rem] border border-violet-400/15 bg-violet-500/5 p-5">
             <div className="text-lg font-black text-violet-100">使用方法</div>
             <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm font-medium leading-7 text-violet-100/75">
-              <li>一人建立房間，將房碼與密碼分享給隊友</li>
-              <li>隊友輸入房間代碼和密碼加入</li>
+              <li>一人建立房間，將分享連結或房碼密碼給隊友</li>
+              <li>隊友從分享連結或輸入房碼密碼加入</li>
               <li>每人選擇自己的角色（101-104）</li>
               <li>找到正確平台後點擊對應方塊標記</li>
-              <li>路徑即時同步，全隊共享</li>
+              <li>路徑會透過 Supabase 即時同步</li>
+              <li>不同角色顏色會保留顯示，除非按重置全清除</li>
             </ol>
           </div>
         </div>
@@ -479,9 +601,14 @@ function RojhuToolsPanel() {
                 {player}
               </button>
             ))}
-            <div className="ml-auto">
-              <Button variant="secondary" className="rounded-2xl border-0 bg-rose-500/15 px-4 py-3 text-rose-100 ring-1 ring-rose-400/20 hover:bg-rose-500/25 hover:text-white" onClick={resetActivePlayerRoute} disabled={!currentRoom}>🔄 重置</Button>
+            <div className="ml-auto flex flex-wrap gap-2">
+              <Button variant="secondary" className="rounded-2xl border-0 bg-white/10 px-4 py-3 text-violet-100 ring-1 ring-white/10 hover:bg-white/15 hover:text-white" onClick={refreshRoom} disabled={!currentRoom || rojhuBusy}>🔄 同步</Button>
+              <Button variant="secondary" className="rounded-2xl border-0 bg-rose-500/15 px-4 py-3 text-rose-100 ring-1 ring-rose-400/20 hover:bg-rose-500/25 hover:text-white" onClick={resetAllRoutes} disabled={!currentRoom || rojhuBusy}>🧹 重置全清除</Button>
             </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-3 text-xs font-bold text-violet-100/80">
+            {ROJHU_PLAYERS.map((player) => <span key={player} className="inline-flex items-center gap-2"><span className={classNames('h-3 w-3 rounded-full', playerDotColors[player])} />{player}</span>)}
           </div>
 
           <div className="mt-6 grid gap-2">
@@ -491,21 +618,28 @@ function RojhuToolsPanel() {
                 <div key={floor} className="grid grid-cols-[24px_repeat(4,minmax(0,1fr))] items-center gap-2">
                   <div className="text-center text-lg font-semibold text-violet-100">{floor}</div>
                   {Array.from({ length: 4 }, (_, columnIndex) => {
-                    const isActive = currentRoom?.routes[activePlayer][rowIndex] === columnIndex;
+                    const selectedPlayers = currentRoom ? ROJHU_PLAYERS.filter((player) => currentRoom.routes[player][rowIndex] === columnIndex) : [];
+                    const activeSelected = selectedPlayers.includes(activePlayer);
                     return (
                       <button
                         key={`${floor}-${columnIndex}`}
                         type="button"
                         onClick={() => applyRoute(rowIndex, columnIndex)}
-                        disabled={!currentRoom}
+                        disabled={!currentRoom || rojhuBusy}
                         className={classNames(
-                          'h-20 rounded-2xl border border-white/10 bg-white/[0.04] text-3xl font-black text-violet-200/35 shadow-inner transition',
+                          'relative h-20 rounded-2xl border border-white/10 bg-white/[0.04] p-2 text-3xl font-black text-violet-200/35 shadow-inner transition',
                           !currentRoom && 'cursor-not-allowed opacity-50',
-                          isActive && `${playerColors[activePlayer]} border-transparent text-white shadow-[0_16px_30px_-16px_rgba(255,255,255,0.25)]`,
-                          currentRoom && !isActive && 'hover:bg-white/[0.08] hover:text-violet-100/90'
+                          currentRoom && selectedPlayers.length > 0 && 'bg-white/[0.10] text-violet-100 shadow-[0_16px_30px_-16px_rgba(255,255,255,0.18)]',
+                          activeSelected && 'ring-2 ring-white/35',
+                          currentRoom && selectedPlayers.length === 0 && 'hover:bg-white/[0.08] hover:text-violet-100/90'
                         )}
                       >
-                        {columnIndex + 1}
+                        <span className="absolute left-2 top-1.5 text-sm font-black text-violet-200/35">{columnIndex + 1}</span>
+                        <div className="flex h-full flex-wrap items-center justify-center gap-1">
+                          {selectedPlayers.length > 0 ? selectedPlayers.map((player) => (
+                            <span key={player} className={classNames('rounded-lg px-2 py-1 text-xs font-black shadow-sm', playerDotColors[player])}>{player}</span>
+                          )) : <span>{columnIndex + 1}</span>}
+                        </div>
                       </button>
                     );
                   })}
@@ -606,7 +740,7 @@ export default function App() {
   const [groups, setGroups] = useState<RaidGroup[]>([]);
   const [selectedId, setSelectedId] = useState(getInitialGroupId);
   const [query, setQuery] = useState('');
-  const [activePanel, setActivePanel] = useState<ActivePanel>('home');
+  const [activePanel, setActivePanel] = useState<ActivePanel>(() => new URLSearchParams(window.location.search).get('tool') === 'rojhu' ? 'rojhuTools' : 'home');
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -905,7 +1039,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V19</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V20</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>

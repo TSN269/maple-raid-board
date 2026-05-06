@@ -564,3 +564,241 @@ values
   ('demo-horntail-weekend', '貓拳', '拳霸', 129, '副輸出', 2, '待確認', ''),
   ('demo-papulatus-casual', 'Momo', '暗影神偷', 125, '隊長', 1, '已確認', ''),
   ('demo-papulatus-casual', '橘子', '箭神', 111, '主輸出', 1, '已確認', '');
+
+
+-- UI-V20 羅茱工具：Supabase 多人即時同步房間
+-- Demo/production note: room password is validated by RPC; routes are shared in realtime.
+
+create or replace function public.rojhu_empty_routes()
+returns jsonb
+language sql
+immutable
+as $$
+  select jsonb_build_object(
+    '101', jsonb_build_array(null, null, null, null, null, null, null, null, null, null),
+    '102', jsonb_build_array(null, null, null, null, null, null, null, null, null, null),
+    '103', jsonb_build_array(null, null, null, null, null, null, null, null, null, null),
+    '104', jsonb_build_array(null, null, null, null, null, null, null, null, null, null)
+  );
+$$;
+
+create table if not exists public.rojhu_rooms (
+  code text primary key check (code ~ '^[0-9]{6}$'),
+  password_hash text not null,
+  routes jsonb not null default public.rojhu_empty_routes(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.rojhu_rooms enable row level security;
+
+drop trigger if exists set_rojhu_rooms_updated_at on public.rojhu_rooms;
+create trigger set_rojhu_rooms_updated_at
+before update on public.rojhu_rooms
+for each row execute function public.set_updated_at();
+
+alter table public.rojhu_rooms replica identity full;
+
+drop policy if exists "Read rojhu rooms for realtime" on public.rojhu_rooms;
+create policy "Read rojhu rooms for realtime"
+on public.rojhu_rooms
+for select
+to anon, authenticated
+using (true);
+
+-- No direct insert/update/delete policy. Public writes must go through RPC functions below.
+
+create or replace function public.rojhu_validate_password(p_password text)
+returns text
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_password text := coalesce(nullif(btrim(p_password), ''), lpad(floor(random() * 10000)::int::text, 4, '0'));
+begin
+  if v_password !~ '^[0-9]{4,8}$' then
+    raise exception '房間密碼需為 4-8 位數字';
+  end if;
+
+  return v_password;
+end;
+$$;
+
+create or replace function public.rojhu_room_payload(p_room public.rojhu_rooms, p_password text)
+returns jsonb
+language sql
+stable
+as $$
+  select jsonb_build_object(
+    'code', p_room.code,
+    'password', p_password,
+    'routes', p_room.routes,
+    'created_at', p_room.created_at,
+    'updated_at', p_room.updated_at
+  );
+$$;
+
+create or replace function public.create_rojhu_room(p_password text default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_password text := public.rojhu_validate_password(p_password);
+  v_code text;
+  v_room public.rojhu_rooms;
+  v_attempts integer := 0;
+begin
+  loop
+    v_code := lpad(floor(random() * 1000000)::int::text, 6, '0');
+    v_attempts := v_attempts + 1;
+
+    begin
+      insert into public.rojhu_rooms (code, password_hash, routes)
+      values (v_code, crypt(v_password, gen_salt('bf')), public.rojhu_empty_routes())
+      returning * into v_room;
+
+      return public.rojhu_room_payload(v_room, v_password);
+    exception when unique_violation then
+      if v_attempts > 30 then
+        raise exception '房間代碼產生失敗，請再試一次';
+      end if;
+    end;
+  end loop;
+end;
+$$;
+
+create or replace function public.join_rojhu_room(p_code text, p_password text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_code text := btrim(coalesce(p_code, ''));
+  v_password text := btrim(coalesce(p_password, ''));
+  v_room public.rojhu_rooms;
+begin
+  if v_code !~ '^[0-9]{6}$' then
+    raise exception '房間代碼需為 6 位數字';
+  end if;
+
+  if v_password !~ '^[0-9]{4,8}$' then
+    raise exception '房間密碼需為 4-8 位數字';
+  end if;
+
+  select * into v_room
+  from public.rojhu_rooms
+  where code = v_code;
+
+  if not found then
+    raise exception '找不到此房間';
+  end if;
+
+  if crypt(v_password, v_room.password_hash) <> v_room.password_hash then
+    raise exception '房間密碼錯誤';
+  end if;
+
+  return public.rojhu_room_payload(v_room, v_password);
+end;
+$$;
+
+create or replace function public.update_rojhu_route_cell(
+  p_code text,
+  p_password text,
+  p_player text,
+  p_row_index integer,
+  p_col_index integer
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_room public.rojhu_rooms;
+  v_password text := btrim(coalesce(p_password, ''));
+begin
+  if p_player not in ('101', '102', '103', '104') then
+    raise exception '角色代號錯誤';
+  end if;
+
+  if p_row_index < 0 or p_row_index > 9 then
+    raise exception '樓層索引錯誤';
+  end if;
+
+  if p_col_index < 0 or p_col_index > 3 then
+    raise exception '平台索引錯誤';
+  end if;
+
+  select * into v_room
+  from public.rojhu_rooms
+  where code = btrim(coalesce(p_code, ''));
+
+  if not found then
+    raise exception '找不到此房間';
+  end if;
+
+  if crypt(v_password, v_room.password_hash) <> v_room.password_hash then
+    raise exception '房間密碼錯誤';
+  end if;
+
+  update public.rojhu_rooms
+  set routes = jsonb_set(routes, array[p_player, p_row_index::text], to_jsonb(p_col_index), true)
+  where code = v_room.code
+  returning * into v_room;
+
+  return public.rojhu_room_payload(v_room, v_password);
+end;
+$$;
+
+create or replace function public.reset_rojhu_room_routes(p_code text, p_password text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_room public.rojhu_rooms;
+  v_password text := btrim(coalesce(p_password, ''));
+begin
+  select * into v_room
+  from public.rojhu_rooms
+  where code = btrim(coalesce(p_code, ''));
+
+  if not found then
+    raise exception '找不到此房間';
+  end if;
+
+  if crypt(v_password, v_room.password_hash) <> v_room.password_hash then
+    raise exception '房間密碼錯誤';
+  end if;
+
+  update public.rojhu_rooms
+  set routes = public.rojhu_empty_routes()
+  where code = v_room.code
+  returning * into v_room;
+
+  return public.rojhu_room_payload(v_room, v_password);
+end;
+$$;
+
+grant execute on function public.rojhu_validate_password(text) to anon, authenticated;
+grant execute on function public.create_rojhu_room(text) to anon, authenticated;
+grant execute on function public.join_rojhu_room(text, text) to anon, authenticated;
+grant execute on function public.update_rojhu_route_cell(text, text, text, integer, integer) to anon, authenticated;
+grant execute on function public.reset_rojhu_room_routes(text, text) to anon, authenticated;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rojhu_rooms'
+  ) then
+    alter publication supabase_realtime add table public.rojhu_rooms;
+  end if;
+end $$;
