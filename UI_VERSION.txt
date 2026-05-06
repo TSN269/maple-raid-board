@@ -1,2 +1,2 @@
-UI-V27
-Home panel is forced into left/right columns with horizontal scrolling on narrow screens.
+UI-V28
+Top-right refresh button now reloads raid groups and reports whether new raid sessions exist.

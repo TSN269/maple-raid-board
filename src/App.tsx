@@ -1058,6 +1058,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   const [leaderCodes, setLeaderCodes] = useState<Record<string, string>>(() => loadLeaderCodes());
   const [signupCodes, setSignupCodes] = useState<Record<string, string>>(() => loadSignupCodes());
   const [initialInvite] = useState(() => ({ groupId: getInitialGroupId(), code: getInviteCodeFromUrl() }));
@@ -1216,6 +1217,43 @@ export default function App() {
     });
   }, [selectedGroup, initialInvite]);
 
+  async function refreshGroupsAndCheckNew() {
+    if (!isSupabaseConfigured) {
+      setError('尚未設定 Supabase。請建立 .env.local 並填入 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY。');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      setError(null);
+      setRefreshNotice(null);
+
+      const existingIds = new Set(groups.map((group) => group.id));
+      const next = await fetchRaidGroups();
+      const newGroups = next.filter((group) => !existingIds.has(group.id));
+
+      setGroups(next);
+
+      if (next.length > 0 && (!selectedId || !next.some((group) => group.id === selectedId))) {
+        setSelectedId(next[0].id);
+      }
+
+      if (newGroups.length > 0) {
+        setSelectedId(newGroups[0].id);
+        setActivePanel('home');
+        setRefreshNotice(`發現 ${newGroups.length} 個新突襲場次：${newGroups.slice(0, 3).map((group) => group.title).join('、')}${newGroups.length > 3 ? '…' : ''}`);
+      } else {
+        setRefreshNotice('已重新整理，目前沒有新突襲場次。');
+      }
+
+      window.setTimeout(() => setRefreshNotice(null), 4200);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '重新整理失敗');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function runAction(action: () => Promise<void>) {
     setBusy(true);
     try {
@@ -1352,7 +1390,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V27</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V28</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
@@ -1372,7 +1410,7 @@ export default function App() {
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button variant="secondary" onClick={() => void loadGroups()} disabled={busy || loading}>重新整理</Button>
+            <Button variant="secondary" onClick={() => void refreshGroupsAndCheckNew()} disabled={busy || loading}>{busy ? '讀取中…' : '重新整理 / 檢查新場次'}</Button>
             {selectedGroup ? (
               <Button
                 variant="secondary"
@@ -1392,6 +1430,12 @@ export default function App() {
       {error ? (
         <div className="mx-auto mt-5 max-w-[1560px] px-4">
           <div className="rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-800 shadow-sm">{error}</div>
+        </div>
+      ) : null}
+
+      {refreshNotice ? (
+        <div className="mx-auto mt-5 max-w-[1560px] px-4">
+          <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-semibold text-emerald-800 shadow-sm">{refreshNotice}</div>
         </div>
       ) : null}
 
