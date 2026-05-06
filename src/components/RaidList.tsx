@@ -19,7 +19,7 @@ export function RaidList({ groups, selectedId, query, onSelect }: Props) {
     return groups.reduce(
       (acc, group) => {
         const meta = getRaidStatusMeta(group);
-        acc[meta.status] += 1;
+        acc[meta.effectiveStatus] += 1;
         return acc;
       },
       { open: 0, closed: 0, finished: 0 },
@@ -29,7 +29,7 @@ export function RaidList({ groups, selectedId, query, onSelect }: Props) {
   const filtered = useMemo(() => groups.filter((g) => {
     const keyword = query.trim().toLowerCase();
     const difficulty = getBossDifficultyMeta(`${g.title} ${g.boss}`).label;
-    const raidStatus = getRaidStatusMeta(g).status;
+    const raidStatus = getRaidStatusMeta(g).effectiveStatus;
     const queryMatched = !keyword || [g.title, g.boss, g.leader, g.notice].some((x) => String(x || '').toLowerCase().includes(keyword));
     const difficultyMatched = difficultyFilter === 'ALL' || difficulty === difficultyFilter;
     const statusMatched = raidStatus === statusFilter;

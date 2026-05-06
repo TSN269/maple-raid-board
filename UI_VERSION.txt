@@ -1,2 +1,2 @@
-UI-V29
-Home raid list has mutually exclusive status categories: open, closed, finished.
+UI-V30
+Fix raid status category filtering by using effectiveStatus instead of a nonexistent status field.

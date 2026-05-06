@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-V29
+# Maple Raid Board — TSN UI-V30
 
-> 版本基準：UI-V29  
+> 版本基準：UI-V30  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,32 +72,30 @@
 
 ---
 
-## 3. 目前 UI-V29 主要變更
+## 3. 目前 UI-V30 主要變更
 
-UI-V29 是以 UI-V28 為基礎，新增：
+UI-V30 是以 UI-V29 為基礎，修正：
 
 ```text
-1. 首頁突襲場次清單新增狀態分類
-   - 招募中
-   - 招募截止
-   - 已結束
+1. 修正首頁突襲場次狀態分類空白問題
+   - UI-V29 使用了不存在的 raidStatus.status 欄位
+   - UI-V30 改為使用 getRaidStatusMeta(group).effectiveStatus
+   - 場次會正確依照 open / closed / finished 分類顯示
 
-2. 分類互斥顯示
-   - 招募截止的突襲場次只會出現在「招募截止」
-   - 已結束的突襲場次只會出現在「已結束」
+2. 分類互斥顯示仍保留
    - 招募中的突襲場次只會出現在「招募中」
+   - 招募截止 / 額滿的突襲場次只會出現在「招募截止」
+   - 已結束 / 已過開團時間的突襲場次只會出現在「已結束」
 
-3. 難度篩選仍保留
-   - NORMAL
-   - HARD
-   - 可與狀態分類同時使用
+3. NORMAL / HARD 難度篩選仍保留
+   - 可和狀態分類同時使用
 
 4. 頁首版本顯示
-   - TSN UI-V29
+   - TSN UI-V30
 ```
 
-UI-V29 **沒有修改 Supabase schema**。  
-如果已經部署過 UI-V25 或之後版本並已重跑 SQL，升級 UI-V29 不需要重新跑 SQL。
+UI-V30 **沒有修改 Supabase schema**。  
+如果已經部署過 UI-V25 或之後版本並已重跑 SQL，升級 UI-V30 不需要重新跑 SQL。
 
 ---
 
@@ -164,7 +162,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v29"
+git commit -m "deploy ui v30"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -174,7 +172,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v29"
+git commit -m "deploy ui v30"
 git push
 ```
 
@@ -666,7 +664,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v29"
+git commit -m "deploy ui v30"
 git push
 ```
 
@@ -692,5 +690,13 @@ git push -u origin main --force
 招募截止的突襲場次只出現在招募截止分類
 已結束的突襲場次只出現在已結束分類
 招募中的突襲場次只出現在招募中分類
+```
+
+### UI-V30
+
+```text
+修正 UI-V29 分類判斷使用錯誤欄位造成場次不顯示
+改用 effectiveStatus 作為狀態分類 key
+招募中 / 招募截止 / 已結束分類可正常互斥顯示
 目前最新版本
 ```
