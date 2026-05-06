@@ -703,14 +703,16 @@ function RojhuToolsPanel() {
                         disabled={!currentRoom || rojhuBusy}
                         style={selectedPlayers.length > 1 ? multiPlayerCellStyle(selectedPlayers) : undefined}
                         className={classNames(
-                          'relative h-20 rounded-2xl border border-orange-100 bg-orange-50/65 p-2 text-3xl font-black text-slate-300 shadow-inner transition',
+                          'relative grid h-20 place-items-center rounded-2xl border border-orange-100 bg-orange-50/65 p-0 text-5xl font-black text-slate-300 shadow-inner transition',
                           !currentRoom && 'cursor-not-allowed opacity-50',
                           singlePlayer && playerCellClasses[singlePlayer],
-                          activeSelected && 'ring-2 ring-slate-900/25',
+                          activeSelected && 'ring-2 ring-orange-300 shadow-[0_16px_30px_-16px_rgba(249,115,22,0.45)]',
                           currentRoom && selectedPlayers.length === 0 && 'hover:bg-orange-100 hover:text-orange-700'
                         )}
                       >
-                        <span className={classNames('absolute left-2 top-1.5 text-sm font-black', selectedPlayers.length > 0 ? 'text-white/80' : 'text-slate-400')}>{columnIndex + 1}</span>
+                        <span className={classNames('pointer-events-none absolute inset-0 flex select-none items-center justify-center text-5xl font-black leading-none', selectedPlayers.length > 0 ? 'text-white' : 'text-slate-300')}>
+                          {columnIndex + 1}
+                        </span>
                       </button>
                     );
                   })}
@@ -1110,7 +1112,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V21</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V22 GridFix</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
