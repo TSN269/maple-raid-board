@@ -1,2 +1,2 @@
-UI-V32
-Leader-configured party role requirements linked to signup role visibility and database validation.
+UI-V33
+Fix role requirements link to team configuration and signup role option visibility.

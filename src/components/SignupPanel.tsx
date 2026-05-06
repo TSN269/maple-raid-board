@@ -31,16 +31,17 @@ function getSignupRoleValues(group: RaidGroup, party: number) {
   const requirements = group.roleRequirements || {};
   const partyCount = getPartyCount(group.capacity);
   const defaultRoles = roleButtons.map((role) => role.value);
+  const hasRequirements = Object.values(requirements).some((roles) => Array.isArray(roles) && roles.some(Boolean));
 
   if (party > 0) {
     const roles = uniqueRoles(requirements[String(party)] || []);
-    return roles.length > 0 ? roles : defaultRoles;
+    return roles.length > 0 ? roles : hasRequirements ? [] : defaultRoles;
   }
 
   const roles = uniqueRoles(
     Array.from({ length: partyCount }, (_, index) => index + 1).flatMap((partyNo) => requirements[String(partyNo)] || []),
   );
-  return roles.length > 0 ? roles : defaultRoles;
+  return roles.length > 0 ? roles : hasRequirements ? [] : defaultRoles;
 }
 
 const namePattern = /^[A-Za-z0-9_\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]{2,16}$/;
@@ -148,7 +149,7 @@ export function SignupPanel({ group, onSignup, initialSignupCode = '' }: Props) 
 
         <Field label="角色定位" required>
           <div className="grid grid-cols-2 gap-2">
-            {visibleRoleButtons.map((role) => {
+            {visibleRoleButtons.length > 0 ? visibleRoleButtons.map((role) => {
               const active = form.role === role.value;
               return (
                 <button
@@ -164,7 +165,11 @@ export function SignupPanel({ group, onSignup, initialSignupCode = '' }: Props) 
                   <span className="mr-2">{role.icon}</span>{role.label}
                 </button>
               );
-            })}
+            }) : (
+              <div className="col-span-2 rounded-2xl border border-dashed border-orange-200 bg-orange-50 px-3 py-4 text-center text-xs font-bold text-orange-700">
+                此隊伍目前沒有可報名的定位需求，請改選其他隊伍或聯絡團長。
+              </div>
+            )}
           </div>
           <div className="mt-2 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">只顯示團長目前設定為需求的角色定位。</div>
         </Field>

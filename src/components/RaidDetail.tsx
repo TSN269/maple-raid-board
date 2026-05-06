@@ -283,6 +283,10 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRoleR
   const raidStatus = getRaidStatusMeta(group);
   const partyCount = getPartyCount(group.capacity);
   const roleRequirements = useMemo(() => normalizeRoleRequirements(group), [group.id, group.capacity, group.roleRequirements]);
+  const visibleRoleRequirements = useMemo(() => {
+    const normalized = normalizeRoleRequirements({ ...group, roleRequirements: requirementDraft });
+    return normalized;
+  }, [group, requirementDraft]);
   const orderedMembers = useMemo(() => applyMemberOrder(group.id, group.members, memberOrder), [group.id, group.members, memberOrder]);
   const displayedMembers = useMemo(() => viewListMode ? orderedMembers.filter((member) => member.status === '已確認') : orderedMembers, [orderedMembers, viewListMode]);
 
@@ -465,7 +469,7 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRoleR
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <h3 className="text-lg font-black text-slate-950">隊伍角色定位需求</h3>
-              <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">團長可設定每一隊 6 個位置的定位需求；玩家報名時只會看到目前需求內的角色定位。</p>
+              <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">團長可設定每一隊 6 個位置的定位需求；下方隊伍配置空位會同步顯示這些需求，玩家報名時也只會看到目前需求內的角色定位。</p>
             </div>
             {isLeaderUnlocked ? <Button variant="secondary" disabled={savingRequirements} onClick={saveRoleRequirements}>{savingRequirements ? '儲存中' : '儲存需求設定'}</Button> : <Pill tone="slate">團長模式解鎖後可編輯</Pill>}
           </div>
@@ -530,14 +534,14 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRoleR
             {Array.from({ length: partyCount }, (_, index) => index + 1).map((partyNo) => {
               const members = displayedMembers.filter((m) => Number(m.party) === partyNo);
               const missing = viewListMode ? 0 : Math.max(0, 6 - members.length);
-              const emptyRoles = roleRequirements[String(partyNo)] || DEFAULT_ROLE_REQUIREMENTS;
+              const emptyRoles = visibleRoleRequirements[String(partyNo)] || DEFAULT_ROLE_REQUIREMENTS;
               return (
                 <div key={partyNo} className="rounded-3xl border border-orange-100 bg-gradient-to-br from-orange-50/75 to-white p-3">
                   <div className="mb-3 flex items-center justify-between px-1">
                     <h4 className="font-black text-slate-950">隊伍 {partyNo}</h4>
                     <span className="text-xs font-black text-slate-400">{members.length}/6</span>
                   </div>
-                  <div className="mb-3 flex flex-wrap gap-1 px-1">{(roleRequirements[String(partyNo)] || DEFAULT_ROLE_REQUIREMENTS).map((role, index) => <span key={`${role}-${index}`} className={classNames('rounded-full px-2 py-1 text-[10px] font-black', roleAccent[role] ?? 'bg-slate-100 text-slate-600')}>{role}</span>)}</div>
+                  <div className="mb-3 flex flex-wrap gap-1 px-1">{(visibleRoleRequirements[String(partyNo)] || DEFAULT_ROLE_REQUIREMENTS).map((role, index) => <span key={`${role}-${index}`} className={classNames('rounded-full px-2 py-1 text-[10px] font-black', roleAccent[role] ?? 'bg-slate-100 text-slate-600')}>{role}</span>)}</div>
                   <div className="grid gap-2">
                     {members.map((m) => (
                       <div
