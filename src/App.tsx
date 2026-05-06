@@ -136,15 +136,19 @@ function saveNotificationSnapshot(snapshot: NotificationSnapshot) {
 
 type RojhuPlayerId = '101' | '102' | '103' | '104';
 type RojhuRoutes = Record<RojhuPlayerId, Array<number | null>>;
+type RojhuSelectedPlayers = Partial<Record<RojhuPlayerId, string>>;
 type RojhuRoom = {
   code: string;
   password: string;
   createdAt: string;
   updatedAt: string;
   routes: RojhuRoutes;
+  lastRoutes: RojhuRoutes;
+  selectedPlayers: RojhuSelectedPlayers;
 };
 
 const ROJHU_PLAYERS: RojhuPlayerId[] = ['101', '102', '103', '104'];
+const ROJHU_CLIENT_ID_STORAGE_KEY = 'maple_raid_board_rojhu_client_id_v25';
 const ROJHU_SELECTED_PLAYER_STORAGE_KEY = 'maple_raid_board_rojhu_selected_player_v21';
 
 function createEmptyRoutes(): RojhuRoutes {
@@ -163,6 +167,35 @@ function loadRojhuSelectedPlayers(): Record<string, RojhuPlayerId> {
 
 function saveRojhuSelectedPlayers(value: Record<string, RojhuPlayerId>) {
   localStorage.setItem(ROJHU_SELECTED_PLAYER_STORAGE_KEY, JSON.stringify(value));
+}
+
+function getRojhuClientId() {
+  try {
+    const saved = localStorage.getItem(ROJHU_CLIENT_ID_STORAGE_KEY);
+    if (saved && /^[a-zA-Z0-9_-]{12,80}$/.test(saved)) return saved;
+  } catch {
+    // ignore storage errors
+  }
+  const randomPart = Math.random().toString(36).slice(2, 14);
+  const timePart = Date.now().toString(36);
+  const next = `client_${timePart}_${randomPart}`;
+  try {
+    localStorage.setItem(ROJHU_CLIENT_ID_STORAGE_KEY, next);
+  } catch {
+    // ignore storage errors
+  }
+  return next;
+}
+
+function normalizeRojhuSelectedPlayers(value: unknown): RojhuSelectedPlayers {
+  if (!value || typeof value !== 'object') return {};
+  const source = value as Record<string, unknown>;
+  const next: RojhuSelectedPlayers = {};
+  for (const player of ROJHU_PLAYERS) {
+    const clientId = source[player];
+    if (typeof clientId === 'string' && clientId.trim()) next[player] = clientId;
+  }
+  return next;
 }
 
 function normalizeRojhuRoutes(value: unknown): RojhuRoutes {
@@ -189,6 +222,8 @@ function normalizeRojhuRoom(row: any, password: string): RojhuRoom {
     createdAt: String(row?.created_at || row?.createdAt || new Date().toISOString()),
     updatedAt: String(row?.updated_at || row?.updatedAt || new Date().toISOString()),
     routes: normalizeRojhuRoutes(row?.routes),
+    lastRoutes: normalizeRojhuRoutes(row?.last_routes || row?.lastRoutes),
+    selectedPlayers: normalizeRojhuSelectedPlayers(row?.selected_players || row?.selectedPlayers),
   };
 }
 
@@ -212,13 +247,37 @@ async function joinRemoteRojhuRoom(code: string, password: string): Promise<Rojh
   return normalizeRojhuRoom(data, password.trim());
 }
 
-async function updateRemoteRojhuRoute(code: string, password: string, player: RojhuPlayerId, row: number, col: number): Promise<RojhuRoom> {
+async function updateRemoteRojhuRoute(code: string, password: string, player: RojhuPlayerId, row: number, col: number, clientId: string): Promise<RojhuRoom> {
   const { data, error } = await (supabase as any).rpc('update_rojhu_route_cell', {
     p_code: code,
     p_password: password,
     p_player: player,
     p_row_index: row,
     p_col_index: col,
+    p_client_id: clientId,
+  });
+
+  if (error) throw new Error(error.message);
+  return normalizeRojhuRoom(data, password);
+}
+
+async function claimRemoteRojhuPlayer(code: string, password: string, player: RojhuPlayerId, clientId: string): Promise<RojhuRoom> {
+  const { data, error } = await (supabase as any).rpc('claim_rojhu_player', {
+    p_code: code,
+    p_password: password,
+    p_player: player,
+    p_client_id: clientId,
+  });
+
+  if (error) throw new Error(error.message);
+  return normalizeRojhuRoom(data, password);
+}
+
+async function releaseRemoteRojhuPlayer(code: string, password: string, clientId: string): Promise<RojhuRoom> {
+  const { data, error } = await (supabase as any).rpc('release_rojhu_player', {
+    p_code: code,
+    p_password: password,
+    p_client_id: clientId,
   });
 
   if (error) throw new Error(error.message);
@@ -227,6 +286,36 @@ async function updateRemoteRojhuRoute(code: string, password: string, player: Ro
 
 async function resetRemoteRojhuRoom(code: string, password: string): Promise<RojhuRoom> {
   const { data, error } = await (supabase as any).rpc('reset_rojhu_room_routes', {
+    p_code: code,
+    p_password: password,
+  });
+
+  if (error) throw new Error(error.message);
+  return normalizeRojhuRoom(data, password);
+}
+
+async function saveRemoteRojhuLastRoutes(code: string, password: string): Promise<RojhuRoom> {
+  const { data, error } = await (supabase as any).rpc('save_rojhu_last_routes', {
+    p_code: code,
+    p_password: password,
+  });
+
+  if (error) throw new Error(error.message);
+  return normalizeRojhuRoom(data, password);
+}
+
+async function clearRemoteRojhuLastRoutes(code: string, password: string): Promise<RojhuRoom> {
+  const { data, error } = await (supabase as any).rpc('clear_rojhu_last_routes', {
+    p_code: code,
+    p_password: password,
+  });
+
+  if (error) throw new Error(error.message);
+  return normalizeRojhuRoom(data, password);
+}
+
+async function expireRemoteRojhuRoomIfIdle(code: string, password: string): Promise<RojhuRoom> {
+  const { data, error } = await (supabase as any).rpc('expire_rojhu_room_if_idle', {
     p_code: code,
     p_password: password,
   });
@@ -251,6 +340,22 @@ function buildRojhuShareUrl(room: RojhuRoom) {
   url.searchParams.set('rojhuRoom', room.code);
   url.searchParams.set('rojhuPass', room.password);
   return url.toString();
+}
+
+function formatRojhuRoute(route?: Array<number | null>) {
+  const safeRoute = Array.isArray(route) ? route : Array(10).fill(null);
+  return safeRoute.map((value, index) => `${index + 1}:${value == null ? '?' : value + 1}`).join(' → ');
+}
+
+function hasAnyRojhuRoute(routes?: RojhuRoutes) {
+  if (!routes) return false;
+  return ROJHU_PLAYERS.some((player) => routes[player]?.some((value) => value != null));
+}
+
+function isRojhuRoomIdleExpired(room: RojhuRoom) {
+  const updatedAt = new Date(room.updatedAt).getTime();
+  if (!Number.isFinite(updatedAt)) return false;
+  return Date.now() - updatedAt >= 60 * 60 * 1000;
 }
 
 function MapleLeafLogo() {
@@ -387,22 +492,28 @@ function RojhuToolsPanel() {
   const [currentRoom, setCurrentRoom] = useState<RojhuRoom | null>(null);
   const [activePlayer, setActivePlayer] = useState<RojhuPlayerId>('101');
   const [selectedPlayersByRoom, setSelectedPlayersByRoom] = useState<Record<string, RojhuPlayerId>>(() => loadRojhuSelectedPlayers());
+  const [rojhuClientId] = useState(() => getRojhuClientId());
   const [rojhuMessage, setRojhuMessage] = useState<string>('');
   const [rojhuBusy, setRojhuBusy] = useState(false);
-  const selectedPlayer = currentRoom ? selectedPlayersByRoom[currentRoom.code] : undefined;
+  const selectedPlayer = currentRoom ? ROJHU_PLAYERS.find((player) => currentRoom.selectedPlayers[player] === rojhuClientId) : undefined;
 
   function flashMessage(message: string) {
     setRojhuMessage(message);
     window.setTimeout(() => setRojhuMessage(''), 1800);
   }
 
-  function updateSelectedPlayerForRoom(roomCode: string, player: RojhuPlayerId) {
-    setSelectedPlayersByRoom((prev) => {
-      const next = { ...prev, [roomCode]: player };
-      saveRojhuSelectedPlayers(next);
-      return next;
-    });
-    setActivePlayer(player);
+  async function updateSelectedPlayerForRoom(roomCode: string, player: RojhuPlayerId) {
+    if (!currentRoom) return;
+    await runRojhuAction(async () => {
+      const room = await claimRemoteRojhuPlayer(roomCode, currentRoom.password, player, rojhuClientId);
+      setSelectedPlayersByRoom((prev) => {
+        const next = { ...prev, [roomCode]: player };
+        saveRojhuSelectedPlayers(next);
+        return next;
+      });
+      setActivePlayer(player);
+      return room;
+    }, `已鎖定角色 ${player}`);
   }
 
   async function runRojhuAction(action: () => Promise<RojhuRoom | void>, successMessage?: string) {
@@ -413,8 +524,9 @@ function RojhuToolsPanel() {
         setCurrentRoom(result);
         setJoinCode(result.code);
         setJoinPassword(result.password);
+        const remotePlayer = ROJHU_PLAYERS.find((player) => result.selectedPlayers[player] === rojhuClientId);
         const savedPlayer = selectedPlayersByRoom[result.code];
-        if (savedPlayer) setActivePlayer(savedPlayer);
+        if (remotePlayer || savedPlayer) setActivePlayer(remotePlayer || savedPlayer);
       }
       if (successMessage) flashMessage(successMessage);
     } catch (err) {
@@ -448,11 +560,17 @@ function RojhuToolsPanel() {
     }, '已加入房間並啟用即時同步');
   }
 
-  function exitRoom() {
-    if (currentRoom) {
+  async function exitRoom() {
+    const roomToExit = currentRoom;
+    if (roomToExit) {
+      try {
+        await releaseRemoteRojhuPlayer(roomToExit.code, roomToExit.password, rojhuClientId);
+      } catch {
+        // ignore release failure; local exit should still work
+      }
       setSelectedPlayersByRoom((prev) => {
         const next = { ...prev };
-        delete next[currentRoom.code];
+        delete next[roomToExit.code];
         saveRojhuSelectedPlayers(next);
         return next;
       });
@@ -467,6 +585,32 @@ function RojhuToolsPanel() {
     url.searchParams.delete('pass');
     window.history.replaceState({}, '', url.toString());
     flashMessage('已退出目前房間');
+  }
+
+  async function expireAndExitRoom() {
+    const roomToExpire = currentRoom;
+    if (!roomToExpire) return;
+    try {
+      await expireRemoteRojhuRoomIfIdle(roomToExpire.code, roomToExpire.password);
+    } catch {
+      // ignore expiration failure; local exit should still work
+    }
+    setSelectedPlayersByRoom((prev) => {
+      const next = { ...prev };
+      delete next[roomToExpire.code];
+      saveRojhuSelectedPlayers(next);
+      return next;
+    });
+    setCurrentRoom(null);
+    setActivePlayer('101');
+    const url = new URL(window.location.href);
+    url.searchParams.delete('tool');
+    url.searchParams.delete('rojhuRoom');
+    url.searchParams.delete('rojhuPass');
+    url.searchParams.delete('room');
+    url.searchParams.delete('pass');
+    window.history.replaceState({}, '', url.toString());
+    flashMessage('房間閒置超過 1 小時，已強制退出並清空紀錄');
   }
 
   useEffect(() => {
@@ -494,21 +638,38 @@ function RojhuToolsPanel() {
     };
   }, [currentRoom?.code, currentRoom?.password]);
 
+
+  useEffect(() => {
+    if (!currentRoom) return;
+
+    if (isRojhuRoomIdleExpired(currentRoom)) {
+      void expireAndExitRoom();
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      if (currentRoom && isRojhuRoomIdleExpired(currentRoom)) {
+        void expireAndExitRoom();
+      }
+    }, 30 * 1000);
+
+    return () => window.clearInterval(timer);
+  }, [currentRoom?.code, currentRoom?.password, currentRoom?.updatedAt]);
+
   async function applyRoute(rowIndex: number, columnIndex: number) {
     if (!currentRoom) return;
     if (!selectedPlayer) {
       flashMessage('請先選擇你的角色。每人只能選一個角色。');
       return;
     }
-    await runRojhuAction(() => updateRemoteRojhuRoute(currentRoom.code, currentRoom.password, selectedPlayer, rowIndex, columnIndex));
+    await runRojhuAction(() => updateRemoteRojhuRoute(currentRoom.code, currentRoom.password, selectedPlayer, rowIndex, columnIndex, rojhuClientId));
   }
 
-  function getKeyboardTargetRow() {
-    if (!currentRoom || !selectedPlayer) return 0;
+  function getKeyboardTargetRow(): number | null {
+    if (!currentRoom || !selectedPlayer) return null;
     const route = currentRoom.routes[selectedPlayer];
     const nextEmpty = route.findIndex((value) => value == null);
-    if (nextEmpty >= 0) return nextEmpty;
-    return route.length - 1;
+    return nextEmpty >= 0 ? nextEmpty : null;
   }
 
   useEffect(() => {
@@ -523,6 +684,10 @@ function RojhuToolsPanel() {
       event.preventDefault();
       const columnIndex = Number(event.key) - 1;
       const rowIndex = getKeyboardTargetRow();
+      if (rowIndex == null) {
+        flashMessage('10 層都已填，快捷鍵停止填入。請重置全清除或手動修改。');
+        return;
+      }
       void applyRoute(rowIndex, columnIndex);
     }
 
@@ -552,8 +717,25 @@ function RojhuToolsPanel() {
   const currentPathLabel = useMemo(() => {
     if (!currentRoom) return '尚未加入房間';
     const routeOwner = selectedPlayer || activePlayer;
-    return currentRoom.routes[routeOwner].map((value) => (value == null ? '?' : String(value + 1))).join(' → ');
+    return formatRojhuRoute(currentRoom.routes[routeOwner]);
   }, [currentRoom, activePlayer, selectedPlayer]);
+
+  const lastPathLabels = useMemo(() => {
+    return ROJHU_PLAYERS.map((player) => ({
+      player,
+      label: currentRoom ? formatRojhuRoute(currentRoom.lastRoutes[player]) : formatRojhuRoute(),
+    }));
+  }, [currentRoom]);
+
+  async function saveLastRoutes() {
+    if (!currentRoom) return;
+    await runRojhuAction(() => saveRemoteRojhuLastRoutes(currentRoom.code, currentRoom.password), '已將當下路徑保存到上次路徑');
+  }
+
+  async function clearLastRoutes() {
+    if (!currentRoom) return;
+    await runRojhuAction(() => clearRemoteRojhuLastRoutes(currentRoom.code, currentRoom.password), '已清除上次路徑紀錄');
+  }
 
   const playerButtonClasses: Record<RojhuPlayerId, string> = {
     '101': 'bg-rose-400 text-white',
@@ -674,14 +856,38 @@ function RojhuToolsPanel() {
         <div className="border-b border-orange-100 px-4 py-4">
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div className="text-lg font-black text-slate-950">我的路徑 <span className="ml-2 text-slate-500">{currentPathLabel}</span></div>
-            <div className="rounded-full bg-orange-50 px-3 py-1 text-xs font-black text-orange-700 ring-1 ring-orange-100">快捷鍵：按 1 / 2 / 3 / 4 標記下一層</div>
+            <div className="rounded-full bg-orange-50 px-3 py-1 text-xs font-black text-orange-700 ring-1 ring-orange-100">快捷鍵：按 1 / 2 / 3 / 4 標記下一層；10 層填滿後停止</div>
+          </div>
+          <div className="mt-4 rounded-2xl border border-orange-100 bg-white/80 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-sm font-black text-slate-950">上次路徑</div>
+                <div className="mt-1 text-xs font-semibold text-slate-400">按「保存當下路徑」會把目前 101～104 的路徑保存到此欄；清除按鈕只清除上次路徑，不影響目前路徑。</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" className="px-3 py-2 text-xs" onClick={saveLastRoutes} disabled={!currentRoom || rojhuBusy}>保存當下路徑</Button>
+                <Button variant="ghost" className="px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={clearLastRoutes} disabled={!currentRoom || rojhuBusy || !hasAnyRojhuRoute(currentRoom?.lastRoutes)}>清除此欄紀錄</Button>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs font-bold text-slate-500 xl:grid-cols-2">
+              {lastPathLabels.map(({ player, label }) => (
+                <div key={player} className="flex min-w-0 items-center gap-2 rounded-xl bg-orange-50/70 px-3 py-2">
+                  <span className={classNames('h-3 w-3 shrink-0 rounded-full', playerButtonClasses[player])} />
+                  <span className="font-black text-slate-700">{player}</span>
+                  <span className="min-w-0 truncate font-mono text-slate-500">{label}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
         <div className="px-4 py-4">
           <div className="flex flex-wrap items-center gap-3">
             {ROJHU_PLAYERS.map((player) => {
-              const lockedByAnother = Boolean(currentRoom && selectedPlayer && selectedPlayer !== player);
+              const claimedClientId = currentRoom?.selectedPlayers[player];
+              const claimedByCurrentClient = claimedClientId === rojhuClientId;
+              const lockedByAnother = Boolean(currentRoom && claimedClientId && !claimedByCurrentClient);
+              const lockedByCurrentOther = Boolean(currentRoom && selectedPlayer && selectedPlayer !== player);
               return (
                 <button
                   key={player}
@@ -691,15 +897,16 @@ function RojhuToolsPanel() {
                       setActivePlayer(player);
                       return;
                     }
-                    if (!selectedPlayer) updateSelectedPlayerForRoom(currentRoom.code, player);
+                    if (!selectedPlayer && !lockedByAnother) void updateSelectedPlayerForRoom(currentRoom.code, player);
                   }}
-                  disabled={lockedByAnother}
+                  disabled={lockedByAnother || lockedByCurrentOther || rojhuBusy}
                   className={classNames(
                     'rounded-2xl px-5 py-3 text-xl font-black shadow-lg ring-1 transition disabled:cursor-not-allowed disabled:opacity-35',
                     playerButtonClasses[player],
-                    (selectedPlayer || activePlayer) === player ? 'scale-105 ring-slate-900/20' : 'opacity-75 ring-slate-200 hover:opacity-100',
+                    claimedByCurrentClient || (!currentRoom && activePlayer === player) ? 'scale-105 ring-slate-900/20' : 'opacity-75 ring-slate-200 hover:opacity-100',
+                    lockedByAnother && 'grayscale',
                   )}
-                  title={lockedByAnother ? '每人只能選擇一個角色。退出房間後可重選。' : '選擇我的角色'}
+                  title={lockedByAnother ? '此角色已被同房間其他玩家選擇' : lockedByCurrentOther ? '每人只能選擇一個角色。退出房間後可重選。' : '選擇我的角色'}
                 >
                   {player}
                 </button>
@@ -718,18 +925,19 @@ function RojhuToolsPanel() {
           <div className="mt-6 grid min-w-0 gap-2">
             {Array.from({ length: 10 }, (_, rowIndex) => {
               const floor = 10 - rowIndex;
+              const routeIndex = floor - 1;
               return (
                 <div key={floor} className="grid grid-cols-[24px_repeat(4,minmax(0,1fr))] items-center gap-2">
                   <div className="text-center text-lg font-semibold text-slate-600">{floor}</div>
                   {Array.from({ length: 4 }, (_, columnIndex) => {
-                    const selectedPlayers = currentRoom ? ROJHU_PLAYERS.filter((player) => currentRoom.routes[player][rowIndex] === columnIndex) : [];
+                    const selectedPlayers = currentRoom ? ROJHU_PLAYERS.filter((player) => currentRoom.routes[player][routeIndex] === columnIndex) : [];
                     const activeSelected = selectedPlayer ? selectedPlayers.includes(selectedPlayer) : false;
                     const singlePlayer = selectedPlayers.length === 1 ? selectedPlayers[0] : null;
                     return (
                       <button
                         key={`${floor}-${columnIndex}`}
                         type="button"
-                        onClick={() => applyRoute(rowIndex, columnIndex)}
+                        onClick={() => applyRoute(routeIndex, columnIndex)}
                         disabled={!currentRoom || rojhuBusy}
                         style={selectedPlayers.length > 1 ? multiPlayerCellStyle(selectedPlayers) : undefined}
                         className={classNames(
@@ -1142,7 +1350,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V23</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V25</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>

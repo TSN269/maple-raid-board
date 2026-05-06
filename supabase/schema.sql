@@ -586,9 +586,20 @@ create table if not exists public.rojhu_rooms (
   code text primary key check (code ~ '^[0-9]{6}$'),
   password_hash text not null,
   routes jsonb not null default public.rojhu_empty_routes(),
+  last_routes jsonb not null default public.rojhu_empty_routes(),
+  selected_players jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.rojhu_rooms
+  add column if not exists last_routes jsonb not null default public.rojhu_empty_routes(),
+  add column if not exists selected_players jsonb not null default '{}'::jsonb;
+
+update public.rojhu_rooms
+set
+  last_routes = coalesce(last_routes, public.rojhu_empty_routes()),
+  selected_players = coalesce(selected_players, '{}'::jsonb);
 
 alter table public.rojhu_rooms enable row level security;
 
@@ -634,6 +645,8 @@ as $$
     'code', p_room.code,
     'password', p_password,
     'routes', p_room.routes,
+    'last_routes', p_room.last_routes,
+    'selected_players', p_room.selected_players,
     'created_at', p_room.created_at,
     'updated_at', p_room.updated_at
   );
@@ -720,12 +733,11 @@ begin
 end;
 $$;
 
-create or replace function public.update_rojhu_route_cell(
+create or replace function public.claim_rojhu_player(
   p_code text,
   p_password text,
   p_player text,
-  p_row_index integer,
-  p_col_index integer
+  p_client_id text
 )
 returns jsonb
 language plpgsql
@@ -735,6 +747,126 @@ as $$
 declare
   v_room public.rojhu_rooms;
   v_password text := btrim(coalesce(p_password, ''));
+  v_client_id text := btrim(coalesce(p_client_id, ''));
+  v_selected jsonb;
+  v_key text;
+begin
+  if p_player not in ('101', '102', '103', '104') then
+    raise exception '角色代號錯誤';
+  end if;
+
+  if v_client_id !~ '^[a-zA-Z0-9_-]{12,80}$' then
+    raise exception '用戶代碼錯誤';
+  end if;
+
+  select * into v_room
+  from public.rojhu_rooms
+  where code = btrim(coalesce(p_code, ''))
+  for update;
+
+  if not found then
+    raise exception '找不到此房間';
+  end if;
+
+  if crypt(v_password, v_room.password_hash) <> v_room.password_hash then
+    raise exception '房間密碼錯誤';
+  end if;
+
+  v_selected := coalesce(v_room.selected_players, '{}'::jsonb);
+
+  if (v_selected ? p_player) and (v_selected ->> p_player) <> v_client_id then
+    raise exception '此角色已被其他玩家選擇';
+  end if;
+
+  for v_key in select jsonb_object_keys(v_selected)
+  loop
+    if v_selected ->> v_key = v_client_id then
+      v_selected := v_selected - v_key;
+    end if;
+  end loop;
+
+  v_selected := jsonb_set(v_selected, array[p_player], to_jsonb(v_client_id), true);
+
+  update public.rojhu_rooms
+  set selected_players = v_selected
+  where code = v_room.code
+  returning * into v_room;
+
+  return public.rojhu_room_payload(v_room, v_password);
+end;
+$$;
+
+create or replace function public.release_rojhu_player(
+  p_code text,
+  p_password text,
+  p_client_id text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_room public.rojhu_rooms;
+  v_password text := btrim(coalesce(p_password, ''));
+  v_client_id text := btrim(coalesce(p_client_id, ''));
+  v_selected jsonb;
+  v_key text;
+begin
+  if v_client_id !~ '^[a-zA-Z0-9_-]{12,80}$' then
+    raise exception '用戶代碼錯誤';
+  end if;
+
+  select * into v_room
+  from public.rojhu_rooms
+  where code = btrim(coalesce(p_code, ''))
+  for update;
+
+  if not found then
+    raise exception '找不到此房間';
+  end if;
+
+  if crypt(v_password, v_room.password_hash) <> v_room.password_hash then
+    raise exception '房間密碼錯誤';
+  end if;
+
+  v_selected := coalesce(v_room.selected_players, '{}'::jsonb);
+
+  for v_key in select jsonb_object_keys(v_selected)
+  loop
+    if v_selected ->> v_key = v_client_id then
+      v_selected := v_selected - v_key;
+    end if;
+  end loop;
+
+  update public.rojhu_rooms
+  set selected_players = v_selected
+  where code = v_room.code
+  returning * into v_room;
+
+  return public.rojhu_room_payload(v_room, v_password);
+end;
+$$;
+
+drop function if exists public.update_rojhu_route_cell(text, text, text, integer, integer);
+
+create or replace function public.update_rojhu_route_cell(
+  p_code text,
+  p_password text,
+  p_player text,
+  p_row_index integer,
+  p_col_index integer,
+  p_client_id text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_room public.rojhu_rooms;
+  v_password text := btrim(coalesce(p_password, ''));
+  v_client_id text := btrim(coalesce(p_client_id, ''));
 begin
   if p_player not in ('101', '102', '103', '104') then
     raise exception '角色代號錯誤';
@@ -758,6 +890,10 @@ begin
 
   if crypt(v_password, v_room.password_hash) <> v_room.password_hash then
     raise exception '房間密碼錯誤';
+  end if;
+
+  if v_client_id <> '' and coalesce(v_room.selected_players ->> p_player, '') <> v_client_id then
+    raise exception '請先選擇並鎖定角色';
   end if;
 
   update public.rojhu_rooms
@@ -800,11 +936,113 @@ begin
 end;
 $$;
 
+create or replace function public.save_rojhu_last_routes(p_code text, p_password text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_room public.rojhu_rooms;
+  v_password text := btrim(coalesce(p_password, ''));
+begin
+  select * into v_room
+  from public.rojhu_rooms
+  where code = btrim(coalesce(p_code, ''));
+
+  if not found then
+    raise exception '找不到此房間';
+  end if;
+
+  if crypt(v_password, v_room.password_hash) <> v_room.password_hash then
+    raise exception '房間密碼錯誤';
+  end if;
+
+  update public.rojhu_rooms
+  set last_routes = routes
+  where code = v_room.code
+  returning * into v_room;
+
+  return public.rojhu_room_payload(v_room, v_password);
+end;
+$$;
+
+create or replace function public.clear_rojhu_last_routes(p_code text, p_password text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_room public.rojhu_rooms;
+  v_password text := btrim(coalesce(p_password, ''));
+begin
+  select * into v_room
+  from public.rojhu_rooms
+  where code = btrim(coalesce(p_code, ''));
+
+  if not found then
+    raise exception '找不到此房間';
+  end if;
+
+  if crypt(v_password, v_room.password_hash) <> v_room.password_hash then
+    raise exception '房間密碼錯誤';
+  end if;
+
+  update public.rojhu_rooms
+  set last_routes = public.rojhu_empty_routes()
+  where code = v_room.code
+  returning * into v_room;
+
+  return public.rojhu_room_payload(v_room, v_password);
+end;
+$$;
+
+create or replace function public.expire_rojhu_room_if_idle(p_code text, p_password text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_room public.rojhu_rooms;
+  v_password text := btrim(coalesce(p_password, ''));
+begin
+  select * into v_room
+  from public.rojhu_rooms
+  where code = btrim(coalesce(p_code, ''));
+
+  if not found then
+    raise exception '找不到此房間';
+  end if;
+
+  if crypt(v_password, v_room.password_hash) <> v_room.password_hash then
+    raise exception '房間密碼錯誤';
+  end if;
+
+  if v_room.updated_at > now() - interval '1 hour' then
+    return public.rojhu_room_payload(v_room, v_password);
+  end if;
+
+  update public.rojhu_rooms
+  set routes = public.rojhu_empty_routes(), last_routes = public.rojhu_empty_routes(), selected_players = '{}'::jsonb
+  where code = v_room.code
+  returning * into v_room;
+
+  return public.rojhu_room_payload(v_room, v_password);
+end;
+$$;
+
 grant execute on function public.rojhu_validate_password(text) to anon, authenticated;
 grant execute on function public.create_rojhu_room(text, text) to anon, authenticated;
 grant execute on function public.join_rojhu_room(text, text) to anon, authenticated;
-grant execute on function public.update_rojhu_route_cell(text, text, text, integer, integer) to anon, authenticated;
+grant execute on function public.claim_rojhu_player(text, text, text, text) to anon, authenticated;
+grant execute on function public.release_rojhu_player(text, text, text) to anon, authenticated;
+grant execute on function public.update_rojhu_route_cell(text, text, text, integer, integer, text) to anon, authenticated;
 grant execute on function public.reset_rojhu_room_routes(text, text) to anon, authenticated;
+grant execute on function public.save_rojhu_last_routes(text, text) to anon, authenticated;
+grant execute on function public.clear_rojhu_last_routes(text, text) to anon, authenticated;
+grant execute on function public.expire_rojhu_room_if_idle(text, text) to anon, authenticated;
 
 do $$
 begin
