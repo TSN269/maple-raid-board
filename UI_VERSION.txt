@@ -1,2 +1,2 @@
-UI-V30
-Fix raid status category filtering by using effectiveStatus instead of a nonexistent status field.
+UI-V31
+Signup role options, dynamic party count, local drag sorting, confirmed-only list mode.

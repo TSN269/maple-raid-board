@@ -25,13 +25,17 @@ const groupStatusOptions: Array<{ value: RaidStatus; label: string; helper: stri
 ];
 
 const roleAccent: Record<string, string> = {
+  打手: 'bg-rose-50 text-rose-700',
+  控時: 'bg-violet-50 text-violet-700',
+  火: 'bg-orange-50 text-orange-700',
+  煙霧機: 'bg-slate-100 text-slate-700',
+  輔助: 'bg-emerald-50 text-emerald-700',
   主坦: 'bg-slate-100 text-slate-700',
   副坦: 'bg-emerald-50 text-emerald-700',
   輸出: 'bg-rose-50 text-rose-700',
   補師: 'bg-sky-50 text-sky-700',
   主輸出: 'bg-rose-50 text-rose-700',
   副輸出: 'bg-orange-50 text-orange-700',
-  輔助: 'bg-emerald-50 text-emerald-700',
   隊長: 'bg-violet-50 text-violet-700',
   替補: 'bg-slate-100 text-slate-600',
 };
@@ -51,6 +55,36 @@ function jobIcon(job: string) {
   if (/火|冰|雷|魔|法/i.test(job)) return '✦';
   if (/拳|槍/i.test(job)) return '✹';
   return '◆';
+}
+
+const MEMBER_ORDER_STORAGE_KEY = 'maple_raid_board_member_order_v31';
+
+function getPartyCount(capacity: number) {
+  return Math.max(1, Math.ceil(Math.max(1, Number(capacity || 1)) / 6));
+}
+
+function loadMemberOrder(): Record<string, string[]> {
+  try {
+    const raw = localStorage.getItem(MEMBER_ORDER_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveMemberOrder(order: Record<string, string[]>) {
+  localStorage.setItem(MEMBER_ORDER_STORAGE_KEY, JSON.stringify(order));
+}
+
+function applyMemberOrder(groupId: string, members: RaidMember[], orderMap: Record<string, string[]>) {
+  const order = orderMap[groupId] ?? [];
+  const index = new Map(order.map((id, i) => [id, i]));
+  return [...members].sort((a, b) => {
+    const ai = index.has(a.id) ? index.get(a.id)! : Number.MAX_SAFE_INTEGER;
+    const bi = index.has(b.id) ? index.get(b.id)! : Number.MAX_SAFE_INTEGER;
+    return ai - bi || a.party - b.party || a.createdAt.localeCompare(b.createdAt);
+  });
 }
 
 function MemberRow({ member, onStatusChange, onRemove, canManage }: { member: RaidMember; onStatusChange: Props['onStatusChange']; onRemove: Props['onRemove']; canManage: boolean }) {
@@ -214,6 +248,9 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
   const [copied, setCopied] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   const [signupCodeDraft, setSignupCodeDraft] = useState(signupCode);
+  const [viewListMode, setViewListMode] = useState(false);
+  const [draggingMemberId, setDraggingMemberId] = useState<string | null>(null);
+  const [memberOrder, setMemberOrder] = useState<Record<string, string[]>>(() => loadMemberOrder());
   const confirmed = group.members.filter((m) => m.status === '已確認').length;
   const pending = group.members.filter((m) => m.status === '待確認').length;
   const standby = group.members.filter((m) => m.status === '候補').length;
@@ -222,6 +259,9 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
   const bossDifficulty = getBossDifficultyMeta(bossText);
   const bossVisual = getBossVisualMeta(bossText);
   const raidStatus = getRaidStatusMeta(group);
+  const partyCount = getPartyCount(group.capacity);
+  const orderedMembers = useMemo(() => applyMemberOrder(group.id, group.members, memberOrder), [group.id, group.members, memberOrder]);
+  const displayedMembers = useMemo(() => viewListMode ? orderedMembers.filter((member) => member.status === '已確認') : orderedMembers, [orderedMembers, viewListMode]);
 
   const roleCount = useMemo(() => {
     return group.members.reduce<Record<string, number>>((acc, m) => {
@@ -268,6 +308,24 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
     a.download = `${group.id}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  function moveMemberWithinParty(targetMember: RaidMember) {
+    if (!isLeaderUnlocked || !draggingMemberId || draggingMemberId === targetMember.id) return;
+    const sourceMember = group.members.find((member) => member.id === draggingMemberId);
+    if (!sourceMember || Number(sourceMember.party) !== Number(targetMember.party)) return;
+
+    const currentIds = applyMemberOrder(group.id, group.members, memberOrder).map((member) => member.id);
+    const nextIds = currentIds.filter((id) => id !== draggingMemberId);
+    const targetIndex = nextIds.indexOf(targetMember.id);
+    if (targetIndex < 0) return;
+    nextIds.splice(targetIndex, 0, draggingMemberId);
+
+    setMemberOrder((prev) => {
+      const next = { ...prev, [group.id]: nextIds };
+      saveMemberOrder(next);
+      return next;
+    });
   }
 
   return (
@@ -380,19 +438,19 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
                 <span className="text-orange-600">♟</span>
                 <h3 className="text-lg font-black text-slate-950">隊伍配置</h3>
               </div>
-              <p className="mt-1 text-sm font-semibold text-slate-400">共 3 隊，每隊最多 6 人；一般玩家只能查看與報名，團長模式才可調整狀態或移除。</p>
+              <p className="mt-1 text-sm font-semibold text-slate-400">依報名上限自動配置隊伍：1～6 人 1 隊、7～12 人 2 隊、13～18 人 3 隊；團長模式可拖曳調整同隊名單先後順序。</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {Object.entries(roleCount).map(([role, count]) => <Pill key={role}>{role} {count}</Pill>)}
-              <Button variant="secondary" className="py-2 text-xs">☷ 查看名單模式</Button>
+              <Button variant="secondary" className="py-2 text-xs" onClick={() => setViewListMode((prev) => !prev)}>{viewListMode ? '返回隊伍配置' : '☷ 查看名單模式'}</Button>
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 xl:grid-cols-3">
-            {[1, 2, 3].map((partyNo) => {
-              const members = group.members.filter((m) => Number(m.party) === partyNo);
-              const missing = Math.max(0, 6 - members.length);
-              const emptyRoles = ['副坦', '輸出', '輸出', '輸出', '補師', '自由'];
+          <div className="mt-5 grid gap-4" style={{ gridTemplateColumns: `repeat(${partyCount}, minmax(0, 1fr))` }}>
+            {Array.from({ length: partyCount }, (_, index) => index + 1).map((partyNo) => {
+              const members = displayedMembers.filter((m) => Number(m.party) === partyNo);
+              const missing = viewListMode ? 0 : Math.max(0, 6 - members.length);
+              const emptyRoles = ['打手', '打手', '控時', '火', '煙霧機', '輔助'];
               return (
                 <div key={partyNo} className="rounded-3xl border border-orange-100 bg-gradient-to-br from-orange-50/75 to-white p-3">
                   <div className="mb-3 flex items-center justify-between px-1">
@@ -400,7 +458,26 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
                     <span className="text-xs font-black text-slate-400">{members.length}/6</span>
                   </div>
                   <div className="grid gap-2">
-                    {members.map((m) => <MemberRow key={m.id} member={m} onStatusChange={onStatusChange} onRemove={onRemove} canManage={isLeaderUnlocked} />)}
+                    {members.map((m) => (
+                      <div
+                        key={m.id}
+                        draggable={isLeaderUnlocked && !viewListMode}
+                        onDragStart={() => setDraggingMemberId(m.id)}
+                        onDragOver={(event) => {
+                          if (isLeaderUnlocked && !viewListMode && draggingMemberId) event.preventDefault();
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          moveMemberWithinParty(m);
+                          setDraggingMemberId(null);
+                        }}
+                        onDragEnd={() => setDraggingMemberId(null)}
+                        className={classNames(isLeaderUnlocked && !viewListMode ? 'cursor-grab active:cursor-grabbing' : '')}
+                        title={isLeaderUnlocked && !viewListMode ? '拖曳可調整同隊名單先後順序' : undefined}
+                      >
+                        <MemberRow member={m} onStatusChange={onStatusChange} onRemove={onRemove} canManage={isLeaderUnlocked} />
+                      </div>
+                    ))}
                     {Array.from({ length: Math.min(missing, 6) }).map((_, i) => <EmptySlot key={i} role={emptyRoles[i] ?? '自由'} />)}
                   </div>
                 </div>
@@ -412,7 +489,7 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
             <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />已確認</span>
             <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" />待確認</span>
             <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-sky-500" />候補</span>
-            <span className="ml-auto text-slate-400">拖曳成員調整隊伍順序可留作下一階段功能</span>
+            <span className="ml-auto text-slate-400">{viewListMode ? '名單模式只列出已確認成員' : isLeaderUnlocked ? '可拖曳同隊成員調整先後順序（排序保存於目前瀏覽器）' : '團長模式解鎖後可拖曳調整同隊名單順序'}</span>
           </div>
         </section>
       </section>

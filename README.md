@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-V30
+# Maple Raid Board — TSN UI-V31
 
-> 版本基準：UI-V30  
+> 版本基準：UI-V31  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,30 +72,39 @@
 
 ---
 
-## 3. 目前 UI-V30 主要變更
+## 3. 目前 UI-V31 主要變更
 
-UI-V30 是以 UI-V29 為基礎，修正：
+UI-V31 是以 UI-V30 為基礎，新增與調整：
 
 ```text
-1. 修正首頁突襲場次狀態分類空白問題
-   - UI-V29 使用了不存在的 raidStatus.status 欄位
-   - UI-V30 改為使用 getRaidStatusMeta(group).effectiveStatus
-   - 場次會正確依照 open / closed / finished 分類顯示
+1. 我要報名的角色定位改為：
+   - 打手
+   - 控時
+   - 火
+   - 煙霧機
+   - 輔助
 
-2. 分類互斥顯示仍保留
-   - 招募中的突襲場次只會出現在「招募中」
-   - 招募截止 / 額滿的突襲場次只會出現在「招募截止」
-   - 已結束 / 已過開團時間的突襲場次只會出現在「已結束」
+2. 楓突襲隊伍配置會依報名上限自動調整隊數
+   - 1～6 人：1 隊
+   - 7～12 人：2 隊
+   - 13～18 人：3 隊
 
-3. NORMAL / HARD 難度篩選仍保留
-   - 可和狀態分類同時使用
+3. 楓突襲隊伍名單支援拖曳排序
+   - 團長模式解鎖後可拖曳同隊成員
+   - 可調整該隊名單先後順序
+   - 排序保存於目前瀏覽器 localStorage
 
-4. 頁首版本顯示
-   - TSN UI-V30
+4. 查看名單模式
+   - 只列出已確認的人
+   - 不顯示待確認、候補、請假
+   - 可切回隊伍配置模式
+
+5. 頁首版本顯示
+   - TSN UI-V31
 ```
 
-UI-V30 **沒有修改 Supabase schema**。  
-如果已經部署過 UI-V25 或之後版本並已重跑 SQL，升級 UI-V30 不需要重新跑 SQL。
+UI-V31 **沒有修改 Supabase schema**。  
+如果已經部署過 UI-V25 或之後版本並已重跑 SQL，升級 UI-V31 不需要重新跑 SQL。
 
 ---
 
@@ -162,7 +171,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v30"
+git commit -m "deploy ui v31"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -172,7 +181,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v30"
+git commit -m "deploy ui v31"
 git push
 ```
 
@@ -613,11 +622,43 @@ Logo 改為楓葉 SVG
 ```text
 首頁內容也強制左右欄
 小螢幕改為橫向捲動
-目前最新版本：UI-V28
 ```
 
----
+### UI-V28
 
+```text
+右上方重新整理按鈕改成重新整理 / 檢查新場次
+重新讀取 Supabase 突襲場次資料
+可顯示是否有新突襲場次
+發現新場次時會提示數量與名稱，並自動選取第一個新場次
+```
+
+### UI-V29
+
+```text
+首頁突襲場次新增招募中 / 招募截止 / 已結束分類
+招募截止的突襲場次只出現在招募截止分類
+已結束的突襲場次只出現在已結束分類
+招募中的突襲場次只出現在招募中分類
+```
+
+### UI-V30
+
+```text
+修正 UI-V29 分類判斷使用錯誤欄位造成場次不顯示
+改用 effectiveStatus 作為狀態分類 key
+招募中 / 招募截止 / 已結束分類可正常互斥顯示
+```
+
+### UI-V31
+
+```text
+我要報名角色定位改為打手 / 控時 / 火 / 煙霧機 / 輔助
+隊伍配置依報名上限自動調整隊伍數
+楓突襲隊伍名單可拖曳調整同隊先後順序
+查看名單模式只列出已確認的人
+目前最新版本
+```
 ## 13. 注意事項
 
 ```text
@@ -664,7 +705,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v30"
+git commit -m "deploy ui v31"
 git push
 ```
 
@@ -698,5 +739,14 @@ git push -u origin main --force
 修正 UI-V29 分類判斷使用錯誤欄位造成場次不顯示
 改用 effectiveStatus 作為狀態分類 key
 招募中 / 招募截止 / 已結束分類可正常互斥顯示
+```
+
+### UI-V31
+
+```text
+我要報名角色定位改為打手 / 控時 / 火 / 煙霧機 / 輔助
+隊伍配置依報名上限自動調整隊伍數
+楓突襲隊伍名單可拖曳調整同隊先後順序
+查看名單模式只列出已確認的人
 目前最新版本
 ```

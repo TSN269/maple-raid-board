@@ -24,7 +24,7 @@ export const bossOptions = [
   '公會自訂團',
 ];
 
-export const roleOptions = ['主坦', '副坦', '輸出', '補師', '主輸出', '副輸出', '輔助', '綁王/控場', '隊長', '替補'];
+export const roleOptions = ['打手', '控時', '火', '煙霧機', '輔助'];
 
 export const statusOptions: MemberStatus[] = ['待確認', '已確認', '候補', '請假'];
 

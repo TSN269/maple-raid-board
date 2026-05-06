@@ -11,11 +11,16 @@ type Props = {
 };
 
 const roleButtons = [
-  { value: '主坦', icon: '🛡', label: '主坦', cls: 'border-slate-200 bg-slate-50 text-slate-700' },
-  { value: '副坦', icon: '🛡', label: '副坦', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  { value: '輸出', icon: '⚔', label: '輸出', cls: 'border-rose-200 bg-rose-50 text-rose-700' },
-  { value: '補師', icon: '✚', label: '補師', cls: 'border-sky-200 bg-sky-50 text-sky-700' },
+  { value: '打手', icon: '⚔', label: '打手', cls: 'border-rose-200 bg-rose-50 text-rose-700' },
+  { value: '控時', icon: '⏱', label: '控時', cls: 'border-violet-200 bg-violet-50 text-violet-700' },
+  { value: '火', icon: '🔥', label: '火', cls: 'border-orange-200 bg-orange-50 text-orange-700' },
+  { value: '煙霧機', icon: '☁', label: '煙霧機', cls: 'border-slate-200 bg-slate-50 text-slate-700' },
+  { value: '輔助', icon: '✚', label: '輔助', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
 ];
+
+function getPartyCount(capacity: number) {
+  return Math.max(1, Math.ceil(Math.max(1, Number(capacity || 1)) / 6));
+}
 
 const namePattern = /^[A-Za-z0-9_\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]{2,16}$/;
 
@@ -55,7 +60,8 @@ export function SignupPanel({ group, onSignup, initialSignupCode = '' }: Props) 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((prev) => ({ ...prev, [key]: value }));
   const raidStatus = getRaidStatusMeta(group);
   const isFull = group.members.length >= group.capacity;
-  const selectedParty = form.party === 0 ? Math.max(1, Math.min(3, Math.ceil((group.members.length + 1) / 6))) : form.party;
+  const partyCount = getPartyCount(group.capacity);
+  const selectedParty = form.party === 0 ? Math.max(1, Math.min(partyCount, Math.ceil((group.members.length + 1) / 6))) : Math.max(1, Math.min(partyCount, form.party));
 
   const validationMessage = useMemo(() => {
     if (!raidStatus.canSignup || isFull) return `目前狀態：${raidStatus.label}，暫停報名。`;
@@ -134,7 +140,7 @@ export function SignupPanel({ group, onSignup, initialSignupCode = '' }: Props) 
         <Field label="希望加入的隊伍">
           <Select value={form.party} onChange={(e) => set('party', Number(e.target.value))}>
             <option value={0}>不指定（由系統暫分）</option>
-            {[1, 2, 3].map((n) => <option key={n} value={n}>隊伍 {n}</option>)}
+            {Array.from({ length: partyCount }, (_, index) => index + 1).map((n) => <option key={n} value={n}>隊伍 {n}</option>)}
           </Select>
         </Field>
 
