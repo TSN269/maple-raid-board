@@ -1,2 +1,2 @@
-UI-V33 SQLFIX1
-Fix schema.sql demo seed insert column/value mismatch after adding role_requirements.
+UI-V34
+Create raid capacity is a 1-18 dropdown. Home and Rojhu pages keep fixed columns but can scroll horizontally on mobile.

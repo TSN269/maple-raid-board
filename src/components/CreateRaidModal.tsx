@@ -108,7 +108,11 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
             <Input type="number" min="1" value={form.minLevel} onChange={(e) => set('minLevel', Number(e.target.value))} />
           </Field>
           <Field label="名額上限">
-            <Input type="number" min="1" max="18" value={form.capacity} onChange={(e) => set('capacity', Math.min(18, Math.max(1, Number(e.target.value))))} />
+            <Select value={form.capacity} onChange={(e) => set('capacity', Number(e.target.value))}>
+              {Array.from({ length: 18 }, (_, index) => index + 1).map((n) => (
+                <option key={n} value={n}>{n} 人</option>
+              ))}
+            </Select>
           </Field>
           <div className="md:col-span-2">
             <Field label="公告">

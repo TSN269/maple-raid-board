@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-V33
+# Maple Raid Board — TSN UI-V34
 
-> 版本基準：UI-V33  
+> 版本基準：UI-V34  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,29 +72,29 @@
 
 ---
 
-## 3. 目前 UI-V33 主要變更
+## 3. 目前 UI-V34 主要變更
 
-UI-V33 是以 UI-V32 為基礎，修正：
+UI-V34 是以 UI-V33 SQLFIX1 為基礎，新增與修正：
 
 ```text
-1. 隊伍角色定位需求會連動到楓突襲隊伍配置
-   - 團長在需求設定中修改定位後
-   - 下方隊伍配置的空位需求會同步顯示
-   - 不必等重新整理才看得到變化
+1. 新增突襲的名額上限改成下拉式
+   - 可選 1～18 人
+   - 避免手動輸入造成格式錯誤
 
-2. 我要報名只顯示需求角色定位
-   - 指定隊伍時，只顯示該隊需求定位
-   - 不指定隊伍時，只顯示全團需求定位
-   - 不再回退顯示全部定位選項
+2. 修正首頁手機瀏覽器無法左右滑動問題
+   - 首頁保留左右欄
+   - 手機窄螢幕可橫向捲動看到右欄
 
-3. 頁首版本顯示
-   - TSN UI-V33
+3. 修正羅茱工具手機瀏覽器無法左右滑動問題
+   - 羅茱工具保留左右欄
+   - 手機窄螢幕可橫向捲動看到右欄
+
+4. 頁首版本顯示
+   - TSN UI-V34
 ```
 
-UI-V33 **沒有新增 Supabase schema 欄位**，但仍依賴 UI-V32 的 `role_requirements` 欄位與 RPC。  
-如果尚未執行 UI-V32 的 `supabase/schema.sql`，需要先重跑 SQL。
-
-
+UI-V34 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V34 不需要重跑 SQL。
 
 ---
 
@@ -161,7 +161,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v33"
+git commit -m "deploy ui v34"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -171,7 +171,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v33"
+git commit -m "deploy ui v34"
 git push
 ```
 
@@ -720,7 +720,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v33"
+git commit -m "deploy ui v34"
 git push
 ```
 

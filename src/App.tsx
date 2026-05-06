@@ -772,8 +772,9 @@ function RojhuToolsPanel() {
   }
 
   return (
-    <section className="grid min-w-[1080px] grid-cols-[420px_minmax(620px,1fr)] gap-4 overflow-x-auto">
-      <div className="rounded-[2rem] border border-orange-100/80 bg-white/85 p-5 text-slate-900 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
+    <section className="w-full min-w-0 overflow-x-auto pb-2">
+      <div className="grid min-w-[1080px] grid-cols-[420px_minmax(620px,1fr)] gap-4">
+        <div className="rounded-[2rem] border border-orange-100/80 bg-white/85 p-5 text-slate-900 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
         <div className="rounded-[1.6rem] border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-5 shadow-inner">
           <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-gradient-to-br from-orange-100 via-white to-red-100 text-5xl shadow-[0_18px_40px_-24px_rgba(234,88,12,0.75)]">🍄</div>
           <h2 className="mt-5 bg-gradient-to-r from-orange-600 to-red-500 bg-clip-text text-center text-3xl font-black text-transparent">羅茱跳台協作工具</h2>
@@ -961,6 +962,7 @@ function RojhuToolsPanel() {
             })}
           </div>
         </div>
+      </div>
       </div>
     </section>
   );
@@ -1395,7 +1397,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V33</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V34</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
@@ -1451,8 +1453,9 @@ export default function App() {
           <NavigationRail activePanel={activePanel} onChange={setActivePanel} noticeCount={unreadNotificationCount} />
 
           {activePanel === 'home' ? (
-            <section className="grid min-w-[1080px] grid-cols-[420px_minmax(620px,1fr)] gap-4 overflow-x-auto">
-              <RaidList groups={groups} selectedId={selectedGroup?.id} onSelect={setSelectedId} query={query} setQuery={setQuery} />
+            <section className="w-full min-w-0 overflow-x-auto pb-2">
+              <div className="grid min-w-[1080px] grid-cols-[420px_minmax(620px,1fr)] gap-4">
+                <RaidList groups={groups} selectedId={selectedGroup?.id} onSelect={setSelectedId} query={query} setQuery={setQuery} />
               <section className="rounded-[2rem] border border-orange-100/80 bg-white/80 p-6 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
                 <div className="grid min-h-[calc(100vh-154px)] place-items-center rounded-[1.5rem] border border-dashed border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 p-8 text-center">
                   <div className="max-w-xl">
@@ -1475,6 +1478,7 @@ export default function App() {
                   </div>
                 </div>
               </section>
+              </div>
             </section>
           ) : activePanel === 'raid' ? (
             selectedGroup ? (
