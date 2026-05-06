@@ -674,6 +674,15 @@ role_requirements 欄位加入後，demo seed rows 也補上預設 jsonb
 on conflict update 同步更新 role_requirements
 ```
 
+### UI-V34
+
+```text
+新增突襲名額上限改為 1～18 下拉式選單
+修正首頁手機瀏覽器無法左右滑動導致看不到右欄
+修正羅茱工具手機瀏覽器無法左右滑動導致看不到右欄
+目前最新版本
+```
+
 ## 13. 注意事項
 
 ```text
