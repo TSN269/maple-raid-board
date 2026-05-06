@@ -13,14 +13,28 @@ type Props = {
 
 export function RaidList({ groups, selectedId, query, onSelect }: Props) {
   const [difficultyFilter, setDifficultyFilter] = useState<'ALL' | 'NORMAL' | 'HARD'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'open' | 'closed' | 'finished'>('open');
+
+  const statusCounts = useMemo(() => {
+    return groups.reduce(
+      (acc, group) => {
+        const meta = getRaidStatusMeta(group);
+        acc[meta.status] += 1;
+        return acc;
+      },
+      { open: 0, closed: 0, finished: 0 },
+    );
+  }, [groups]);
 
   const filtered = useMemo(() => groups.filter((g) => {
     const keyword = query.trim().toLowerCase();
     const difficulty = getBossDifficultyMeta(`${g.title} ${g.boss}`).label;
+    const raidStatus = getRaidStatusMeta(g).status;
     const queryMatched = !keyword || [g.title, g.boss, g.leader, g.notice].some((x) => String(x || '').toLowerCase().includes(keyword));
     const difficultyMatched = difficultyFilter === 'ALL' || difficulty === difficultyFilter;
-    return queryMatched && difficultyMatched;
-  }), [groups, query, difficultyFilter]);
+    const statusMatched = raidStatus === statusFilter;
+    return queryMatched && difficultyMatched && statusMatched;
+  }), [groups, query, difficultyFilter, statusFilter]);
 
   return (
     <aside className="rounded-[2rem] border border-orange-100/80 bg-white/75 p-4 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl lg:sticky lg:top-24 lg:h-[calc(100vh-112px)] lg:overflow-auto soft-scrollbar">
@@ -30,6 +44,35 @@ export function RaidList({ groups, selectedId, query, onSelect }: Props) {
           <p className="text-xs font-semibold text-slate-400">選一團查看與報名</p>
         </div>
         <span className="grid h-7 min-w-7 place-items-center rounded-full bg-slate-100 px-2 text-xs font-black text-slate-500">{groups.length}</span>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2 px-1">
+        {([
+          { value: 'open', label: '招募中', tone: 'emerald', count: statusCounts.open },
+          { value: 'closed', label: '招募截止', tone: 'amber', count: statusCounts.closed },
+          { value: 'finished', label: '已結束', tone: 'slate', count: statusCounts.finished },
+        ] as const).map((item) => {
+          const active = statusFilter === item.value;
+          return (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => setStatusFilter(item.value)}
+              className={classNames(
+                'rounded-full px-3 py-1.5 text-xs font-black ring-1 transition',
+                active
+                  ? item.tone === 'emerald'
+                    ? 'bg-emerald-500 text-white ring-emerald-300'
+                    : item.tone === 'amber'
+                      ? 'bg-amber-500 text-white ring-amber-300'
+                      : 'bg-slate-700 text-white ring-slate-400'
+                  : 'bg-white text-slate-500 ring-orange-100 hover:bg-orange-50 hover:text-orange-700',
+              )}
+            >
+              {item.label} <span className="ml-1 opacity-80">{item.count}</span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2 px-1">
@@ -116,7 +159,7 @@ export function RaidList({ groups, selectedId, query, onSelect }: Props) {
         })}
 
         {filtered.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-orange-200 bg-orange-50/70 p-6 text-center text-sm font-semibold text-orange-700">找不到符合搜尋或難度篩選的場次</div>
+          <div className="rounded-3xl border border-dashed border-orange-200 bg-orange-50/70 p-6 text-center text-sm font-semibold text-orange-700">此分類下沒有符合搜尋或難度篩選的場次</div>
         ) : null}
       </div>
     </aside>

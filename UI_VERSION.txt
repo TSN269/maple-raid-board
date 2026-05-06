@@ -1,2 +1,2 @@
-UI-V28
-Top-right refresh button now reloads raid groups and reports whether new raid sessions exist.
+UI-V29
+Home raid list has mutually exclusive status categories: open, closed, finished.

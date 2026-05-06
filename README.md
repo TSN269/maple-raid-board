@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-V28
+# Maple Raid Board — TSN UI-V29
 
-> 版本基準：UI-V28  
+> 版本基準：UI-V29  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,24 +72,32 @@
 
 ---
 
-## 3. 目前 UI-V28 主要變更
+## 3. 目前 UI-V29 主要變更
 
-UI-V28 是以 UI-V27 為基礎，新增：
+UI-V29 是以 UI-V28 為基礎，新增：
 
 ```text
-1. 右上方「重新整理」按鈕改為「重新整理 / 檢查新場次」
-   - 點擊後會重新讀取 Supabase 突襲場次資料
-   - 會比對目前畫面已有場次 ID
-   - 若發現新的突襲場次，會顯示新場次數量與名稱
-   - 若沒有新場次，會顯示「目前沒有新突襲場次」
-   - 發現新場次時會自動選取第一個新場次並停留在首頁
+1. 首頁突襲場次清單新增狀態分類
+   - 招募中
+   - 招募截止
+   - 已結束
 
-2. 頁首版本顯示
-   - TSN UI-V28
+2. 分類互斥顯示
+   - 招募截止的突襲場次只會出現在「招募截止」
+   - 已結束的突襲場次只會出現在「已結束」
+   - 招募中的突襲場次只會出現在「招募中」
+
+3. 難度篩選仍保留
+   - NORMAL
+   - HARD
+   - 可與狀態分類同時使用
+
+4. 頁首版本顯示
+   - TSN UI-V29
 ```
 
-UI-V28 **沒有修改 Supabase schema**。  
-如果已經部署過 UI-V25 或之後版本並已重跑 SQL，升級 UI-V28 不需要重新跑 SQL。
+UI-V29 **沒有修改 Supabase schema**。  
+如果已經部署過 UI-V25 或之後版本並已重跑 SQL，升級 UI-V29 不需要重新跑 SQL。
 
 ---
 
@@ -156,7 +164,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v28"
+git commit -m "deploy ui v29"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -166,7 +174,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v28"
+git commit -m "deploy ui v29"
 git push
 ```
 
@@ -658,7 +666,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v28"
+git commit -m "deploy ui v29"
 git push
 ```
 
@@ -675,5 +683,14 @@ git push -u origin main --force
 重新讀取 Supabase 突襲場次資料
 可顯示是否有新突襲場次
 發現新場次時會提示數量與名稱，並自動選取第一個新場次
+```
+
+### UI-V29
+
+```text
+首頁突襲場次新增招募中 / 招募截止 / 已結束分類
+招募截止的突襲場次只出現在招募截止分類
+已結束的突襲場次只出現在已結束分類
+招募中的突襲場次只出現在招募中分類
 目前最新版本
 ```
