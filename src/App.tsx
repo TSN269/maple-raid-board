@@ -1352,7 +1352,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V26</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V27</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
@@ -1402,7 +1402,7 @@ export default function App() {
           <NavigationRail activePanel={activePanel} onChange={setActivePanel} noticeCount={unreadNotificationCount} />
 
           {activePanel === 'home' ? (
-            <div className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
+            <section className="grid min-w-[1080px] grid-cols-[420px_minmax(620px,1fr)] gap-4 overflow-x-auto">
               <RaidList groups={groups} selectedId={selectedGroup?.id} onSelect={setSelectedId} query={query} setQuery={setQuery} />
               <section className="rounded-[2rem] border border-orange-100/80 bg-white/80 p-6 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
                 <div className="grid min-h-[calc(100vh-154px)] place-items-center rounded-[1.5rem] border border-dashed border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 p-8 text-center">
@@ -1426,7 +1426,7 @@ export default function App() {
                   </div>
                 </div>
               </section>
-            </div>
+            </section>
           ) : activePanel === 'raid' ? (
             selectedGroup ? (
               <RaidDetail

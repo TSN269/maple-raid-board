@@ -1,2 +1,2 @@
-UI-V26
-Rojhu: my path hides layer prefixes, last path auto-saves current selections, and layout is forced left/right.
+UI-V27
+Home panel is forced into left/right columns with horizontal scrolling on narrow screens.
