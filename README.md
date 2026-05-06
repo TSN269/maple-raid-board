@@ -666,6 +666,14 @@ Logo 改為楓葉 SVG
 報名頁只顯示需求內的角色定位，不再回退顯示全部定位
 目前最新版本
 ```
+### UI-V33 SQLFIX1
+
+```text
+修正 supabase/schema.sql demo seed insert 欄位數不一致
+role_requirements 欄位加入後，demo seed rows 也補上預設 jsonb
+on conflict update 同步更新 role_requirements
+```
+
 ## 13. 注意事項
 
 ```text

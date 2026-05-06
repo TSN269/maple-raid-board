@@ -1,2 +1,2 @@
-UI-V33
-Fix role requirements link to team configuration and signup role option visibility.
+UI-V33 SQLFIX1
+Fix schema.sql demo seed insert column/value mismatch after adding role_requirements.

@@ -596,9 +596,9 @@ end $$;
 -- Demo signup invite code: raid2026
 insert into public.raid_groups (id, title, boss, raid_date, raid_time, leader, min_level, capacity, status, notice, leader_code_hash, signup_code_hash, role_requirements)
 values
-  ('demo-zakum-soon', '炎魔固定團 - 今晚 22:30', '殘暴炎魔 Zakum｜HARD', current_date + 1, '22:30', 'Cocoa', 90, 18, 'open', '請提前 10 分鐘到門口集合。缺萬能、聖水、眼藥水請先補。', crypt('demo123', gen_salt('bf')), crypt('raid2026', gen_salt('bf'))),
-  ('demo-horntail-weekend', '龍王拓荒團 - 週末', '闇黑龍王 Horntail｜HARD', current_date + 3, '21:00', 'Tyok', 120, 18, 'open', '拓荒團，請確認命中、藥水與復活規則。未達門檻可先排候補。', crypt('demo123', gen_salt('bf')), crypt('raid2026', gen_salt('bf'))),
-  ('demo-papulatus-casual', '鐘王休閒團 - 缺 3', '鐘王 Papulatus｜NORMAL', current_date + 1, '23:00', 'Momo', 100, 12, 'open', '輕鬆打，報名後請留職業與等級。', crypt('demo123', gen_salt('bf')), crypt('raid2026', gen_salt('bf')))
+  ('demo-zakum-soon', '炎魔固定團 - 今晚 22:30', '殘暴炎魔 Zakum｜HARD', current_date + 1, '22:30', 'Cocoa', 90, 18, 'open', '請提前 10 分鐘到門口集合。缺萬能、聖水、眼藥水請先補。', crypt('demo123', gen_salt('bf')), crypt('raid2026', gen_salt('bf')), '{"1":["打手","打手","控時","火","煙霧機","輔助"],"2":["打手","打手","控時","火","煙霧機","輔助"],"3":["打手","打手","控時","火","煙霧機","輔助"]}'::jsonb),
+  ('demo-horntail-weekend', '龍王拓荒團 - 週末', '闇黑龍王 Horntail｜HARD', current_date + 3, '21:00', 'Tyok', 120, 18, 'open', '拓荒團，請確認命中、藥水與復活規則。未達門檻可先排候補。', crypt('demo123', gen_salt('bf')), crypt('raid2026', gen_salt('bf')), '{"1":["打手","打手","控時","火","煙霧機","輔助"],"2":["打手","打手","控時","火","煙霧機","輔助"],"3":["打手","打手","控時","火","煙霧機","輔助"]}'::jsonb),
+  ('demo-papulatus-casual', '鐘王休閒團 - 缺 3', '鐘王 Papulatus｜NORMAL', current_date + 1, '23:00', 'Momo', 100, 12, 'open', '輕鬆打，報名後請留職業與等級。', crypt('demo123', gen_salt('bf')), crypt('raid2026', gen_salt('bf')), '{"1":["打手","打手","控時","火","煙霧機","輔助"],"2":["打手","打手","控時","火","煙霧機","輔助"],"3":["打手","打手","控時","火","煙霧機","輔助"]}'::jsonb)
 on conflict (id) do update set
   title = excluded.title,
   boss = excluded.boss,
@@ -610,7 +610,8 @@ on conflict (id) do update set
   status = excluded.status,
   notice = excluded.notice,
   leader_code_hash = excluded.leader_code_hash,
-  signup_code_hash = excluded.signup_code_hash;
+  signup_code_hash = excluded.signup_code_hash,
+  role_requirements = excluded.role_requirements;
 
 delete from public.raid_members where group_id in ('demo-zakum-soon', 'demo-horntail-weekend', 'demo-papulatus-casual');
 
