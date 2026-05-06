@@ -131,6 +131,21 @@ function saveNotificationSnapshot(snapshot: NotificationSnapshot) {
   localStorage.setItem(NOTIFICATION_SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
 }
 
+
+function MapleLeafLogo() {
+  return (
+    <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-orange-500 via-red-500 to-amber-500 text-white shadow-lg shadow-orange-500/20 ring-1 ring-orange-200/60">
+      <svg viewBox="0 0 64 64" className="h-8 w-8 drop-shadow" aria-label="maple leaf logo" role="img">
+        <path
+          fill="currentColor"
+          d="M32 5l4.5 13.2 8.8-8.4-1.7 13.1 12.9-2.7-8.1 10.4 10.9 5.2-12.8 3 5.2 10.8-11.7-5.5-2.7 14.9-5.3-12.9-5.3 12.9-2.7-14.9-11.7 5.5 5.2-10.8-12.8-3 10.9-5.2-8.1-10.4 12.9 2.7-1.7-13.1 8.8 8.4L32 5z"
+        />
+        <path fill="rgba(255,255,255,0.45)" d="M32 12l2.4 9.5L32 39.8l-2.4-18.3L32 12z" />
+      </svg>
+    </div>
+  );
+}
+
 function statusLabel(status: RaidStatus | MemberStatus) {
   const map: Record<string, string> = {
     open: '招募中',
@@ -144,7 +159,7 @@ function statusLabel(status: RaidStatus | MemberStatus) {
   return map[status] || status;
 }
 
-type ActivePanel = 'home' | 'raid' | 'signup' | 'favorite' | 'notice' | 'settings';
+type ActivePanel = 'home' | 'raid' | 'signup' | 'favorite' | 'notice' | 'rojhuTools' | 'settings';
 
 function NavigationRail({ activePanel, onChange, noticeCount }: { activePanel: ActivePanel; onChange: (panel: ActivePanel) => void; noticeCount: number }) {
   const items: Array<{ icon: string; label: string; panel: ActivePanel; badge?: string; helper?: string }> = [
@@ -153,7 +168,8 @@ function NavigationRail({ activePanel, onChange, noticeCount }: { activePanel: A
     { icon: '✎', label: '我要報名', panel: 'signup', helper: '報名表單' },
     { icon: '☆', label: '收藏', panel: 'favorite', helper: '下一階段' },
     { icon: '●', label: '通知', panel: 'notice', badge: noticeCount > 0 ? String(Math.min(99, noticeCount)) : undefined, helper: '開團提醒 / 狀態變更 / 候補轉正' },
-    { icon: '⚙', label: '設定', panel: 'settings', helper: '下一階段' },
+    { icon: '🧰', label: '羅茱工具', panel: 'rojhuTools', helper: '常用連結與快速操作' },
+    { icon: '⚙', label: '設定', panel: 'settings', helper: '本機保存的團管理碼 / 邀請碼 / 邀請連結' },
   ];
 
   return (
@@ -194,6 +210,136 @@ function PlaceholderPanel({ title, description }: { title: string; description: 
     </aside>
   );
 }
+
+function RojhuToolsPanel({ selectedGroup, selectedSignupCode, onGoSettings }: { selectedGroup?: RaidGroup; selectedSignupCode: string; onGoSettings: () => void }) {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  async function copyText(label: string, value: string) {
+    await navigator.clipboard.writeText(value);
+    setCopied(label);
+    window.setTimeout(() => setCopied(null), 1600);
+  }
+
+  const cleanLink = selectedGroup ? buildGroupShareUrl(selectedGroup.id) : '';
+  const inviteLink = selectedGroup ? buildGroupShareUrl(selectedGroup.id, selectedSignupCode) : '';
+
+  return (
+    <section className="rounded-[2rem] border border-orange-100/80 bg-white/80 p-6 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">Rojhu Tools</div>
+          <h2 className="mt-2 text-2xl font-black text-slate-950">羅茱工具</h2>
+          <p className="mt-2 max-w-2xl text-sm font-semibold leading-7 text-slate-500">放常用的團務工具與連結複製。這裡不會修改資料庫，只使用目前瀏覽器已保存的團資料。</p>
+        </div>
+        <Button variant="secondary" onClick={onGoSettings}>查看設定 / 邀請碼</Button>
+      </div>
+
+      {selectedGroup ? (
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-3xl border border-orange-100 bg-orange-50/70 p-4">
+            <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">目前選取團</div>
+            <div className="mt-2 text-lg font-black text-slate-950">{selectedGroup.title}</div>
+            <div className="mt-1 text-sm font-semibold text-slate-500">{getBossDisplayName(selectedGroup.boss)} · {selectedGroup.raidDate} {selectedGroup.raidTime}</div>
+          </div>
+          <div className="rounded-3xl border border-orange-100 bg-white/80 p-4">
+            <div className="text-sm font-black text-slate-950">快速複製</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => copyText('團連結', cleanLink)}>{copied === '團連結' ? '已複製' : '複製團連結'}</Button>
+              <Button variant="secondary" disabled={!selectedSignupCode} onClick={() => copyText('邀請連結', inviteLink)}>{copied === '邀請連結' ? '已複製' : '複製帶邀請碼連結'}</Button>
+            </div>
+            {!selectedSignupCode ? <p className="mt-3 text-xs font-semibold text-amber-700">此瀏覽器尚未保存這團的報名邀請碼。請到「設定」或「楓突襲」頁補上。</p> : null}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-6 rounded-3xl border border-dashed border-orange-200 bg-orange-50 p-8 text-center text-sm font-semibold text-slate-500">尚未選取任何突襲場次。</div>
+      )}
+    </section>
+  );
+}
+
+function SettingsPanel({ groups, leaderCodes, signupCodes, onForgetLeaderCode, onForgetSignupCode }: { groups: RaidGroup[]; leaderCodes: Record<string, string>; signupCodes: Record<string, string>; onForgetLeaderCode: (groupId: string) => void; onForgetSignupCode: (groupId: string) => void }) {
+  const [copied, setCopied] = useState<string | null>(null);
+  const savedGroupIds = Array.from(new Set([...Object.keys(leaderCodes), ...Object.keys(signupCodes)]));
+  const rows = savedGroupIds.map((groupId) => ({ groupId, group: groups.find((item) => item.id === groupId), leaderCode: leaderCodes[groupId] || '', signupCode: signupCodes[groupId] || '' }));
+
+  async function copy(label: string, text: string) {
+    await navigator.clipboard.writeText(text);
+    setCopied(label);
+    window.setTimeout(() => setCopied(null), 1600);
+  }
+
+  return (
+    <section className="rounded-[2rem] border border-orange-100/80 bg-white/80 p-6 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">Local Settings</div>
+          <h2 className="mt-2 text-2xl font-black text-slate-950">設定</h2>
+          <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">這裡顯示「目前這台瀏覽器」保存的團長管理碼、團邀請碼與帶邀請碼的團連結。這些明碼不會從 Supabase 反查；換裝置或清除瀏覽器資料後需要重新輸入。</p>
+        </div>
+        <Pill tone="orange">本機保存 {rows.length} 團</Pill>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="mt-6 rounded-3xl border border-dashed border-orange-200 bg-orange-50/70 p-8 text-center">
+          <div className="text-lg font-black text-slate-950">尚無本機保存的團管理資料</div>
+          <p className="mt-2 text-sm font-semibold text-slate-500">建立新團、輸入團長管理碼或儲存報名邀請碼後，會出現在這裡。</p>
+        </div>
+      ) : (
+        <div className="mt-6 grid gap-4">
+          {rows.map(({ groupId, group, leaderCode, signupCode }) => {
+            const inviteLink = buildGroupShareUrl(groupId, signupCode);
+            const cleanLink = buildGroupShareUrl(groupId);
+            return (
+              <div key={groupId} className="rounded-3xl border border-orange-100 bg-white/85 p-4 shadow-sm">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="truncate text-lg font-black text-slate-950">{group?.title || '未知團 / 已刪除團'}</h3>
+                      {group ? <Pill tone="slate">{getBossDisplayName(group.boss)}</Pill> : <Pill tone="red">資料庫找不到</Pill>}
+                    </div>
+                    <div className="mt-1 break-all text-xs font-semibold text-slate-400">Group ID：{groupId}</div>
+                    {group ? <div className="mt-1 text-sm font-semibold text-slate-500">{group.raidDate} {group.raidTime} · 團長：{group.leader}</div> : null}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="secondary" onClick={() => copy(`clean-${groupId}`, cleanLink)}>{copied === `clean-${groupId}` ? '已複製' : '複製一般團連結'}</Button>
+                    <Button variant="secondary" disabled={!signupCode} onClick={() => copy(`invite-${groupId}`, inviteLink)}>{copied === `invite-${groupId}` ? '已複製' : '複製帶邀請碼連結'}</Button>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                  <div className="rounded-2xl border border-orange-100 bg-orange-50/60 p-3">
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-orange-500">團長管理碼</div>
+                    <div className="mt-2 break-all rounded-xl bg-white px-3 py-2 text-sm font-mono font-bold text-slate-800">{leaderCode || '未保存'}</div>
+                    <div className="mt-2 flex gap-2">
+                      <Button variant="secondary" className="px-3 py-2 text-xs" disabled={!leaderCode} onClick={() => copy(`leader-${groupId}`, leaderCode)}>{copied === `leader-${groupId}` ? '已複製' : '複製'}</Button>
+                      <Button variant="ghost" className="px-3 py-2 text-xs" disabled={!leaderCode} onClick={() => onForgetLeaderCode(groupId)}>刪除本機保存</Button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-orange-100 bg-amber-50/60 p-3">
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-amber-600">團邀請碼</div>
+                    <div className="mt-2 break-all rounded-xl bg-white px-3 py-2 text-sm font-mono font-bold text-slate-800">{signupCode || '未保存'}</div>
+                    <div className="mt-2 flex gap-2">
+                      <Button variant="secondary" className="px-3 py-2 text-xs" disabled={!signupCode} onClick={() => copy(`signup-${groupId}`, signupCode)}>{copied === `signup-${groupId}` ? '已複製' : '複製'}</Button>
+                      <Button variant="ghost" className="px-3 py-2 text-xs" disabled={!signupCode} onClick={() => onForgetSignupCode(groupId)}>刪除本機保存</Button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-orange-100 bg-white p-3">
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">帶邀請碼團連結</div>
+                    <div className="mt-2 max-h-20 overflow-auto break-all rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">{signupCode ? inviteLink : '尚未保存團邀請碼，無法產生帶邀請碼連結'}</div>
+                    <Button variant="secondary" className="mt-2 px-3 py-2 text-xs" disabled={!signupCode} onClick={() => copy(`invite-link-${groupId}`, inviteLink)}>{copied === `invite-link-${groupId}` ? '已複製' : '複製邀請連結'}</Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function App() {
   const [groups, setGroups] = useState<RaidGroup[]>([]);
   const [selectedId, setSelectedId] = useState(getInitialGroupId);
@@ -493,11 +639,11 @@ export default function App() {
       <header className="sticky top-0 z-30 border-b border-orange-100/80 bg-white/85 shadow-sm backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1560px] flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 text-sm font-black tracking-tight text-white shadow-lg shadow-orange-500/20">TSN</div>
+            <MapleLeafLogo />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V16</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V17</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
@@ -624,8 +770,16 @@ export default function App() {
               onMarkAllRead={markAllNotificationsRead}
               onClearLocalEvents={clearLocalNotificationEvents}
             />
+          ) : activePanel === 'rojhuTools' ? (
+            <RojhuToolsPanel selectedGroup={selectedGroup} selectedSignupCode={selectedSignupCode} onGoSettings={() => setActivePanel('settings')} />
           ) : (
-            <PlaceholderPanel title="設定" description="下一階段可做成公會名稱、管理碼、權限與顯示偏好。" />
+            <SettingsPanel
+              groups={groups}
+              leaderCodes={leaderCodes}
+              signupCodes={signupCodes}
+              onForgetLeaderCode={forgetLeaderCode}
+              onForgetSignupCode={forgetSignupCode}
+            />
           )}
         </div>
       )}
