@@ -1,4 +1,4 @@
--- Maple Raid Board Supabase schema / UI-V13 SQLFIX2
+-- Maple Raid Board Supabase schema / UI-V32
 -- Permission model:
 --   - anonymous/general players: read raid data and submit signup through RPC only
 --   - raid leader: manage one raid by leader management code through RPC functions
@@ -26,6 +26,7 @@ create table if not exists public.raid_groups (
 
 alter table public.raid_groups add column if not exists leader_code_hash text;
 alter table public.raid_groups add column if not exists signup_code_hash text;
+alter table public.raid_groups add column if not exists role_requirements jsonb not null default '{"1":["打手","打手","控時","火","煙霧機","輔助"],"2":["打手","打手","控時","火","煙霧機","輔助"],"3":["打手","打手","控時","火","煙霧機","輔助"]}'::jsonb;
 
 update public.raid_groups
 set leader_code_hash = crypt('demo123', gen_salt('bf'))
@@ -253,7 +254,7 @@ begin
   end if;
 
   insert into public.raid_groups (
-    id, title, boss, raid_date, raid_time, leader, min_level, capacity, status, notice, leader_code_hash, signup_code_hash
+    id, title, boss, raid_date, raid_time, leader, min_level, capacity, status, notice, leader_code_hash, signup_code_hash, role_requirements
   ) values (
     p_id,
     btrim(p_title),
@@ -266,7 +267,8 @@ begin
     case when p_status in ('open', 'closed', 'finished') then p_status else 'open' end,
     left(coalesce(p_notice, ''), 300),
     crypt(btrim(p_leader_code), gen_salt('bf')),
-    crypt(btrim(p_signup_code), gen_salt('bf'))
+    crypt(btrim(p_signup_code), gen_salt('bf')),
+    '{"1":["打手","打手","控時","火","煙霧機","輔助"],"2":["打手","打手","控時","火","煙霧機","輔助"],"3":["打手","打手","控時","火","煙霧機","輔助"]}'::jsonb
   );
 end;
 $$;
@@ -348,6 +350,17 @@ begin
     raise exception '等級需介於 1 到 300';
   end if;
 
+  if not exists (
+    select 1
+    from public.raid_groups g,
+      jsonb_each(g.role_requirements) as party_roles(party_no, roles),
+      jsonb_array_elements_text(party_roles.roles) as allowed(role)
+    where g.id = p_group_id
+      and allowed.role = v_role
+  ) then
+    raise exception '此角色定位不符合目前團隊需求';
+  end if;
+
   if exists (
     select 1 from public.raid_members
     where group_id = p_group_id
@@ -367,6 +380,56 @@ begin
     '待確認',
     v_note
   );
+end;
+$$;
+
+
+create or replace function public.update_raid_role_requirements_with_code(p_group_id text, p_role_requirements jsonb, p_leader_code text)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_allowed text[] := array['打手','控時','火','煙霧機','輔助'];
+  v_party_count integer;
+  v_key text;
+  v_value jsonb;
+  v_role text;
+begin
+  if not public.is_raid_leader(p_group_id, p_leader_code) then
+    raise exception '團長管理碼錯誤，無法修改角色定位需求';
+  end if;
+
+  if p_role_requirements is null or jsonb_typeof(p_role_requirements) <> 'object' then
+    raise exception '角色定位需求格式不正確';
+  end if;
+
+  select greatest(1, ceil(least(greatest(coalesce(capacity, 18), 1), 18)::numeric / 6)::integer)
+  into v_party_count
+  from public.raid_groups
+  where id = p_group_id;
+
+  for v_key, v_value in select key, value from jsonb_each(p_role_requirements) loop
+    if v_key !~ '^[1-9][0-9]*$' or v_key::integer < 1 or v_key::integer > v_party_count then
+      raise exception '隊伍需求超出此團隊伍數';
+    end if;
+
+    if jsonb_typeof(v_value) <> 'array' or jsonb_array_length(v_value) > 6 then
+      raise exception '每隊最多設定 6 個定位需求';
+    end if;
+
+    for v_role in select jsonb_array_elements_text(v_value) loop
+      if not (v_role = any(v_allowed)) then
+        raise exception '不支援的角色定位需求：%', v_role;
+      end if;
+    end loop;
+  end loop;
+
+  update public.raid_groups
+  set role_requirements = p_role_requirements,
+      updated_at = now()
+  where id = p_group_id;
 end;
 $$;
 
@@ -531,7 +594,7 @@ end $$;
 -- Demo seed.
 -- Demo leader management code: demo123
 -- Demo signup invite code: raid2026
-insert into public.raid_groups (id, title, boss, raid_date, raid_time, leader, min_level, capacity, status, notice, leader_code_hash, signup_code_hash)
+insert into public.raid_groups (id, title, boss, raid_date, raid_time, leader, min_level, capacity, status, notice, leader_code_hash, signup_code_hash, role_requirements)
 values
   ('demo-zakum-soon', '炎魔固定團 - 今晚 22:30', '殘暴炎魔 Zakum｜HARD', current_date + 1, '22:30', 'Cocoa', 90, 18, 'open', '請提前 10 分鐘到門口集合。缺萬能、聖水、眼藥水請先補。', crypt('demo123', gen_salt('bf')), crypt('raid2026', gen_salt('bf'))),
   ('demo-horntail-weekend', '龍王拓荒團 - 週末', '闇黑龍王 Horntail｜HARD', current_date + 3, '21:00', 'Tyok', 120, 18, 'open', '拓荒團，請確認命中、藥水與復活規則。未達門檻可先排候補。', crypt('demo123', gen_salt('bf')), crypt('raid2026', gen_salt('bf'))),

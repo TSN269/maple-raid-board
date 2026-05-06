@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-V31
+# Maple Raid Board — TSN UI-V32
 
-> 版本基準：UI-V31  
+> 版本基準：UI-V32  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,39 +72,32 @@
 
 ---
 
-## 3. 目前 UI-V31 主要變更
+## 3. 目前 UI-V32 主要變更
 
-UI-V31 是以 UI-V30 為基礎，新增與調整：
+UI-V32 是以 UI-V31 為基礎，新增與調整：
 
 ```text
-1. 我要報名的角色定位改為：
-   - 打手
-   - 控時
-   - 火
-   - 煙霧機
-   - 輔助
+1. 楓突襲新增「隊伍角色定位需求」設定
+   - 團長模式解鎖後可設定每隊 6 格需求
+   - 可選：打手、控時、火、煙霧機、輔助
 
-2. 楓突襲隊伍配置會依報名上限自動調整隊數
-   - 1～6 人：1 隊
-   - 7～12 人：2 隊
-   - 13～18 人：3 隊
+2. 我要報名會連動定位需求
+   - 報名頁只顯示目前團長設定為需求的角色定位
+   - 若指定隊伍，只顯示該隊需求定位
+   - 若不指定隊伍，顯示全團需求定位
 
-3. 楓突襲隊伍名單支援拖曳排序
-   - 團長模式解鎖後可拖曳同隊成員
-   - 可調整該隊名單先後順序
-   - 排序保存於目前瀏覽器 localStorage
+3. 資料庫端同步驗證
+   - 新增 raid_groups.role_requirements
+   - 新增 update_raid_role_requirements_with_code RPC
+   - 報名時若角色定位不符合需求，資料庫會拒絕
 
-4. 查看名單模式
-   - 只列出已確認的人
-   - 不顯示待確認、候補、請假
-   - 可切回隊伍配置模式
-
-5. 頁首版本顯示
-   - TSN UI-V31
+4. 頁首版本顯示
+   - TSN UI-V32
 ```
 
-UI-V31 **沒有修改 Supabase schema**。  
-如果已經部署過 UI-V25 或之後版本並已重跑 SQL，升級 UI-V31 不需要重新跑 SQL。
+UI-V32 **有修改 Supabase schema / RPC**。  
+從 UI-V31 升級到 UI-V32 需要重新執行 `supabase/schema.sql`。
+
 
 ---
 
@@ -171,7 +164,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v31"
+git commit -m "deploy ui v32"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -181,7 +174,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v31"
+git commit -m "deploy ui v32"
 git push
 ```
 
@@ -657,6 +650,15 @@ Logo 改為楓葉 SVG
 隊伍配置依報名上限自動調整隊伍數
 楓突襲隊伍名單可拖曳調整同隊先後順序
 查看名單模式只列出已確認的人
+```
+
+### UI-V32
+
+```text
+楓突襲新增隊伍角色定位需求設定
+團長可設定每隊 6 格定位需求
+我要報名只顯示目前需求內的角色定位
+新增 Supabase role_requirements 欄位與 RPC 驗證
 目前最新版本
 ```
 ## 13. 注意事項
@@ -705,7 +707,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v31"
+git commit -m "deploy ui v32"
 git push
 ```
 
@@ -748,5 +750,14 @@ git push -u origin main --force
 隊伍配置依報名上限自動調整隊伍數
 楓突襲隊伍名單可拖曳調整同隊先後順序
 查看名單模式只列出已確認的人
+```
+
+### UI-V32
+
+```text
+楓突襲新增隊伍角色定位需求設定
+團長可設定每隊 6 格定位需求
+我要報名只顯示目前需求內的角色定位
+新增 Supabase role_requirements 欄位與 RPC 驗證
 目前最新版本
 ```

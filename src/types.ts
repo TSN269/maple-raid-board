@@ -1,5 +1,6 @@
 export type RaidStatus = 'open' | 'closed' | 'finished';
 export type MemberStatus = '待確認' | '已確認' | '候補' | '請假';
+export type RoleRequirementMap = Record<string, string[]>;
 
 export type RaidMember = {
   id: string;
@@ -26,6 +27,7 @@ export type RaidGroup = {
   capacity: number;
   status: RaidStatus;
   notice: string;
+  roleRequirements: RoleRequirementMap;
   createdAt: string;
   updatedAt: string;
   members: RaidMember[];
@@ -71,6 +73,7 @@ type RaidGroupsRow = {
   capacity: number;
   status: RaidStatus;
   notice: string;
+  role_requirements?: RoleRequirementMap;
   created_at: string;
   updated_at: string;
 };
@@ -86,6 +89,7 @@ type RaidGroupsInsert = {
   capacity?: number;
   status?: RaidStatus;
   notice?: string;
+  role_requirements?: RoleRequirementMap;
   created_at?: string;
   updated_at?: string;
 };

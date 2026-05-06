@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getBossArtMeta, getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta, getRaidStatusMeta } from '../data/bossArt';
-import { statusOptions } from '../data/options';
-import type { MemberStatus, RaidGroup, RaidMember, RaidStatus } from '../types';
+import { roleOptions, statusOptions } from '../data/options';
+import type { MemberStatus, RaidGroup, RaidMember, RaidStatus, RoleRequirementMap } from '../types';
 import { Button, Input, Pill, Select, classNames } from './ui';
 
 type Props = {
   group: RaidGroup;
   onStatusChange: (memberId: string, status: MemberStatus) => Promise<void>;
   onGroupStatusChange: (groupId: string, status: RaidStatus) => Promise<void>;
+  onRoleRequirementsChange: (groupId: string, requirements: RoleRequirementMap) => Promise<void>;
   onRemove: (memberId: string) => Promise<void>;
   onDelete: (groupId: string) => Promise<void>;
   isLeaderUnlocked: boolean;
@@ -75,6 +76,25 @@ function loadMemberOrder(): Record<string, string[]> {
 
 function saveMemberOrder(order: Record<string, string[]>) {
   localStorage.setItem(MEMBER_ORDER_STORAGE_KEY, JSON.stringify(order));
+}
+
+
+const DEFAULT_ROLE_REQUIREMENTS = ['打手', '打手', '控時', '火', '煙霧機', '輔助'];
+
+function normalizeRoleRequirements(group: RaidGroup): RoleRequirementMap {
+  const partyCount = getPartyCount(group.capacity);
+  const source = group.roleRequirements || {};
+  const result: RoleRequirementMap = {};
+
+  for (let partyNo = 1; partyNo <= partyCount; partyNo += 1) {
+    const key = String(partyNo);
+    const existing = Array.isArray(source[key]) ? source[key].map((role) => String(role || '').trim()).filter(Boolean).slice(0, 6) : [];
+    const slots = existing.length > 0 ? existing : DEFAULT_ROLE_REQUIREMENTS.slice();
+    while (slots.length < 6) slots.push('打手');
+    result[key] = slots.slice(0, 6);
+  }
+
+  return result;
 }
 
 function applyMemberOrder(groupId: string, members: RaidMember[], orderMap: Record<string, string[]>) {
@@ -244,13 +264,15 @@ function LeaderAccessPanel({ isUnlocked, onUnlock, onLock }: { isUnlocked: boole
   );
 }
 
-export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemove, onDelete, isLeaderUnlocked, onLeaderUnlock, onLeaderLock, signupCode = '', onSignupCodeSave, onSignupCodeForget }: Props) {
+export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRoleRequirementsChange, onRemove, onDelete, isLeaderUnlocked, onLeaderUnlock, onLeaderLock, signupCode = '', onSignupCodeSave, onSignupCodeForget }: Props) {
   const [copied, setCopied] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   const [signupCodeDraft, setSignupCodeDraft] = useState(signupCode);
   const [viewListMode, setViewListMode] = useState(false);
   const [draggingMemberId, setDraggingMemberId] = useState<string | null>(null);
   const [memberOrder, setMemberOrder] = useState<Record<string, string[]>>(() => loadMemberOrder());
+  const [requirementDraft, setRequirementDraft] = useState<RoleRequirementMap>(() => normalizeRoleRequirements(group));
+  const [savingRequirements, setSavingRequirements] = useState(false);
   const confirmed = group.members.filter((m) => m.status === '已確認').length;
   const pending = group.members.filter((m) => m.status === '待確認').length;
   const standby = group.members.filter((m) => m.status === '候補').length;
@@ -260,6 +282,7 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
   const bossVisual = getBossVisualMeta(bossText);
   const raidStatus = getRaidStatusMeta(group);
   const partyCount = getPartyCount(group.capacity);
+  const roleRequirements = useMemo(() => normalizeRoleRequirements(group), [group.id, group.capacity, group.roleRequirements]);
   const orderedMembers = useMemo(() => applyMemberOrder(group.id, group.members, memberOrder), [group.id, group.members, memberOrder]);
   const displayedMembers = useMemo(() => viewListMode ? orderedMembers.filter((member) => member.status === '已確認') : orderedMembers, [orderedMembers, viewListMode]);
 
@@ -286,6 +309,10 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
   useEffect(() => {
     setSignupCodeDraft(signupCode);
   }, [group.id, signupCode]);
+
+  useEffect(() => {
+    setRequirementDraft(roleRequirements);
+  }, [group.id, roleRequirements]);
 
   async function copyShareUrl() {
     await navigator.clipboard.writeText(shareUrl);
@@ -326,6 +353,25 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
       saveMemberOrder(next);
       return next;
     });
+  }
+
+  function updateRequirementSlot(partyNo: number, slotIndex: number, role: string) {
+    setRequirementDraft((prev) => {
+      const key = String(partyNo);
+      const slots = [...(prev[key] || DEFAULT_ROLE_REQUIREMENTS)];
+      while (slots.length < 6) slots.push('打手');
+      slots[slotIndex] = role;
+      return { ...prev, [key]: slots.slice(0, 6) };
+    });
+  }
+
+  async function saveRoleRequirements() {
+    setSavingRequirements(true);
+    try {
+      await onRoleRequirementsChange(group.id, requirementDraft);
+    } finally {
+      setSavingRequirements(false);
+    }
   }
 
   return (
@@ -415,6 +461,40 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
           </section>
         ) : null}
 
+        <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-46px_rgba(124,45,18,0.8)] backdrop-blur-xl">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h3 className="text-lg font-black text-slate-950">隊伍角色定位需求</h3>
+              <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">團長可設定每一隊 6 個位置的定位需求；玩家報名時只會看到目前需求內的角色定位。</p>
+            </div>
+            {isLeaderUnlocked ? <Button variant="secondary" disabled={savingRequirements} onClick={saveRoleRequirements}>{savingRequirements ? '儲存中' : '儲存需求設定'}</Button> : <Pill tone="slate">團長模式解鎖後可編輯</Pill>}
+          </div>
+          <div className="mt-4 grid gap-4" style={{ gridTemplateColumns: `repeat(${partyCount}, minmax(0, 1fr))` }}>
+            {Array.from({ length: partyCount }, (_, index) => index + 1).map((partyNo) => {
+              const slots = requirementDraft[String(partyNo)] || DEFAULT_ROLE_REQUIREMENTS;
+              return (
+                <div key={partyNo} className="rounded-3xl border border-orange-100 bg-orange-50/60 p-3">
+                  <div className="mb-3 flex items-center justify-between"><div className="font-black text-slate-950">隊伍 {partyNo}</div><div className="text-xs font-black text-slate-400">6 格需求</div></div>
+                  <div className="grid gap-2">
+                    {Array.from({ length: 6 }, (_, slotIndex) => (
+                      <div key={slotIndex} className="grid grid-cols-[44px_minmax(0,1fr)] items-center gap-2">
+                        <div className="text-xs font-black text-slate-400">#{slotIndex + 1}</div>
+                        {isLeaderUnlocked ? (
+                          <Select className="py-2 text-xs" value={slots[slotIndex] || '打手'} onChange={(event) => updateRequirementSlot(partyNo, slotIndex, event.target.value)}>
+                            {roleOptions.map((role) => <option key={role}>{role}</option>)}
+                          </Select>
+                        ) : (
+                          <span className={classNames('rounded-full px-3 py-2 text-xs font-black', roleAccent[slots[slotIndex]] ?? 'bg-slate-100 text-slate-600')}>{slots[slotIndex] || '打手'}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
         <GroupStatusPanel group={group} onGroupStatusChange={onGroupStatusChange} canManage={isLeaderUnlocked} />
 
         {group.notice ? (
@@ -450,13 +530,14 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRemov
             {Array.from({ length: partyCount }, (_, index) => index + 1).map((partyNo) => {
               const members = displayedMembers.filter((m) => Number(m.party) === partyNo);
               const missing = viewListMode ? 0 : Math.max(0, 6 - members.length);
-              const emptyRoles = ['打手', '打手', '控時', '火', '煙霧機', '輔助'];
+              const emptyRoles = roleRequirements[String(partyNo)] || DEFAULT_ROLE_REQUIREMENTS;
               return (
                 <div key={partyNo} className="rounded-3xl border border-orange-100 bg-gradient-to-br from-orange-50/75 to-white p-3">
                   <div className="mb-3 flex items-center justify-between px-1">
                     <h4 className="font-black text-slate-950">隊伍 {partyNo}</h4>
                     <span className="text-xs font-black text-slate-400">{members.length}/6</span>
                   </div>
+                  <div className="mb-3 flex flex-wrap gap-1 px-1">{(roleRequirements[String(partyNo)] || DEFAULT_ROLE_REQUIREMENTS).map((role, index) => <span key={`${role}-${index}`} className={classNames('rounded-full px-2 py-1 text-[10px] font-black', roleAccent[role] ?? 'bg-slate-100 text-slate-600')}>{role}</span>)}</div>
                   <div className="grid gap-2">
                     {members.map((m) => (
                       <div

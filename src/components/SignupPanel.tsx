@@ -22,6 +22,27 @@ function getPartyCount(capacity: number) {
   return Math.max(1, Math.ceil(Math.max(1, Number(capacity || 1)) / 6));
 }
 
+
+function uniqueRoles(roles: string[]) {
+  return Array.from(new Set(roles.map((role) => String(role || '').trim()).filter(Boolean)));
+}
+
+function getSignupRoleValues(group: RaidGroup, party: number) {
+  const requirements = group.roleRequirements || {};
+  const partyCount = getPartyCount(group.capacity);
+  const defaultRoles = roleButtons.map((role) => role.value);
+
+  if (party > 0) {
+    const roles = uniqueRoles(requirements[String(party)] || []);
+    return roles.length > 0 ? roles : defaultRoles;
+  }
+
+  const roles = uniqueRoles(
+    Array.from({ length: partyCount }, (_, index) => index + 1).flatMap((partyNo) => requirements[String(partyNo)] || []),
+  );
+  return roles.length > 0 ? roles : defaultRoles;
+}
+
 const namePattern = /^[A-Za-z0-9_\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]{2,16}$/;
 
 function getClientNonce() {
@@ -61,12 +82,22 @@ export function SignupPanel({ group, onSignup, initialSignupCode = '' }: Props) 
   const raidStatus = getRaidStatusMeta(group);
   const isFull = group.members.length >= group.capacity;
   const partyCount = getPartyCount(group.capacity);
+  const availableRoleValues = useMemo(() => getSignupRoleValues(group, Number(form.party || 0)), [group, form.party]);
+  const visibleRoleButtons = useMemo(() => roleButtons.filter((role) => availableRoleValues.includes(role.value)), [availableRoleValues]);
   const selectedParty = form.party === 0 ? Math.max(1, Math.min(partyCount, Math.ceil((group.members.length + 1) / 6))) : Math.max(1, Math.min(partyCount, form.party));
+
+  useEffect(() => {
+    if (availableRoleValues.length > 0 && !availableRoleValues.includes(form.role)) {
+      setForm((prev) => ({ ...prev, role: availableRoleValues[0] }));
+    }
+  }, [availableRoleValues, form.role]);
 
   const validationMessage = useMemo(() => {
     if (!raidStatus.canSignup || isFull) return `目前狀態：${raidStatus.label}，暫停報名。`;
     if (!form.signupCode.trim()) return '請輸入報名邀請碼。';
     if (form.signupCode.trim().length < 4) return '報名邀請碼至少 4 碼。';
+    if (availableRoleValues.length === 0) return '此團尚未設定可報名的角色定位。';
+    if (!availableRoleValues.includes(form.role)) return '此角色定位不在此團目前需求內。';
     if (!form.name.trim()) return '請輸入角色名稱。';
     if (!namePattern.test(form.name.trim())) return '角色名稱限 2～16 字，可用中文、日文、英文、數字與底線。';
     if (group.members.some((m) => m.name.trim().toLowerCase() === form.name.trim().toLowerCase())) return '此角色已在名單內，請勿重複報名。';
@@ -74,7 +105,7 @@ export function SignupPanel({ group, onSignup, initialSignupCode = '' }: Props) 
     if (Number(form.level) > 300) return '等級不可超過 300。';
     if (form.note.length > 100) return '備註不可超過 100 字。';
     return '';
-  }, [form, group.members, group.minLevel, isFull, raidStatus.canSignup, raidStatus.label]);
+  }, [availableRoleValues, form, group.members, group.minLevel, isFull, raidStatus.canSignup, raidStatus.label]);
 
   const canSignup = !validationMessage;
 
@@ -117,7 +148,7 @@ export function SignupPanel({ group, onSignup, initialSignupCode = '' }: Props) 
 
         <Field label="角色定位" required>
           <div className="grid grid-cols-2 gap-2">
-            {roleButtons.map((role) => {
+            {visibleRoleButtons.map((role) => {
               const active = form.role === role.value;
               return (
                 <button
@@ -135,6 +166,7 @@ export function SignupPanel({ group, onSignup, initialSignupCode = '' }: Props) 
               );
             })}
           </div>
+          <div className="mt-2 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">只顯示團長目前設定為需求的角色定位。</div>
         </Field>
 
         <Field label="希望加入的隊伍">

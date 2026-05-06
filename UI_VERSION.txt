@@ -1,2 +1,2 @@
-UI-V31
-Signup role options, dynamic party count, local drag sorting, confirmed-only list mode.
+UI-V32
+Leader-configured party role requirements linked to signup role visibility and database validation.

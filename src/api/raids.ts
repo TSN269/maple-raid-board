@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup, RaidMember } from '../types';
+import type { MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup, RaidMember, RoleRequirementMap } from '../types';
 
 const db = supabase as any;
 
@@ -14,6 +14,7 @@ type RaidGroupRow = {
   capacity: number;
   status: RaidGroup['status'];
   notice: string;
+  role_requirements?: RoleRequirementMap | null;
   created_at: string;
   updated_at: string;
   raid_members?: RaidMemberRow[];
@@ -32,6 +33,17 @@ type RaidMemberRow = {
   created_at: string;
   updated_at: string;
 };
+
+function normalizeRoleRequirements(value: unknown): RoleRequirementMap {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const result: RoleRequirementMap = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!Array.isArray(raw)) continue;
+    const roles = raw.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 6);
+    if (roles.length > 0) result[String(key)] = roles;
+  }
+  return result;
+}
 
 function mapMember(row: RaidMemberRow): RaidMember {
   return {
@@ -65,6 +77,7 @@ function mapGroup(row: RaidGroupRow): RaidGroup {
     capacity: Math.min(18, Math.max(1, Number(row.capacity || 18))),
     status: row.status,
     notice: row.notice,
+    roleRequirements: normalizeRoleRequirements(row.role_requirements),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     members,
@@ -157,6 +170,16 @@ export async function updateRaidGroupStatus(groupId: string, status: RaidGroup['
   const { error } = await db.rpc('update_raid_group_status_with_code', {
     p_group_id: groupId,
     p_status: status,
+    p_leader_code: leaderCode,
+  });
+  if (error) throw new Error(error.message);
+}
+
+
+export async function updateRaidRoleRequirements(groupId: string, roleRequirements: RoleRequirementMap, leaderCode: string): Promise<void> {
+  const { error } = await db.rpc('update_raid_role_requirements_with_code', {
+    p_group_id: groupId,
+    p_role_requirements: roleRequirements,
     p_leader_code: leaderCode,
   });
   if (error) throw new Error(error.message);

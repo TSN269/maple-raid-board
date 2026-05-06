@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { deleteRaidGroup, deleteRaidMember, fetchRaidGroups, insertRaidGroup, insertRaidMember, updateRaidGroupStatus, updateRaidMemberStatus, verifyLeaderCode } from './api/raids';
+import { deleteRaidGroup, deleteRaidMember, fetchRaidGroups, insertRaidGroup, insertRaidMember, updateRaidGroupStatus, updateRaidMemberStatus, updateRaidRoleRequirements, verifyLeaderCode } from './api/raids';
 import { CreateRaidModal } from './components/CreateRaidModal';
 import { RaidDetail } from './components/RaidDetail';
 import { RaidList } from './components/RaidList';
@@ -8,7 +8,7 @@ import { NotificationCenter, buildDerivedNotifications, type RaidNotification } 
 import { Button, Input, Pill, classNames } from './components/ui';
 import { getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta, getRaidStatusMeta } from './data/bossArt';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
-import type { MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup, RaidStatus } from './types';
+import type { MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup, RaidStatus, RoleRequirementMap } from './types';
 
 function getInitialGroupId() {
   return new URLSearchParams(window.location.search).get('group') || 'demo-zakum-soon';
@@ -1362,6 +1362,11 @@ export default function App() {
     await runAction(() => updateRaidGroupStatus(groupId, status, code));
   }
 
+  async function changeRoleRequirements(groupId: string, roleRequirements: RoleRequirementMap) {
+    const code = requireLeaderCode(groupId);
+    await runAction(() => updateRaidRoleRequirements(groupId, roleRequirements, code));
+  }
+
   async function removeMember(memberId: string) {
     if (!selectedGroup) return;
     const code = requireLeaderCode(selectedGroup.id);
@@ -1390,7 +1395,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V31</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V32</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
@@ -1477,6 +1482,7 @@ export default function App() {
                 group={selectedGroup}
                 onStatusChange={changeStatus}
                 onGroupStatusChange={changeGroupStatus}
+                onRoleRequirementsChange={changeRoleRequirements}
                 onRemove={removeMember}
                 onDelete={removeGroup}
                 isLeaderUnlocked={Boolean(leaderCodes[selectedGroup.id])}
