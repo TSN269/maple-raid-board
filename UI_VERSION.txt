@@ -1,2 +1,2 @@
-UI-V22
-Rojhu tool grid cell numbers are centered and resized to match the reference style.
+UI-V26
+Rojhu: my path hides layer prefixes, last path auto-saves current selections, and layout is forced left/right.

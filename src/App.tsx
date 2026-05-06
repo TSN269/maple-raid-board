@@ -344,7 +344,7 @@ function buildRojhuShareUrl(room: RojhuRoom) {
 
 function formatRojhuRoute(route?: Array<number | null>) {
   const safeRoute = Array.isArray(route) ? route : Array(10).fill(null);
-  return safeRoute.map((value, index) => `${index + 1}:${value == null ? '?' : value + 1}`).join(' → ');
+  return safeRoute.map((value) => (value == null ? '?' : String(value + 1))).join(' → ');
 }
 
 function hasAnyRojhuRoute(routes?: RojhuRoutes) {
@@ -662,7 +662,10 @@ function RojhuToolsPanel() {
       flashMessage('請先選擇你的角色。每人只能選一個角色。');
       return;
     }
-    await runRojhuAction(() => updateRemoteRojhuRoute(currentRoom.code, currentRoom.password, selectedPlayer, rowIndex, columnIndex, rojhuClientId));
+    await runRojhuAction(async () => {
+      await updateRemoteRojhuRoute(currentRoom.code, currentRoom.password, selectedPlayer, rowIndex, columnIndex, rojhuClientId);
+      return saveRemoteRojhuLastRoutes(currentRoom.code, currentRoom.password);
+    });
   }
 
   function getKeyboardTargetRow(): number | null {
@@ -769,7 +772,7 @@ function RojhuToolsPanel() {
   }
 
   return (
-    <section className="grid min-w-0 gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
+    <section className="grid min-w-[1080px] grid-cols-[420px_minmax(620px,1fr)] gap-4 overflow-x-auto">
       <div className="rounded-[2rem] border border-orange-100/80 bg-white/85 p-5 text-slate-900 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
         <div className="rounded-[1.6rem] border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-5 shadow-inner">
           <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-gradient-to-br from-orange-100 via-white to-red-100 text-5xl shadow-[0_18px_40px_-24px_rgba(234,88,12,0.75)]">🍄</div>
@@ -862,10 +865,9 @@ function RojhuToolsPanel() {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="text-sm font-black text-slate-950">上次路徑</div>
-                <div className="mt-1 text-xs font-semibold text-slate-400">按「保存當下路徑」會把目前 101～104 的路徑保存到此欄；清除按鈕只清除上次路徑，不影響目前路徑。</div>
+                <div className="mt-1 text-xs font-semibold text-slate-400">此欄會自動保存目前 101～104 的路徑選擇狀況；清除按鈕只清除上次路徑，不影響目前路徑。</div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" className="px-3 py-2 text-xs" onClick={saveLastRoutes} disabled={!currentRoom || rojhuBusy}>保存當下路徑</Button>
                 <Button variant="ghost" className="px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={clearLastRoutes} disabled={!currentRoom || rojhuBusy || !hasAnyRojhuRoute(currentRoom?.lastRoutes)}>清除此欄紀錄</Button>
               </div>
             </div>
@@ -1350,7 +1352,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V25</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V26</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
