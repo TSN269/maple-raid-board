@@ -503,6 +503,33 @@ function RojhuToolsPanel() {
     await runRojhuAction(() => updateRemoteRojhuRoute(currentRoom.code, currentRoom.password, selectedPlayer, rowIndex, columnIndex));
   }
 
+  function getKeyboardTargetRow() {
+    if (!currentRoom || !selectedPlayer) return 0;
+    const route = currentRoom.routes[selectedPlayer];
+    const nextEmpty = route.findIndex((value) => value == null);
+    if (nextEmpty >= 0) return nextEmpty;
+    return route.length - 1;
+  }
+
+  useEffect(() => {
+    if (!currentRoom || !selectedPlayer) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      if (tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target?.isContentEditable) return;
+      if (!['1', '2', '3', '4'].includes(event.key)) return;
+
+      event.preventDefault();
+      const columnIndex = Number(event.key) - 1;
+      const rowIndex = getKeyboardTargetRow();
+      void applyRoute(rowIndex, columnIndex);
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [currentRoom, selectedPlayer, rojhuBusy]);
+
   async function resetAllRoutes() {
     if (!currentRoom) return;
     const ok = window.confirm('確定重置全隊路徑？101～104 的紀錄都會清空。');
@@ -560,7 +587,7 @@ function RojhuToolsPanel() {
   }
 
   return (
-    <section className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
+    <section className="grid min-w-0 gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
       <div className="rounded-[2rem] border border-orange-100/80 bg-white/85 p-5 text-slate-900 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
         <div className="rounded-[1.6rem] border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-5 shadow-inner">
           <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-gradient-to-br from-orange-100 via-white to-red-100 text-5xl shadow-[0_18px_40px_-24px_rgba(234,88,12,0.75)]">🍄</div>
@@ -629,7 +656,7 @@ function RojhuToolsPanel() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-[2rem] border border-orange-100/80 bg-white/85 text-slate-900 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
+      <div className="min-w-0 overflow-hidden rounded-[2rem] border border-orange-100/80 bg-white/85 text-slate-900 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-orange-100 px-4 py-4">
           <div className="flex flex-wrap items-center gap-3 text-sm font-black text-slate-700">
             <button type="button" onClick={exitRoom} className="text-xl text-slate-400 hover:text-orange-600">←</button>
@@ -645,7 +672,10 @@ function RojhuToolsPanel() {
         </div>
 
         <div className="border-b border-orange-100 px-4 py-4">
-          <div className="text-lg font-black text-slate-950">我的路徑 <span className="ml-2 text-slate-500">{currentPathLabel}</span></div>
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div className="text-lg font-black text-slate-950">我的路徑 <span className="ml-2 text-slate-500">{currentPathLabel}</span></div>
+            <div className="rounded-full bg-orange-50 px-3 py-1 text-xs font-black text-orange-700 ring-1 ring-orange-100">快捷鍵：按 1 / 2 / 3 / 4 標記下一層</div>
+          </div>
         </div>
 
         <div className="px-4 py-4">
@@ -685,7 +715,7 @@ function RojhuToolsPanel() {
             {ROJHU_PLAYERS.map((player) => <span key={player} className="inline-flex items-center gap-2"><span className={classNames('h-3 w-3 rounded-full', playerButtonClasses[player])} />{player}</span>)}
           </div>
 
-          <div className="mt-6 grid gap-2">
+          <div className="mt-6 grid min-w-0 gap-2">
             {Array.from({ length: 10 }, (_, rowIndex) => {
               const floor = 10 - rowIndex;
               return (
@@ -703,14 +733,14 @@ function RojhuToolsPanel() {
                         disabled={!currentRoom || rojhuBusy}
                         style={selectedPlayers.length > 1 ? multiPlayerCellStyle(selectedPlayers) : undefined}
                         className={classNames(
-                          'relative grid h-20 place-items-center rounded-2xl border border-orange-100 bg-orange-50/65 p-0 text-5xl font-black text-slate-300 shadow-inner transition',
+                          'relative grid h-16 place-items-center rounded-2xl border border-orange-100 bg-orange-50/65 p-0 text-4xl font-black text-slate-300 shadow-inner transition sm:h-20 sm:text-5xl',
                           !currentRoom && 'cursor-not-allowed opacity-50',
                           singlePlayer && playerCellClasses[singlePlayer],
                           activeSelected && 'ring-2 ring-orange-300 shadow-[0_16px_30px_-16px_rgba(249,115,22,0.45)]',
                           currentRoom && selectedPlayers.length === 0 && 'hover:bg-orange-100 hover:text-orange-700'
                         )}
                       >
-                        <span className={classNames('pointer-events-none absolute inset-0 flex select-none items-center justify-center text-5xl font-black leading-none', selectedPlayers.length > 0 ? 'text-white' : 'text-slate-300')}>
+                        <span className={classNames('pointer-events-none absolute inset-0 flex select-none items-center justify-center text-4xl font-black leading-none sm:text-5xl', selectedPlayers.length > 0 ? 'text-white' : 'text-slate-300')}>
                           {columnIndex + 1}
                         </span>
                       </button>
@@ -1112,7 +1142,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V22 GridFix</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V23</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
