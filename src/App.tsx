@@ -1113,8 +1113,8 @@ function TrainingChart({ samples }: { samples: TrainingSample[] }) {
 }
 
 function TrainingEfficiencyPanel() {
-  const TRAINING_OCR_CROP_STORAGE_KEY = 'maple_raid_board_training_ocr_crop_v45';
-  const DEFAULT_OCR_CROP = { x: 0.1, y: 85.2, w: 13.2, h: 5.6 };
+  const TRAINING_OCR_CROP_STORAGE_KEY = 'maple_raid_board_training_ocr_crop_v46';
+  const DEFAULT_OCR_CROP = { x: 50.4, y: 93.6, w: 13, h: 6.4 };
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const videoWrapRef = useRef<HTMLDivElement | null>(null);
@@ -1131,7 +1131,7 @@ function TrainingEfficiencyPanel() {
   const [targetExpInput, setTargetExpInput] = useState('');
   const [now, setNow] = useState(Date.now());
   const [message, setMessage] = useState('');
-  const [ocrMessage, setOcrMessage] = useState('可先在螢幕擷取對照上手動框選 EXP 區域，儲存後作為固定預設裁切區。');
+  const [ocrMessage, setOcrMessage] = useState('按「開始分析」後會自動啟動畫面擷取並自動抓取 OCR 裁切區；Debug 內仍可手動框選保存。');
   const [ocrText, setOcrText] = useState('');
   const [ocrSuccessCount, setOcrSuccessCount] = useState(0);
   const [ocrFailCount, setOcrFailCount] = useState(0);
@@ -1178,6 +1178,14 @@ function TrainingEfficiencyPanel() {
   useEffect(() => {
     if (captureActive) drawOcrCropPreview();
   }, [ocrCrop, captureActive]);
+
+  useEffect(() => {
+    if (!debugEnabled) {
+      setManualSelectMode(false);
+      setDragStart(null);
+      setDragBox(null);
+    }
+  }, [debugEnabled]);
 
   const firstSample = samples[0];
   const lastSample = samples[samples.length - 1];
@@ -1298,6 +1306,136 @@ function TrainingEfficiencyPanel() {
       };
       check();
     });
+  }
+
+  function findExpHudBoundingBox(source: HTMLCanvasElement) {
+    const ctx = source.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+
+    const width = source.width;
+    const height = source.height;
+
+    // Search broadly in the lower half because users may crop / scale the game
+    // window differently. Prefer horizontal green/yellow EXP bars, then crop
+    // slightly upward to include the EXP number and percent.
+    const searchXStart = 0;
+    const searchXEnd = width;
+    const searchYStart = Math.floor(height * 0.55);
+    const searchYEnd = height;
+
+    const regionWidth = searchXEnd - searchXStart;
+    const regionHeight = searchYEnd - searchYStart;
+    const image = ctx.getImageData(searchXStart, searchYStart, regionWidth, regionHeight);
+    const data = image.data;
+
+    const rows: Array<{ y: number; count: number; minX: number; maxX: number; span: number }> = [];
+
+    for (let y = 0; y < regionHeight; y += 1) {
+      let count = 0;
+      let minX = regionWidth;
+      let maxX = 0;
+
+      for (let x = 0; x < regionWidth; x += 1) {
+        const index = (y * regionWidth + x) * 4;
+        const r = data[index];
+        const g = data[index + 1];
+        const b = data[index + 2];
+
+        // EXP bar in the provided screenshot is yellow-green / lime. This
+        // selector avoids most white text and only catches the filled bar.
+        const expBarPixel =
+          g >= 120 &&
+          r >= 70 &&
+          r <= 245 &&
+          b <= 140 &&
+          g >= b * 1.35 &&
+          g >= r * 0.68;
+
+        if (expBarPixel) {
+          count += 1;
+          minX = Math.min(minX, x);
+          maxX = Math.max(maxX, x);
+        }
+      }
+
+      const span = maxX - minX + 1;
+      if (count >= Math.max(18, regionWidth * 0.01) && span >= Math.max(40, regionWidth * 0.035)) {
+        rows.push({ y, count, minX, maxX, span });
+      }
+    }
+
+    if (rows.length < 2) return null;
+
+    let best: typeof rows = [];
+    let current: typeof rows = [];
+
+    for (const row of rows) {
+      const previous = current[current.length - 1];
+      if (!previous || row.y - previous.y <= 2) {
+        current.push(row);
+      } else {
+        if (scoreExpBarCluster(current) > scoreExpBarCluster(best)) best = current;
+        current = [row];
+      }
+    }
+    if (scoreExpBarCluster(current) > scoreExpBarCluster(best)) best = current;
+    if (best.length < 2) return null;
+
+    const minX = Math.min(...best.map((row) => row.minX)) + searchXStart;
+    const maxX = Math.max(...best.map((row) => row.maxX)) + searchXStart;
+    const minY = Math.min(...best.map((row) => row.y)) + searchYStart;
+    const maxY = Math.max(...best.map((row) => row.y)) + searchYStart;
+    const count = best.reduce((sum, row) => sum + row.count, 0);
+
+    if (count < 50 || maxX <= minX || maxY <= minY) return null;
+    return { minX, minY, maxX, maxY, count };
+  }
+
+  function scoreExpBarCluster(rows: Array<{ count: number; span: number }>) {
+    return rows.reduce((sum, row) => sum + row.count * 1.5 + row.span, 0);
+  }
+
+  function autoDetectOcrCrop() {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      setOcrMessage('尚未取得畫面，無法自動抓取 OCR 裁切區域。');
+      return false;
+    }
+
+    const frame = document.createElement('canvas');
+    frame.width = video.videoWidth;
+    frame.height = video.videoHeight;
+    const frameCtx = frame.getContext('2d', { willReadFrequently: true });
+    if (!frameCtx) return false;
+    frameCtx.drawImage(video, 0, 0, frame.width, frame.height);
+
+    const box = findExpHudBoundingBox(frame);
+    if (!box) {
+      setOcrCrop(DEFAULT_OCR_CROP);
+      drawOcrCropPreview(DEFAULT_OCR_CROP);
+      setOcrMessage(`自動抓取失敗，已套用預設裁切區：X ${DEFAULT_OCR_CROP.x} / Y ${DEFAULT_OCR_CROP.y} / 寬 ${DEFAULT_OCR_CROP.w} / 高 ${DEFAULT_OCR_CROP.h}`);
+      return false;
+    }
+
+    const barWidth = box.maxX - box.minX + 1;
+    const barHeight = box.maxY - box.minY + 1;
+
+    const cropX = Math.max(0, box.minX - Math.max(4, Math.round(barWidth * 0.03)));
+    const cropY = Math.max(0, box.minY - Math.max(20, Math.round(barHeight * 2.6)));
+    const cropRight = Math.min(frame.width, box.maxX + Math.max(4, Math.round(barWidth * 0.04)));
+    const cropBottom = Math.min(frame.height, box.maxY + Math.max(3, Math.round(barHeight * 0.28)));
+
+    const next = {
+      x: Math.round((cropX / frame.width) * 1000) / 10,
+      y: Math.round((cropY / frame.height) * 1000) / 10,
+      w: Math.max(4, Math.round(((cropRight - cropX) / frame.width) * 1000) / 10),
+      h: Math.max(3, Math.round(((cropBottom - cropY) / frame.height) * 1000) / 10),
+    };
+
+    setOcrCrop(next);
+    drawOcrCropPreview(next);
+    setOcrMessage(`已自動抓取 OCR 裁切區：X ${next.x} / Y ${next.y} / 寬 ${next.w} / 高 ${next.h}`);
+    return true;
   }
 
   function getVideoDisplayGeometry() {
@@ -1522,7 +1660,7 @@ function TrainingEfficiencyPanel() {
 
     setRunning(true);
     setOcrActive(true);
-    setOcrMessage('正在準備畫面並使用目前裁切區啟動 OCR…');
+    setOcrMessage('正在準備畫面並自動抓取 OCR 裁切區…');
 
     const ready = await waitForVideoReady();
     if (!ready) {
@@ -1531,7 +1669,7 @@ function TrainingEfficiencyPanel() {
       return;
     }
 
-    drawOcrCropPreview();
+    autoDetectOcrCrop();
 
     if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
     void runOcrOnce();
@@ -1560,7 +1698,7 @@ function TrainingEfficiencyPanel() {
               <h2 className="text-2xl font-black text-slate-950">練功效率偵測</h2>
               <Pill tone={ocrActive ? 'green' : running ? 'orange' : 'slate'}>{ocrActive ? 'OCR 自動辨識中' : running ? '統計中' : '未啟動'}</Pill>
             </div>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">先在螢幕擷取對照上框選完整 EXP 區域，再儲存為預設裁切區。保存的是原始擷取畫面百分比座標，不受網站視窗大小影響。</p>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">按「開始分析」會自動抓取 OCR 裁切區。需要手動校正時，勾選 Debug 後可在螢幕擷取對照上框選完整 EXP 區域並儲存為預設裁切區。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析'}</Button>
@@ -1583,14 +1721,14 @@ function TrainingEfficiencyPanel() {
             <Field label="手動修正目前 EXP">
               <Input inputMode="numeric" value={expInput} placeholder="OCR 誤判時手動輸入" onChange={(event) => setExpInput(event.target.value.replace(/[^0-9]/g, ''))} />
             </Field>
-            <div className="rounded-2xl border border-orange-100 bg-orange-50/70 p-2">
+            <div className={classNames('rounded-2xl border border-orange-100 bg-orange-50/70 p-2', manualSelectMode && 'xl:col-span-4')}>
               <div className="mb-1 flex items-center justify-between text-[11px] font-black text-orange-700">
                 <span>螢幕擷取對照</span>
                 {captureActive ? <button className="text-rose-600" onClick={stopCapture}>停止</button> : null}
               </div>
               <div
                 ref={videoWrapRef}
-                className={classNames('relative h-28 overflow-hidden rounded-xl bg-slate-950', manualSelectMode ? 'cursor-crosshair ring-2 ring-orange-300' : '')}
+                className={classNames('relative overflow-hidden rounded-xl bg-slate-950', manualSelectMode ? 'h-[420px] cursor-crosshair ring-2 ring-orange-300' : 'h-28')}
                 onPointerDown={onVideoPointerDown}
                 onPointerMove={onVideoPointerMove}
                 onPointerUp={onVideoPointerUp}
@@ -1610,15 +1748,16 @@ function TrainingEfficiencyPanel() {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2 rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-3">
-            <Button variant="secondary" disabled={!captureActive} onClick={() => setManualSelectMode((prev) => !prev)}>{manualSelectMode ? '取消框選' : '手動框選裁切區'}</Button>
-            <Button variant="secondary" disabled={!captureActive} onClick={saveCropAsDefault}>儲存為預設裁切區</Button>
-            <Button variant="ghost" onClick={resetSavedCrop}>清除預設裁切區</Button>
-            <span className="self-center text-xs font-semibold text-orange-700">框選時請包含：EXP 字樣、數字、百分比與下方綠色經驗條。</span>
-          </div>
-
           {debugEnabled ? (
             <>
+              <div className="flex flex-wrap gap-2 rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-3">
+                <Button variant="secondary" disabled={!captureActive} onClick={() => setManualSelectMode((prev) => !prev)}>{manualSelectMode ? '取消框選' : '手動框選裁切區'}</Button>
+                <Button variant="secondary" disabled={!captureActive} onClick={saveCropAsDefault}>儲存為預設裁切區</Button>
+                <Button variant="secondary" disabled={!captureActive} onClick={autoDetectOcrCrop}>重新自動抓取裁切區</Button>
+                <Button variant="ghost" onClick={resetSavedCrop}>清除預設裁切區</Button>
+                <span className="self-center text-xs font-semibold text-orange-700">框選時請包含：EXP 字樣、數字、百分比與下方綠色經驗條。框選模式會放大「螢幕擷取對照」欄位。</span>
+              </div>
+
               <div className="grid gap-3 sm:grid-cols-5">
                 <Field label="OCR 間隔秒數">
                   <Select value={ocrIntervalSec} onChange={(event) => setOcrIntervalSec(Number(event.target.value))}>
@@ -2118,7 +2257,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V45</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V46</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>

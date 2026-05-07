@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-V45
+# Maple Raid Board — TSN UI-V46
 
-> 版本基準：UI-V45  
+> 版本基準：UI-V46  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,37 +72,38 @@
 
 ---
 
-## 3. 目前 UI-V45 主要變更
+## 3. 目前 UI-V46 主要變更
 
-UI-V45 是以 UI-V44 為基礎，調整：
+UI-V46 是以 UI-V45 為基礎，調整：
 
 ```text
-1. 練功效率 OCR 改為手動框選裁切區
-   - 可在「螢幕擷取對照」上直接拖曳框選 EXP 區域
-   - 框選時請包含 EXP 字樣、數字、百分比與綠色經驗條
-   - 框選後會即時套用到 OCR 裁切預覽
+1. 改回自動 OCR 抓取裁切區流程
+   - 按「開始分析」後會先自動抓取 OCR 裁切區
+   - 抓取完成後才開始 OCR 週期
+   - Debug 內保留「重新自動抓取裁切區」
 
-2. 可儲存為預設裁切區
-   - 儲存到瀏覽器 localStorage
-   - 下次開啟練功效率偵測會自動載入
-   - 可清除保存的預設裁切區
+2. 預設裁切區改為指定數值
+   - X：50.4
+   - Y：93.6
+   - 寬：13
+   - 高：6.4
+   - 使用新的 localStorage key，避免沿用舊版錯誤裁切區
 
-3. 裁切區座標不受網站視窗大小影響
-   - 保存的是原始擷取畫面百分比座標
-   - 不是網頁畫面上的 px
-   - 瀏覽器視窗大小、預覽欄位大小、RWD 變動都不會影響位置
+3. 手動框選裁切區功能移到 Debug
+   - 未勾選 Debug 不顯示手動框選功能
+   - 勾選 Debug 後可手動框選、儲存預設、清除預設
+   - 手動框選時會放大「螢幕擷取對照」欄位，方便框選 EXP 區域
+
+4. 手動框選裁切區仍以原始擷取畫面百分比保存
+   - 不受網站視窗大小、預覽欄位大小、RWD 影響
    - 若遊戲解析度、UI 縮放或 EXP 條位置改變，才需要重新框選
 
-4. 移除不穩定的自動抓取裁切區流程
-   - 開始分析會直接使用目前保存 / 框選的裁切區
-   - Debug 仍可查看與手動微調 X / Y / 寬 / 高
-
 5. 頁首版本顯示
-   - TSN UI-V45
+   - TSN UI-V46
 ```
 
-UI-V45 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V45 不需要重跑 SQL。
+UI-V46 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V46 不需要重跑 SQL。
 
 ---
 
@@ -169,7 +170,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v45"
+git commit -m "deploy ui v46"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -179,7 +180,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v45"
+git commit -m "deploy ui v46"
 git push
 ```
 
@@ -724,6 +725,15 @@ OCR 裁切預覽移到手動修正目前 EXP 右邊
 框選後可儲存為預設裁切區
 裁切區以原始擷取畫面百分比保存，不受網站視窗大小影響
 移除不穩定的自動抓取裁切區流程
+```
+
+### UI-V46
+
+```text
+改回自動 OCR 抓取裁切區流程
+預設裁切區改為 X 50.4 / Y 93.6 / 寬 13 / 高 6.4
+手動框選裁切區功能移到 Debug 勾選後顯示
+手動框選時螢幕擷取對照會放大，方便使用者框選
 目前最新版本
 ```
 ### UI-V33 SQLFIX1
@@ -831,7 +841,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v45"
+git commit -m "deploy ui v46"
 git push
 ```
 

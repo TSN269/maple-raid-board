@@ -1,2 +1,2 @@
-UI-V45
-Training OCR crop can be manually selected on the video preview and saved as a default normalized crop independent of page size.
+UI-V46
+Auto OCR crop flow restored with default crop X 50.4 / Y 93.6 / W 13 / H 6.4. Manual crop tools moved under Debug and enlarge the video preview while selecting.
