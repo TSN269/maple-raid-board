@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-V41
+# Maple Raid Board — TSN UI-V42
 
-> 版本基準：UI-V41  
+> 版本基準：UI-V42  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,33 +72,34 @@
 
 ---
 
-## 3. 目前 UI-V41 主要變更
+## 3. 目前 UI-V42 主要變更
 
-UI-V41 是以 UI-V40 為基礎，調整：
+UI-V42 是以 UI-V41 為基礎，調整：
 
 ```text
-1. 按下「開始分析」會自動啟動 OCR
-   - 不需要先分別按螢幕擷取與啟動 OCR
-   - 會自動要求選取螢幕 / 視窗
-   - 畫面就緒後自動開始 OCR 週期
+1. OCR 裁切區域改為抓取左下 EXP 區域
+   - 以附圖樣式為目標
+   - 會優先抓取左下角的 EXP 文字與綠色經驗條
+   - 若自動抓取失敗，會套用左下 EXP 的預設裁切區
 
-2. OCR 裁切區域改為自動抓取
-   - 會自動畫面掃描亮色文字區域
-   - 自動產生 X / Y / 寬 / 高
-   - 可按「自動抓取裁切區」重新偵測
-   - 自動抓取可關閉，關閉後可手動微調座標
+2. 移除「啟動 OCR」與「辨識一次」按鈕
+   - 只保留「開始分析 / 暫停分析 / 重置」
+   - 按「開始分析」後直接自動啟動 OCR
 
-3. 保留手動修正備援
-   - OCR 誤判時仍可手動輸入 EXP
-   - 可手動加入紀錄
-   - 可用「辨識一次」測試目前裁切區
+3. 新增 Debug 勾選選項
+   - 只有勾選 Debug 時，才顯示：
+     - OCR 間隔秒數
+     - OCR 成功
+     - OCR 失敗 / 忽略
+     - 最近辨識
+   - 裁切區域調整與重新自動抓取也一併放在 Debug 區
 
 4. 頁首版本顯示
-   - TSN UI-V41
+   - TSN UI-V42
 ```
 
-UI-V41 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V41 不需要重跑 SQL。
+UI-V42 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V42 不需要重跑 SQL。
 
 ---
 
@@ -165,7 +166,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v41"
+git commit -m "deploy ui v42"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -175,7 +176,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v41"
+git commit -m "deploy ui v42"
 git push
 ```
 
@@ -686,6 +687,14 @@ Logo 改為楓葉 SVG
 開始分析會自動啟動畫面擷取與 OCR
 OCR 裁切區域改為自動抓取
 可重新自動抓取裁切區，也可關閉自動模式後手動微調
+```
+
+### UI-V42
+
+```text
+OCR 裁切區域改為抓取左下 EXP 文字與綠色經驗條
+移除啟動 OCR 與辨識一次按鈕
+新增 Debug 勾選選項，未勾選時隱藏 OCR 除錯資訊
 目前最新版本
 ```
 ### UI-V33 SQLFIX1
@@ -793,7 +802,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v41"
+git commit -m "deploy ui v42"
 git push
 ```
 

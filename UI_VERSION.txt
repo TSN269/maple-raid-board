@@ -1,2 +1,2 @@
-UI-V41
-Start Analysis automatically starts screen capture and OCR; OCR crop area is auto-detected with optional manual override.
+UI-V42
+Training OCR now targets the bottom-left EXP area, removes extra OCR buttons, and gates OCR debug info behind a Debug checkbox.
