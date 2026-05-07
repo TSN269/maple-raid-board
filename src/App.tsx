@@ -5,7 +5,7 @@ import { RaidDetail } from './components/RaidDetail';
 import { RaidList } from './components/RaidList';
 import { SignupPanel } from './components/SignupPanel';
 import { NotificationCenter, buildDerivedNotifications, type RaidNotification } from './components/NotificationCenter';
-import { Button, Input, Pill, classNames } from './components/ui';
+import { Button, Field, Input, Pill, classNames } from './components/ui';
 import { getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta, getRaidStatusMeta } from './data/bossArt';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import type { MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup, RaidStatus, RoleRequirementMap } from './types';
@@ -1691,7 +1691,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V38</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V39</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>

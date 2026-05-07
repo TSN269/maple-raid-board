@@ -1,2 +1,2 @@
-UI-V38
-Add training efficiency detector panel with stats cards, EXP/min chart, and screen capture preview.
+UI-V39
+Fix Field is not defined in TrainingEfficiencyPanel by importing Field from components/ui.
