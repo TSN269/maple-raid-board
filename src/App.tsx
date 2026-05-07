@@ -1345,6 +1345,7 @@ function TrainingEfficiencyPanel() {
   const [manualSelectMode, setManualSelectMode] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragBox, setDragBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
 
   function loadSavedTrainingCrop() {
     try {
@@ -1912,6 +1913,187 @@ function TrainingEfficiencyPanel() {
   const overlayBox = cropToOverlayBox();
   const activeBox = dragBox ? cropToOverlayBox(dragBox) : overlayBox;
 
+  function getTrainingStatsShareRows() {
+    return [
+      { title: 'EXP', value: `${formatTrainingNumber(currentExp)}[${currentPercent.toFixed(2)}%]`, sub: totalExp > 0 ? `+${formatTrainingNumber(totalExp)}` : '' },
+      { title: 'EXP / 分', value: `⚡ ${formatTrainingNumber(expPerMinute)}`, sub: '' },
+      { title: '統計時間', value: formatTrainingDuration(elapsedMinutes), sub: analysisStartedAt ? `開始 ${new Date(analysisStartedAt).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}` : '' },
+      { title: 'EXP累積 (10分)', value: `${formatTrainingNumber(accumulated10)} (${elapsedMinutes < 10 ? '<10m' : '10m'})`, sub: '' },
+      { title: '預估 10 分', value: `🟢 ${formatTrainingNumber(predicted10)}`, sub: '' },
+      { title: '預估百分比 (1 | 10 | 60分)', value: targetExp > 0 ? `${percentPerMinute.toFixed(2)}% | ${(percentPerMinute * 10).toFixed(2)}% | ${(percentPerMinute * 60).toFixed(2)}%` : '-- | -- | --', sub: '' },
+      { title: 'EXP累積 (60分)', value: `${formatTrainingNumber(accumulated60)} (${elapsedMinutes < 60 ? '<1h' : '60m'})`, sub: '' },
+      { title: '預估 60 分', value: formatTrainingNumber(predicted60), sub: '' },
+      { title: '預估升級時間', value: formatTrainingDuration(etaMinutes), sub: currentLevel > 0 ? `等級 ${currentLevel}` : '' },
+    ];
+  }
+
+  function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+    const r = Math.min(radius, width / 2, height / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + width, y, x + width, y + height, r);
+    ctx.arcTo(x + width, y + height, x, y + height, r);
+    ctx.arcTo(x, y + height, x, y, r);
+    ctx.arcTo(x, y, x + width, y, r);
+    ctx.closePath();
+  }
+
+  function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines = 2) {
+    const chars = Array.from(text || '');
+    const lines: string[] = [];
+    let current = '';
+    for (const ch of chars) {
+      const test = current + ch;
+      if (!current || ctx.measureText(test).width <= maxWidth) {
+        current = test;
+      } else {
+        lines.push(current);
+        current = ch;
+      }
+      if (lines.length === maxLines) break;
+    }
+    if (lines.length < maxLines && current) lines.push(current);
+    if (lines.length > maxLines) return lines.slice(0, maxLines);
+    if (chars.length > lines.join('').length && lines.length > 0) {
+      const last = lines[lines.length - 1];
+      lines[lines.length - 1] = `${last.slice(0, Math.max(0, last.length - 1))}…`;
+    }
+    return lines;
+  }
+
+  async function exportTrainingStatsImage() {
+    if (shareBusy) return;
+    setShareBusy(true);
+
+    try {
+      const rows = getTrainingStatsShareRows();
+      const width = 1240;
+      const headerH = 120;
+      const footerH = 68;
+      const cols = 3;
+      const gap = 24;
+      const side = 36;
+      const cardW = Math.floor((width - side * 2 - gap * (cols - 1)) / cols);
+      const cardH = 152;
+      const rowCount = Math.ceil(rows.length / cols);
+      const height = headerH + rowCount * cardH + Math.max(0, rowCount - 1) * gap + footerH;
+
+      const canvas = document.createElement('canvas');
+      const ratio = Math.max(2, Math.min(3, window.devicePixelRatio || 1));
+      canvas.width = width * ratio;
+      canvas.height = height * ratio;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('無法建立圖片畫布');
+      ctx.scale(ratio, ratio);
+
+      const bg = ctx.createLinearGradient(0, 0, width, height);
+      bg.addColorStop(0, '#0f172a');
+      bg.addColorStop(0.55, '#111827');
+      bg.addColorStop(1, '#1e1b4b');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = '900 32px sans-serif';
+      ctx.fillText('TSN 練功效率統計', side, 54);
+
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '600 16px sans-serif';
+      const subtitle = analysisStartedAt
+        ? `開始分析：${new Date(analysisStartedAt).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}`
+        : '尚未開始分析';
+      ctx.fillText(subtitle, side, 82);
+
+      ctx.textBaseline = 'top';
+
+      rows.forEach((item, index) => {
+        const col = index % cols;
+        const row = Math.floor(index / cols);
+        const x = side + col * (cardW + gap);
+        const y = headerH + row * (cardH + gap);
+
+        const cardGrad = ctx.createLinearGradient(x, y, x + cardW, y + cardH);
+        cardGrad.addColorStop(0, 'rgba(30,41,59,0.96)');
+        cardGrad.addColorStop(1, 'rgba(15,23,42,0.92)');
+        drawRoundedRect(ctx, x, y, cardW, cardH, 24);
+        ctx.fillStyle = cardGrad;
+        ctx.fill();
+
+        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = 'rgba(96,165,250,0.20)';
+        ctx.stroke();
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '700 16px sans-serif';
+        ctx.fillText(item.title, x + 18, y + 18);
+
+        ctx.fillStyle = '#f8fafc';
+        const valueFont = item.value.length > 24 ? 24 : item.value.length > 16 ? 28 : 34;
+        ctx.font = `900 ${valueFont}px sans-serif`;
+        const valueLines = wrapCanvasText(ctx, item.value, cardW - 36, 2);
+        valueLines.forEach((line, lineIndex) => {
+          ctx.fillText(line, x + 18, y + 50 + lineIndex * (valueFont + 4));
+        });
+
+        if (item.sub) {
+          ctx.fillStyle = '#fb923c';
+          ctx.font = '700 15px sans-serif';
+          const subLines = wrapCanvasText(ctx, item.sub, cardW - 36, 2);
+          subLines.forEach((line, lineIndex) => {
+            ctx.fillText(line, x + 18, y + cardH - 40 + lineIndex * 16);
+          });
+        }
+      });
+
+      ctx.fillStyle = 'rgba(203,213,225,0.8)';
+      ctx.font = '600 14px sans-serif';
+      ctx.fillText('Maple Raid Board • Training Efficiency', side, height - 28);
+
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((output) => {
+          if (output) resolve(output);
+          else reject(new Error('無法產生統計圖片'));
+        }, 'image/png');
+      });
+
+      const filename = `training-stats-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.png`;
+      const shareNavigator = navigator as Navigator & {
+        share?: (data: { title?: string; text?: string; files?: File[] }) => Promise<void>;
+        canShare?: (data: { files?: File[] }) => boolean;
+      };
+
+      const file = new File([blob], filename, { type: 'image/png' });
+      if (shareNavigator.share && shareNavigator.canShare?.({ files: [file] })) {
+        try {
+          await shareNavigator.share({
+            title: 'TSN 練功效率統計',
+            text: '練功效率統計圖片',
+            files: [file],
+          });
+          setMessage('已開啟統計圖片分享視窗。');
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'AbortError') {
+            setMessage('已取消分享。');
+            return;
+          }
+        }
+      }
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+      setMessage('已下載統計圖片，可直接分享。');
+    } catch (error) {
+      setMessage(error instanceof Error ? `擷取統計圖片失敗：${error.message}` : '擷取統計圖片失敗');
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
   return (
     <section className="w-full min-w-0 overflow-x-auto pb-2">
       <div className="grid min-w-[1080px] gap-4">
@@ -1927,6 +2109,7 @@ function TrainingEfficiencyPanel() {
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析'}</Button>
             <Button variant="secondary" onClick={stopAnalysis} disabled={!ocrActive}>暫停分析</Button>
+            <Button variant="secondary" onClick={exportTrainingStatsImage} disabled={shareBusy}>{shareBusy ? "產生圖片中" : "擷取統計圖片"}</Button>
             <Button variant="ghost" onClick={resetAll}>重置</Button>
           </div>
         </div>
@@ -1934,7 +2117,7 @@ function TrainingEfficiencyPanel() {
         <div className="mt-4 flex items-center gap-3 rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-3">
           <input id="training-debug-toggle" type="checkbox" checked={debugEnabled} onChange={(event) => setDebugEnabled(event.target.checked)} className="h-4 w-4 rounded border-orange-300 text-orange-500 focus:ring-orange-400" />
           <label htmlFor="training-debug-toggle" className="text-sm font-black text-orange-700">Debug</label>
-          <span className="text-xs font-semibold text-orange-600">勾選後顯示 OCR 間隔秒數、成功 / 失敗 / 最近辨識與裁切座標資訊。</span>
+          <span className="text-xs font-semibold text-orange-600">勾選後顯示 OCR 間隔秒數、成功 / 失敗、最近辨識、最近 OCR / 手動紀錄與裁切座標資訊。</span>
         </div>
 
         <div className="mt-5 grid gap-4">
@@ -2487,7 +2670,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-4.9</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.0</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>

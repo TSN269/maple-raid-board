@@ -1,2 +1,2 @@
-UI-4.9
-Training duration start time uses full date/time. Target EXP input is replaced by current level, mapping to Artale required EXP for next level.
+UI-5.0
+Added a button to export training statistics as a shareable PNG image.
