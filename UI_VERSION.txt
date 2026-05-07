@@ -1,2 +1,2 @@
-UI-V42
-Training OCR now targets the bottom-left EXP area, removes extra OCR buttons, and gates OCR debug info behind a Debug checkbox.
+UI-V43
+Fix OCR crop to target the bottom-left green EXP bar and shrink capture/preview panels to UI-V39-like size.

@@ -1132,7 +1132,7 @@ function TrainingEfficiencyPanel() {
   const [ocrSuccessCount, setOcrSuccessCount] = useState(0);
   const [ocrFailCount, setOcrFailCount] = useState(0);
   const [ocrIntervalSec, setOcrIntervalSec] = useState(3);
-  const [ocrCrop, setOcrCrop] = useState({ x: 0.4, y: 85.6, w: 16.2, h: 7.8 });
+  const [ocrCrop, setOcrCrop] = useState({ x: 0.2, y: 88.4, w: 15.8, h: 5.8 });
   const [autoCropEnabled, setAutoCropEnabled] = useState(true);
   const [debugEnabled, setDebugEnabled] = useState(false);
 
@@ -1274,45 +1274,71 @@ function TrainingEfficiencyPanel() {
     const width = source.width;
     const height = source.height;
     const searchXStart = 0;
-    const searchXEnd = Math.floor(width * 0.42);
-    const searchYStart = Math.floor(height * 0.74);
+    const searchXEnd = Math.floor(width * 0.36);
+    const searchYStart = Math.floor(height * 0.76);
     const searchYEnd = height;
-
-    const image = ctx.getImageData(searchXStart, searchYStart, searchXEnd - searchXStart, searchYEnd - searchYStart);
-    const data = image.data;
-    let minX = searchXEnd;
-    let minY = height;
-    let maxX = searchXStart;
-    let maxY = searchYStart;
-    let count = 0;
 
     const regionWidth = searchXEnd - searchXStart;
     const regionHeight = searchYEnd - searchYStart;
+    const image = ctx.getImageData(searchXStart, searchYStart, regionWidth, regionHeight);
+    const data = image.data;
+
+    const rowHits: Array<{ y: number; count: number; minX: number; maxX: number }> = [];
 
     for (let y = 0; y < regionHeight; y += 1) {
+      let count = 0;
+      let minX = regionWidth;
+      let maxX = 0;
+
       for (let x = 0; x < regionWidth; x += 1) {
         const index = (y * regionWidth + x) * 4;
         const r = data[index];
         const g = data[index + 1];
         const b = data[index + 2];
 
-        const greenBar = g >= 110 && r >= 85 && b <= 90 && g >= r * 0.95;
-        const brightWhite = r >= 170 && g >= 170 && b >= 170;
-        const expEdge = greenBar || brightWhite;
-
-        if (expEdge) {
-          const px = x + searchXStart;
-          const py = y + searchYStart;
+        // Maple EXP bar is usually yellow-green / lime.  Only detect the bar,
+        // not white text or other UI labels, then crop upward to include "EXP 123 [xx%]".
+        const greenBar = g >= 125 && r >= 80 && r <= 230 && b <= 120 && g >= r * 0.82 && g >= b * 1.5;
+        if (greenBar) {
           count += 1;
-          if (px < minX) minX = px;
-          if (py < minY) minY = py;
-          if (px > maxX) maxX = px;
-          if (py > maxY) maxY = py;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
         }
+      }
+
+      if (count >= Math.max(18, regionWidth * 0.018)) {
+        rowHits.push({ y, count, minX, maxX });
       }
     }
 
-    if (count < 40 || maxX <= minX || maxY <= minY) return null;
+    if (rowHits.length < 3) return null;
+
+    let bestStart = 0;
+    let bestEnd = 0;
+    let currentStart = 0;
+
+    for (let index = 1; index <= rowHits.length; index += 1) {
+      const separated = index === rowHits.length || rowHits[index].y - rowHits[index - 1].y > 2;
+      if (separated) {
+        const currentEnd = index - 1;
+        if (currentEnd - currentStart > bestEnd - bestStart) {
+          bestStart = currentStart;
+          bestEnd = currentEnd;
+        }
+        currentStart = index;
+      }
+    }
+
+    const cluster = rowHits.slice(bestStart, bestEnd + 1);
+    if (cluster.length < 3) return null;
+
+    const minX = Math.min(...cluster.map((row) => row.minX)) + searchXStart;
+    const maxX = Math.max(...cluster.map((row) => row.maxX)) + searchXStart;
+    const minY = Math.min(...cluster.map((row) => row.y)) + searchYStart;
+    const maxY = Math.max(...cluster.map((row) => row.y)) + searchYStart;
+    const count = cluster.reduce((sum, row) => sum + row.count, 0);
+
+    if (count < 80 || maxX - minX < width * 0.04 || maxY <= minY) return null;
     return { minX, minY, maxX, maxY, count };
   }
 
@@ -1333,7 +1359,7 @@ function TrainingEfficiencyPanel() {
     const box = findExpBarBoundingBox(frame);
 
     if (!box) {
-      const fallback = { x: 0.4, y: 85.6, w: 16.2, h: 7.8 };
+      const fallback = { x: 0.2, y: 88.4, w: 15.8, h: 5.8 };
       setOcrCrop(fallback);
       setOcrMessage('自動抓取失敗，已改用左下 EXP 預設裁切區。');
       drawOcrCropPreview(fallback);
@@ -1343,10 +1369,10 @@ function TrainingEfficiencyPanel() {
     const barWidth = box.maxX - box.minX + 1;
     const barHeight = box.maxY - box.minY + 1;
 
-    const cropX = Math.max(0, box.minX - Math.round(frame.width * 0.004));
-    const cropY = Math.max(0, box.minY - Math.max(14, Math.round(barHeight * 2.4)));
-    const cropRight = Math.min(frame.width, box.maxX + Math.max(26, Math.round(barWidth * 0.12)));
-    const cropBottom = Math.min(frame.height, box.maxY + Math.max(4, Math.round(barHeight * 0.35)));
+    const cropX = Math.max(0, box.minX - Math.max(4, Math.round(barWidth * 0.025)));
+    const cropY = Math.max(0, box.minY - Math.max(18, Math.round(barHeight * 2.15)));
+    const cropRight = Math.min(frame.width, box.maxX + Math.max(5, Math.round(barWidth * 0.025)));
+    const cropBottom = Math.min(frame.height, box.maxY + Math.max(3, Math.round(barHeight * 0.22)));
 
     const next = {
       x: Math.round((cropX / frame.width) * 1000) / 10,
@@ -1528,7 +1554,7 @@ function TrainingEfficiencyPanel() {
           <span className="text-xs font-semibold text-orange-600">勾選後才顯示 OCR 間隔秒數、OCR 成功 / 失敗 / 最近辨識資訊與裁切調整資訊。</span>
         </div>
 
-        <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="grid gap-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="升級所需總 EXP（選填）">
@@ -1592,11 +1618,11 @@ function TrainingEfficiencyPanel() {
           <div className="grid gap-3">
             <div className="rounded-3xl border border-orange-100 bg-orange-50/70 p-3">
               <div className="mb-2 flex items-center justify-between text-xs font-black text-orange-700"><span>螢幕擷取對照</span>{captureActive ? <button className="text-rose-600" onClick={stopCapture}>停止</button> : null}</div>
-              <video ref={videoRef} autoPlay muted playsInline className="aspect-video w-full rounded-2xl bg-slate-950 object-contain" />
+              <video ref={videoRef} autoPlay muted playsInline className="max-h-44 w-full rounded-2xl bg-slate-950 object-contain" />
             </div>
             <div className="rounded-3xl border border-orange-100 bg-white/85 p-3">
               <div className="mb-2 text-xs font-black text-orange-700">OCR 裁切預覽</div>
-              <canvas ref={previewCanvasRef} className="max-h-36 w-full rounded-2xl bg-slate-950 object-contain" />
+              <canvas ref={previewCanvasRef} className="max-h-24 w-full rounded-2xl bg-slate-950 object-contain" />
             </div>
           </div>
         </div>
@@ -2066,7 +2092,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V42</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V43</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
@@ -2170,7 +2196,7 @@ export default function App() {
             )
           ) : activePanel === 'signup' ? (
             selectedGroup ? (
-              <div className="mx-auto grid w-full max-w-5xl gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+              <div className="mx-auto grid w-full max-w-5xl gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
                 <section className="rounded-[2rem] border border-orange-100/80 bg-white/80 p-6 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
                   <div className="rounded-[1.5rem] bg-gradient-to-br from-slate-950 via-orange-950 to-amber-800 p-6 text-white shadow-inner">
                     <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-200">正在報名</div>

@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-V42
+# Maple Raid Board — TSN UI-V43
 
-> 版本基準：UI-V42  
+> 版本基準：UI-V43  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,34 +72,32 @@
 
 ---
 
-## 3. 目前 UI-V42 主要變更
+## 3. 目前 UI-V43 主要變更
 
-UI-V42 是以 UI-V41 為基礎，調整：
+UI-V43 是以 UI-V42 為基礎，修正：
 
 ```text
-1. OCR 裁切區域改為抓取左下 EXP 區域
-   - 以附圖樣式為目標
-   - 會優先抓取左下角的 EXP 文字與綠色經驗條
-   - 若自動抓取失敗，會套用左下 EXP 的預設裁切區
+1. OCR 裁切區域再次修正
+   - 改為先偵測左下角綠色 EXP 經驗條
+   - 再由經驗條位置往上裁切，包含 EXP 文字、數字、百分比與經驗條
+   - 避免把其他亮色文字一起抓進裁切區
+   - 自動抓取失敗時套用更接近附圖的左下 EXP 預設裁切區
 
-2. 移除「啟動 OCR」與「辨識一次」按鈕
-   - 只保留「開始分析 / 暫停分析 / 重置」
-   - 按「開始分析」後直接自動啟動 OCR
+2. 縮小練功效率偵測右側預覽欄位
+   - 螢幕擷取對照縮回接近 UI-V39 尺寸
+   - OCR 裁切預覽縮小
+   - 右側欄寬由 420px 調回 360px
 
-3. 新增 Debug 勾選選項
-   - 只有勾選 Debug 時，才顯示：
-     - OCR 間隔秒數
-     - OCR 成功
-     - OCR 失敗 / 忽略
-     - 最近辨識
-   - 裁切區域調整與重新自動抓取也一併放在 Debug 區
+3. Debug 行為維持
+   - 未勾選 Debug 時不顯示 OCR 間隔秒數
+   - 未勾選 Debug 時不顯示 OCR 成功、失敗 / 忽略、最近辨識與裁切調整
 
 4. 頁首版本顯示
-   - TSN UI-V42
+   - TSN UI-V43
 ```
 
-UI-V42 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V42 不需要重跑 SQL。
+UI-V43 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V43 不需要重跑 SQL。
 
 ---
 
@@ -166,7 +164,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v42"
+git commit -m "deploy ui v43"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -176,7 +174,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v42"
+git commit -m "deploy ui v43"
 git push
 ```
 
@@ -695,6 +693,14 @@ OCR 裁切區域改為自動抓取
 OCR 裁切區域改為抓取左下 EXP 文字與綠色經驗條
 移除啟動 OCR 與辨識一次按鈕
 新增 Debug 勾選選項，未勾選時隱藏 OCR 除錯資訊
+```
+
+### UI-V43
+
+```text
+OCR 裁切區域改為先抓左下綠色 EXP 經驗條再往上包含 EXP 文字
+自動抓取失敗時套用更接近附圖的左下 EXP 預設裁切區
+螢幕擷取對照與 OCR 裁切預覽縮小至接近 UI-V39 尺寸
 目前最新版本
 ```
 ### UI-V33 SQLFIX1
@@ -802,7 +808,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v42"
+git commit -m "deploy ui v43"
 git push
 ```
 
