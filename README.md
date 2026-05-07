@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-V36
+# Maple Raid Board — TSN UI-V37
 
-> 版本基準：UI-V36  
+> 版本基準：UI-V37  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,28 +72,26 @@
 
 ---
 
-## 3. 目前 UI-V36 主要變更
+## 3. 目前 UI-V37 主要變更
 
-UI-V36 是以 UI-V35 為基礎，修正：
+UI-V37 是以 UI-V36 為基礎，調整：
 
 ```text
-1. 羅茱工具路徑格子再次縮小
-   - 主路徑格子改成固定寬高
-   - 不再撐滿右欄寬度
-   - 大小縮到約比 101 / 102 / 103 / 104 角色按鈕大 2px
+1. 楓突襲「隊伍角色定位需求」區塊改為團長模式限定
+   - 一般玩家模式不顯示此區塊
+   - 團長解鎖後才看得到需求設定
+   - 團長解鎖後才可編輯並儲存需求
 
-2. 上次路徑迷你格子改為總共一個
-   - 不再每個角色各顯示一組 10 × 4 迷你格子
-   - 上次路徑欄位右側只顯示一個總覽迷你路徑格子
-   - 迷你格子會用各角色顏色顯示上次保存的路徑
-   - 多角色同格時使用漸層顏色顯示
+2. 報名頁仍會依照已設定的需求顯示角色定位
+   - 一般玩家不用看到需求設定區
+   - 但報名時仍只會看到需求內的定位選項
 
 3. 頁首版本顯示
-   - TSN UI-V36
+   - TSN UI-V37
 ```
 
-UI-V36 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V36 不需要重跑 SQL。
+UI-V37 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V37 不需要重跑 SQL。
 
 ---
 
@@ -160,7 +158,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v36"
+git commit -m "deploy ui v37"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -170,7 +168,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v36"
+git commit -m "deploy ui v37"
 git push
 ```
 
@@ -695,6 +693,14 @@ on conflict update 同步更新 role_requirements
 羅茱工具主路徑格子改為固定小尺寸，不再撐滿右欄
 上次路徑迷你格子改為總共一個 10 × 4 總覽
 迷你總覽可顯示所有角色的上次路徑顏色
+```
+
+### UI-V37
+
+```text
+楓突襲隊伍角色定位需求區塊改為團長模式才顯示
+一般玩家模式不顯示需求設定區
+報名頁仍依照已設定需求限制可選角色定位
 目前最新版本
 ```
 
@@ -744,7 +750,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v36"
+git commit -m "deploy ui v37"
 git push
 ```
 

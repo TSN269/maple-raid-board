@@ -1,2 +1,2 @@
-UI-V36
-Rojhu path cells are fixed small size and last path mini route is a single aggregate 10x4 grid.
+UI-V37
+Role requirement settings section is visible only in leader mode.

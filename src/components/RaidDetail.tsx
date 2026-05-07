@@ -465,39 +465,37 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRoleR
           </section>
         ) : null}
 
-        <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-46px_rgba(124,45,18,0.8)] backdrop-blur-xl">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div>
-              <h3 className="text-lg font-black text-slate-950">隊伍角色定位需求</h3>
-              <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">團長可設定每一隊 6 個位置的定位需求；下方隊伍配置空位會同步顯示這些需求，玩家報名時也只會看到目前需求內的角色定位。</p>
+        {isLeaderUnlocked ? (
+          <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-46px_rgba(124,45,18,0.8)] backdrop-blur-xl">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h3 className="text-lg font-black text-slate-950">隊伍角色定位需求</h3>
+                <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">團長可設定每一隊 6 個位置的定位需求；下方隊伍配置空位會同步顯示這些需求，玩家報名時也只會看到目前需求內的角色定位。</p>
+              </div>
+              <Button variant="secondary" disabled={savingRequirements} onClick={saveRoleRequirements}>{savingRequirements ? '儲存中' : '儲存需求設定'}</Button>
             </div>
-            {isLeaderUnlocked ? <Button variant="secondary" disabled={savingRequirements} onClick={saveRoleRequirements}>{savingRequirements ? '儲存中' : '儲存需求設定'}</Button> : <Pill tone="slate">團長模式解鎖後可編輯</Pill>}
-          </div>
-          <div className="mt-4 grid gap-4" style={{ gridTemplateColumns: `repeat(${partyCount}, minmax(0, 1fr))` }}>
-            {Array.from({ length: partyCount }, (_, index) => index + 1).map((partyNo) => {
-              const slots = requirementDraft[String(partyNo)] || DEFAULT_ROLE_REQUIREMENTS;
-              return (
-                <div key={partyNo} className="rounded-3xl border border-orange-100 bg-orange-50/60 p-3">
-                  <div className="mb-3 flex items-center justify-between"><div className="font-black text-slate-950">隊伍 {partyNo}</div><div className="text-xs font-black text-slate-400">6 格需求</div></div>
-                  <div className="grid gap-2">
-                    {Array.from({ length: 6 }, (_, slotIndex) => (
-                      <div key={slotIndex} className="grid grid-cols-[44px_minmax(0,1fr)] items-center gap-2">
-                        <div className="text-xs font-black text-slate-400">#{slotIndex + 1}</div>
-                        {isLeaderUnlocked ? (
+            <div className="mt-4 grid gap-4" style={{ gridTemplateColumns: `repeat(${partyCount}, minmax(0, 1fr))` }}>
+              {Array.from({ length: partyCount }, (_, index) => index + 1).map((partyNo) => {
+                const slots = requirementDraft[String(partyNo)] || DEFAULT_ROLE_REQUIREMENTS;
+                return (
+                  <div key={partyNo} className="rounded-3xl border border-orange-100 bg-orange-50/60 p-3">
+                    <div className="mb-3 flex items-center justify-between"><div className="font-black text-slate-950">隊伍 {partyNo}</div><div className="text-xs font-black text-slate-400">6 格需求</div></div>
+                    <div className="grid gap-2">
+                      {Array.from({ length: 6 }, (_, slotIndex) => (
+                        <div key={slotIndex} className="grid grid-cols-[44px_minmax(0,1fr)] items-center gap-2">
+                          <div className="text-xs font-black text-slate-400">#{slotIndex + 1}</div>
                           <Select className="py-2 text-xs" value={slots[slotIndex] || '打手'} onChange={(event) => updateRequirementSlot(partyNo, slotIndex, event.target.value)}>
                             {roleOptions.map((role) => <option key={role}>{role}</option>)}
                           </Select>
-                        ) : (
-                          <span className={classNames('rounded-full px-3 py-2 text-xs font-black', roleAccent[slots[slotIndex]] ?? 'bg-slate-100 text-slate-600')}>{slots[slotIndex] || '打手'}</span>
-                        )}
-                      </div>
-                    ))}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
 
         <GroupStatusPanel group={group} onGroupStatusChange={onGroupStatusChange} canManage={isLeaderUnlocked} />
 
