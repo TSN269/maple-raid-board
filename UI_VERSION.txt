@@ -1,2 +1,2 @@
-UI-5.1
-Training stats image now supports copying PNG directly to the clipboard for pasting into chat dialogs, with share/download fallback.
+UI-5.2
+Added stop analysis, pause/continue timer, F8/F9/F10 shortcuts, moved manual EXP correction, renamed share button, and expanded training stats fields.

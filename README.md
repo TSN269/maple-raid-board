@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-5.1
+# Maple Raid Board — TSN UI-5.2
 
-> 版本基準：UI-5.1  
+> 版本基準：UI-5.2  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,30 +72,39 @@
 
 ---
 
-## 3. 目前 UI-5.1 主要變更
+## 3. 目前 UI-5.2 主要變更
 
-UI-5.1 是以 UI-5.0 為基礎，新增與調整：
+UI-5.2 是以 UI-5.1 為基礎，新增與調整：
 
 ```text
-1. 練功效率統計圖片支援剪貼簿
-   - 按下「複製統計圖片」後
-   - 會優先將統計區數據圖片複製到剪貼簿
-   - 可直接貼到其他軟體的對話框
+1. 練功效率分析控制調整
+   - 新增「停止分析」按鈕
+   - 停止分析會停止 OCR 與計時
+   - 「暫停分析」改為可暫停 / 繼續
+   - 分析中顯示「暫停分析」
+   - 暫停中顯示「繼續分析」
 
-2. 複製失敗時的備援流程
-   - 若瀏覽器不支援圖片剪貼簿
-   - 會退回分享視窗或下載 PNG
-   - 仍可正常分享統計圖片
+2. 快捷鍵
+   - F8：開始分析
+   - F9：暫停 / 繼續分析
+   - F10：停止分析
 
-3. 按鈕文字調整
-   - 由「擷取統計圖片」改為「複製統計圖片」
+3. 版面調整
+   - 「手動修正目前 EXP」移到與「手動加入紀錄」同一列
+   - 「複製統計圖片」改名為「擷取統計資訊」
 
-4. 頁首版本顯示
-   - TSN UI-5.1
+4. 統計欄位調整
+   - EXP 增量後方新增百分比，例如 +13,977,995 [10.56%]
+   - 預估 10 分改為「預估 10 分( 近10分 | 最高 )」
+   - 預估 60 分改為「預估 60 分( 近60分 | 最高 )」
+   - 會同時顯示預估值、近 10 / 60 分與最高值
+
+5. 頁首版本顯示
+   - TSN UI-5.2
 ```
 
-UI-5.1 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-3.3 SQLFIX1 的 SQL，升級 UI-5.1 不需要重跑 SQL。
+UI-5.2 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-3.3 SQLFIX1 的 SQL，升級 UI-5.2 不需要重跑 SQL。
 
 ---
 
@@ -162,7 +171,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui 5.1"
+git commit -m "deploy ui 5.2"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -172,7 +181,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui 5.1"
+git commit -m "deploy ui 5.2"
 git push
 ```
 
@@ -824,6 +833,16 @@ OCR 裁切預覽移到手動修正目前 EXP 右邊
 統計區數據圖片支援複製到剪貼簿
 可直接貼到其他軟體對話框
 若瀏覽器不支援，則退回分享視窗或下載 PNG
+```
+
+### UI-5.2
+
+```text
+新增停止分析按鈕，停止 OCR 與計時
+暫停分析改為暫停 / 繼續分析
+新增 F8 開始、F9 暫停 / 繼續、F10 停止快捷鍵
+手動修正目前 EXP 移到手動加入紀錄同一列
+統計欄位新增 EXP 增量百分比與近 10 / 60 分、最高值顯示
 目前最新版本
 ```
 
@@ -873,7 +892,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 5.1"
+git commit -m "deploy ui 5.2"
 git push
 ```
 

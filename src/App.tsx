@@ -1049,6 +1049,18 @@ function getWindowExpDelta(samples: TrainingSample[], minutes: number, now: numb
   return Math.max(0, last.exp - baseline.exp);
 }
 
+function getMaxWindowExpDelta(samples: TrainingSample[], minutes: number) {
+  if (samples.length < 2) return 0;
+  const windowMs = minutes * 60000;
+  let best = 0;
+  for (const current of samples) {
+    const cutoff = current.timestamp - windowMs;
+    const baseline = [...samples].reverse().find((sample) => sample.timestamp <= cutoff) || samples[0];
+    best = Math.max(best, current.exp - baseline.exp);
+  }
+  return Math.max(0, best);
+}
+
 function buildExpPerMinutePoints(samples: TrainingSample[]) {
   if (samples.length < 2) return [] as Array<{ minute: number; value: number }>;
   const start = samples[0].timestamp;
@@ -1333,6 +1345,9 @@ function TrainingEfficiencyPanel() {
   const [expInput, setExpInput] = useState('');
   const [currentLevelInput, setCurrentLevelInput] = useState('');
   const [analysisStartedAt, setAnalysisStartedAt] = useState<number | null>(null);
+  const [paused, setPaused] = useState(false);
+  const [accumulatedActiveMs, setAccumulatedActiveMs] = useState(0);
+  const [currentRunStartedAt, setCurrentRunStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
   const [message, setMessage] = useState('');
   const [ocrMessage, setOcrMessage] = useState('按「開始分析」後會自動啟動畫面擷取並自動抓取 OCR 裁切區；Debug 內才會顯示手動框選、儲存預設與清除預設。');
@@ -1394,17 +1409,21 @@ function TrainingEfficiencyPanel() {
 
   const firstSample = samples[0];
   const lastSample = samples[samples.length - 1];
-  const elapsedMinutes = getTrainingElapsedMinutes(samples, now);
+  const activeElapsedMs = accumulatedActiveMs + (ocrActive && currentRunStartedAt ? Math.max(0, now - currentRunStartedAt) : 0);
+  const elapsedMinutes = activeElapsedMs / 60000;
   const totalExp = firstSample && lastSample ? Math.max(0, lastSample.exp - firstSample.exp) : 0;
   const expPerMinute = elapsedMinutes > 0 ? totalExp / elapsedMinutes : 0;
   const currentLevel = Math.max(0, Math.min(200, Number(currentLevelInput) || 0));
   const targetExp = ARTALE_EXP_BY_LEVEL[currentLevel] || 0;
   const currentExp = lastSample?.exp || Math.max(0, Number(expInput.replace(/,/g, '')) || 0);
   const currentPercent = targetExp > 0 ? Math.min(999.99, (currentExp / targetExp) * 100) : 0;
+  const totalExpPercent = targetExp > 0 ? (totalExp / targetExp) * 100 : 0;
   const percentPerMinute = targetExp > 0 ? (expPerMinute / targetExp) * 100 : 0;
   const etaMinutes = targetExp > currentExp && expPerMinute > 0 ? (targetExp - currentExp) / expPerMinute : 0;
   const accumulated10 = getWindowExpDelta(samples, 10, now);
   const accumulated60 = getWindowExpDelta(samples, 60, now);
+  const highest10 = getMaxWindowExpDelta(samples, 10);
+  const highest60 = getMaxWindowExpDelta(samples, 60);
   const predicted10 = expPerMinute * 10;
   const predicted60 = expPerMinute * 60;
 
@@ -1456,6 +1475,9 @@ function TrainingEfficiencyPanel() {
     setSamples([]);
     setExpInput('');
     setAnalysisStartedAt(null);
+    setPaused(false);
+    setAccumulatedActiveMs(0);
+    setCurrentRunStartedAt(null);
     setOcrText('');
     setOcrSuccessCount(0);
     setOcrFailCount(0);
@@ -1881,14 +1903,19 @@ function TrainingEfficiencyPanel() {
     const ok = await startCapture();
     if (!ok) return;
 
+    const startedAt = Date.now();
     setRunning(true);
+    setPaused(false);
     setOcrActive(true);
-    setAnalysisStartedAt(Date.now());
+    setAccumulatedActiveMs(0);
+    setCurrentRunStartedAt(startedAt);
+    setAnalysisStartedAt(startedAt);
     setOcrMessage('正在準備畫面並自動抓取 OCR 裁切區…');
 
     const ready = await waitForVideoReady();
     if (!ready) {
       setOcrActive(false);
+      setCurrentRunStartedAt(null);
       setOcrMessage('等待螢幕畫面逾時，請重新開始分析。');
       return;
     }
@@ -1902,27 +1929,93 @@ function TrainingEfficiencyPanel() {
     }, Math.max(1, ocrIntervalSec) * 1000);
   }
 
+  function pauseAnalysis() {
+    if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
+    ocrTimerRef.current = null;
+    const pausedAt = Date.now();
+    if (currentRunStartedAt) {
+      setAccumulatedActiveMs((prev) => prev + Math.max(0, pausedAt - currentRunStartedAt));
+    }
+    setCurrentRunStartedAt(null);
+    setOcrActive(false);
+    setPaused(true);
+    setRunning(true);
+    setOcrMessage('分析已暫停，OCR 與計時已暫停。');
+  }
+
+  function continueAnalysis() {
+    setRunning(true);
+    setPaused(false);
+    setOcrActive(true);
+    setCurrentRunStartedAt(Date.now());
+    setOcrMessage('分析已繼續，OCR 與計時已恢復。');
+    if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
+    void runOcrOnce();
+    ocrTimerRef.current = window.setInterval(() => {
+      void runOcrOnce();
+    }, Math.max(1, ocrIntervalSec) * 1000);
+  }
+
+  function togglePauseContinueAnalysis() {
+    if (ocrActive) {
+      pauseAnalysis();
+      return;
+    }
+    if (paused) {
+      continueAnalysis();
+      return;
+    }
+    void startAnalysis();
+  }
+
   function stopAnalysis() {
     if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
     ocrTimerRef.current = null;
+    const stoppedAt = Date.now();
+    if (ocrActive && currentRunStartedAt) {
+      setAccumulatedActiveMs((prev) => prev + Math.max(0, stoppedAt - currentRunStartedAt));
+    }
+    setCurrentRunStartedAt(null);
     setOcrActive(false);
+    setPaused(false);
     setRunning(false);
-    setOcrMessage('分析已暫停。');
+    setOcrMessage('分析已停止，OCR 與計時已停止。');
   }
+
+  useEffect(() => {
+    function onTrainingHotkey(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      if (tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target?.isContentEditable) return;
+      if (!['F8', 'F9', 'F10'].includes(event.key)) return;
+
+      event.preventDefault();
+      if (event.key === 'F8') {
+        void startAnalysis();
+      } else if (event.key === 'F9') {
+        togglePauseContinueAnalysis();
+      } else if (event.key === 'F10') {
+        stopAnalysis();
+      }
+    }
+
+    window.addEventListener('keydown', onTrainingHotkey);
+    return () => window.removeEventListener('keydown', onTrainingHotkey);
+  }, [ocrActive, paused, currentRunStartedAt, ocrIntervalSec, captureActive]);
 
   const overlayBox = cropToOverlayBox();
   const activeBox = dragBox ? cropToOverlayBox(dragBox) : overlayBox;
 
   function getTrainingStatsShareRows() {
     return [
-      { title: 'EXP', value: `${formatTrainingNumber(currentExp)}[${currentPercent.toFixed(2)}%]`, sub: totalExp > 0 ? `+${formatTrainingNumber(totalExp)}` : '' },
+      { title: 'EXP', value: `${formatTrainingNumber(currentExp)}[${currentPercent.toFixed(2)}%]`, sub: totalExp > 0 ? `+${formatTrainingNumber(totalExp)}${targetExp > 0 ? ` [${totalExpPercent.toFixed(2)}%]` : ''}` : '' },
       { title: 'EXP / 分', value: `⚡ ${formatTrainingNumber(expPerMinute)}`, sub: '' },
       { title: '統計時間', value: formatTrainingDuration(elapsedMinutes), sub: analysisStartedAt ? `開始 ${new Date(analysisStartedAt).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}` : '' },
       { title: 'EXP累積 (10分)', value: `${formatTrainingNumber(accumulated10)} (${elapsedMinutes < 10 ? '<10m' : '10m'})`, sub: '' },
-      { title: '預估 10 分', value: `🟢 ${formatTrainingNumber(predicted10)}`, sub: '' },
+      { title: '預估 10 分( 近10分 | 最高 )', value: `${formatTrainingNumber(predicted10)} (${formatTrainingNumber(accumulated10)} | ${formatTrainingNumber(highest10)})`, sub: '' },
       { title: '預估百分比 (1 | 10 | 60分)', value: targetExp > 0 ? `${percentPerMinute.toFixed(2)}% | ${(percentPerMinute * 10).toFixed(2)}% | ${(percentPerMinute * 60).toFixed(2)}%` : '-- | -- | --', sub: '' },
       { title: 'EXP累積 (60分)', value: `${formatTrainingNumber(accumulated60)} (${elapsedMinutes < 60 ? '<1h' : '60m'})`, sub: '' },
-      { title: '預估 60 分', value: formatTrainingNumber(predicted60), sub: '' },
+      { title: '預估 60 分( 近60分 | 最高 )', value: `${formatTrainingNumber(predicted60)} (${formatTrainingNumber(accumulated60)} | ${formatTrainingNumber(highest60)})`, sub: '' },
       { title: '預估升級時間', value: formatTrainingDuration(etaMinutes), sub: currentLevel > 0 ? `等級 ${currentLevel}` : '' },
     ];
   }
@@ -2123,8 +2216,9 @@ function TrainingEfficiencyPanel() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析'}</Button>
-            <Button variant="secondary" onClick={stopAnalysis} disabled={!ocrActive}>暫停分析</Button>
-            <Button variant="secondary" onClick={exportTrainingStatsImage} disabled={shareBusy}>{shareBusy ? "產生圖片中" : "複製統計圖片"}</Button>
+            <Button variant="secondary" onClick={togglePauseContinueAnalysis} disabled={!ocrActive && !paused}>{paused ? '繼續分析' : '暫停分析'}</Button>
+            <Button variant="secondary" onClick={stopAnalysis} disabled={!ocrActive && !paused && !running}>停止分析</Button>
+            <Button variant="secondary" onClick={exportTrainingStatsImage} disabled={shareBusy}>{shareBusy ? "產生圖片中" : "擷取統計資訊"}</Button>
             <Button variant="ghost" onClick={resetAll}>重置</Button>
           </div>
         </div>
@@ -2136,15 +2230,12 @@ function TrainingEfficiencyPanel() {
         </div>
 
         <div className="mt-5 grid gap-4">
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_260px_160px] xl:items-end">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_260px_160px] xl:items-end">
             <Field label="當前等級">
               <Input inputMode="numeric" value={currentLevelInput} placeholder="例如 90" onChange={(event) => setCurrentLevelInput(event.target.value.replace(/[^0-9]/g, ''))} />
               <div className="mt-2 text-xs font-bold text-orange-700">
                 {targetExp > 0 ? `升下一级所需经验：${formatTrainingNumber(targetExp)}` : '輸入 1～200 等級後自動帶入升級所需總 EXP'}
               </div>
-            </Field>
-            <Field label="手動修正目前 EXP">
-              <Input inputMode="numeric" value={expInput} placeholder="OCR 誤判時手動輸入" onChange={(event) => setExpInput(event.target.value.replace(/[^0-9]/g, ''))} />
             </Field>
             <div className={classNames('rounded-2xl border border-orange-100 bg-orange-50/70 p-2', manualSelectMode && 'xl:col-span-4')}>
               <div className="mb-1 flex items-center justify-between text-[11px] font-black text-orange-700">
@@ -2211,7 +2302,10 @@ function TrainingEfficiencyPanel() {
             </>
           ) : null}
 
-          <div className="flex flex-wrap gap-2">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,360px)_auto_auto] xl:items-end">
+            <Field label="手動修正目前 EXP">
+              <Input inputMode="numeric" value={expInput} placeholder="OCR 誤判時手動輸入" onChange={(event) => setExpInput(event.target.value.replace(/[^0-9]/g, ''))} />
+            </Field>
             <Button onClick={addSample}>手動加入紀錄</Button>
             <Button variant="secondary" onClick={() => setExpInput(String(currentExp + Math.max(0, Math.round(expPerMinute))))}>+1分鐘估算</Button>
           </div>
@@ -2222,14 +2316,14 @@ function TrainingEfficiencyPanel() {
       </section>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <TrainingStatCard title="EXP" value={`${formatTrainingNumber(currentExp)}${targetExp > 0 ? ` [${currentPercent.toFixed(2)}%]` : ''}`} sub={totalExp > 0 ? `+${formatTrainingNumber(totalExp)}` : undefined} icon="👁" />
+        <TrainingStatCard title="EXP" value={`${formatTrainingNumber(currentExp)}${targetExp > 0 ? ` [${currentPercent.toFixed(2)}%]` : ''}`} sub={totalExp > 0 ? `+${formatTrainingNumber(totalExp)}${targetExp > 0 ? ` [${totalExpPercent.toFixed(2)}%]` : ''}` : undefined} icon="👁" />
         <TrainingStatCard title="EXP / 分" value={`⚡ ${formatTrainingNumber(expPerMinute)}`} icon="👁" />
         <TrainingStatCard title="統計時間" value={formatTrainingDuration(elapsedMinutes)} sub={analysisStartedAt ? `開始 ${new Date(analysisStartedAt).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}` : undefined} icon="👁" />
         <TrainingStatCard title="EXP累積 (10分)" value={`${formatTrainingNumber(accumulated10)} (${elapsedMinutes < 10 ? '<10m' : '10m'})`} icon="👁" />
-        <TrainingStatCard title="預估 10 分" value={`🟢 ${formatTrainingNumber(predicted10)}`} icon="👁" />
+        <TrainingStatCard title="預估 10 分( 近10分 | 最高 )" value={`${formatTrainingNumber(predicted10)} (${formatTrainingNumber(accumulated10)} | ${formatTrainingNumber(highest10)})`} icon="👁" />
         <TrainingStatCard title="預估百分比 (1 | 10 | 60分)" value={targetExp > 0 ? `${percentPerMinute.toFixed(2)}% | ${(percentPerMinute * 10).toFixed(2)}% | ${(percentPerMinute * 60).toFixed(2)}%` : '-- | -- | --'} icon="👁" />
         <TrainingStatCard title="EXP累積 (60分)" value={`${formatTrainingNumber(accumulated60)} (${elapsedMinutes < 60 ? '<1h' : '60m'})`} icon="👁" />
-        <TrainingStatCard title="預估 60 分" value={formatTrainingNumber(predicted60)} icon="👁" />
+        <TrainingStatCard title="預估 60 分( 近60分 | 最高 )" value={`${formatTrainingNumber(predicted60)} (${formatTrainingNumber(accumulated60)} | ${formatTrainingNumber(highest60)})`} icon="👁" />
         <TrainingStatCard title="預估升級時間" value={formatTrainingDuration(etaMinutes)} icon="👁" />
       </div>
 
@@ -2685,7 +2779,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.1</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.2</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
