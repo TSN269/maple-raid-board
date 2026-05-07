@@ -1,2 +1,2 @@
-UI-V44
-Training OCR crop scans bottom-left only and previews moved to the right of manual EXP correction.
+UI-V45
+Training OCR crop can be manually selected on the video preview and saved as a default normalized crop independent of page size.

@@ -1113,7 +1113,11 @@ function TrainingChart({ samples }: { samples: TrainingSample[] }) {
 }
 
 function TrainingEfficiencyPanel() {
+  const TRAINING_OCR_CROP_STORAGE_KEY = 'maple_raid_board_training_ocr_crop_v45';
+  const DEFAULT_OCR_CROP = { x: 0.1, y: 85.2, w: 13.2, h: 5.6 };
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoWrapRef = useRef<HTMLDivElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const ocrTimerRef = useRef<number | null>(null);
   const ocrBusyRef = useRef(false);
@@ -1127,14 +1131,37 @@ function TrainingEfficiencyPanel() {
   const [targetExpInput, setTargetExpInput] = useState('');
   const [now, setNow] = useState(Date.now());
   const [message, setMessage] = useState('');
-  const [ocrMessage, setOcrMessage] = useState('按「開始分析」後會自動啟動畫面擷取、抓取左下 EXP 區域並啟動 OCR。');
+  const [ocrMessage, setOcrMessage] = useState('可先在螢幕擷取對照上手動框選 EXP 區域，儲存後作為固定預設裁切區。');
   const [ocrText, setOcrText] = useState('');
   const [ocrSuccessCount, setOcrSuccessCount] = useState(0);
   const [ocrFailCount, setOcrFailCount] = useState(0);
   const [ocrIntervalSec, setOcrIntervalSec] = useState(3);
-  const [ocrCrop, setOcrCrop] = useState({ x: 0.1, y: 85.2, w: 13.2, h: 5.6 });
-  const [autoCropEnabled, setAutoCropEnabled] = useState(true);
+  const [ocrCrop, setOcrCrop] = useState(() => loadSavedTrainingCrop());
   const [debugEnabled, setDebugEnabled] = useState(false);
+  const [manualSelectMode, setManualSelectMode] = useState(false);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [dragBox, setDragBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+
+  function loadSavedTrainingCrop() {
+    try {
+      const raw = localStorage.getItem(TRAINING_OCR_CROP_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (
+        parsed &&
+        Number.isFinite(parsed.x) &&
+        Number.isFinite(parsed.y) &&
+        Number.isFinite(parsed.w) &&
+        Number.isFinite(parsed.h) &&
+        parsed.w > 0 &&
+        parsed.h > 0
+      ) {
+        return parsed as { x: number; y: number; w: number; h: number };
+      }
+    } catch {
+      // ignore invalid storage
+    }
+    return DEFAULT_OCR_CROP;
+  }
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -1147,6 +1174,10 @@ function TrainingEfficiencyPanel() {
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
+
+  useEffect(() => {
+    if (captureActive) drawOcrCropPreview();
+  }, [ocrCrop, captureActive]);
 
   const firstSample = samples[0];
   const lastSample = samples[samples.length - 1];
@@ -1245,6 +1276,8 @@ function TrainingEfficiencyPanel() {
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     setCaptureActive(false);
+    setManualSelectMode(false);
+    setDragBox(null);
     setOcrMessage('已停止螢幕擷取與 OCR。');
   }
 
@@ -1267,143 +1300,111 @@ function TrainingEfficiencyPanel() {
     });
   }
 
-  function findExpBarBoundingBox(source: HTMLCanvasElement) {
-    const ctx = source.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return null;
+  function getVideoDisplayGeometry() {
+    const video = videoRef.current;
+    const wrapper = videoWrapRef.current;
+    if (!video || !wrapper || !video.videoWidth || !video.videoHeight) return null;
 
-    const width = source.width;
-    const height = source.height;
+    const rect = wrapper.getBoundingClientRect();
+    const videoRatio = video.videoWidth / video.videoHeight;
+    const boxRatio = rect.width / rect.height;
 
-    // EXP HUD is in the bottom-left corner.  Search only that area to avoid
-    // accidentally catching damage numbers, NPC text, or other bright UI.
-    const searchXStart = 0;
-    const searchXEnd = Math.floor(width * 0.25);
-    const searchYStart = Math.floor(height * 0.78);
-    const searchYEnd = height;
+    let displayWidth = rect.width;
+    let displayHeight = rect.height;
+    let offsetX = 0;
+    let offsetY = 0;
 
-    const regionWidth = searchXEnd - searchXStart;
-    const regionHeight = searchYEnd - searchYStart;
-    const image = ctx.getImageData(searchXStart, searchYStart, regionWidth, regionHeight);
-    const data = image.data;
-
-    const rowHits: Array<{ y: number; count: number; minX: number; maxX: number; span: number }> = [];
-
-    for (let y = 0; y < regionHeight; y += 1) {
-      let count = 0;
-      let minX = regionWidth;
-      let maxX = 0;
-
-      for (let x = 0; x < regionWidth; x += 1) {
-        const index = (y * regionWidth + x) * 4;
-        const r = data[index];
-        const g = data[index + 1];
-        const b = data[index + 2];
-
-        // Screenshot target is a lime/yellow EXP bar.
-        // Require a green-dominant horizontal band, not merely white text.
-        const limeBar =
-          g >= 135 &&
-          r >= 90 &&
-          r <= 235 &&
-          b <= 125 &&
-          g >= b * 1.45 &&
-          g >= r * 0.72;
-
-        if (limeBar) {
-          count += 1;
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-        }
-      }
-
-      const span = maxX - minX + 1;
-      if (count >= Math.max(24, regionWidth * 0.025) && span >= Math.max(50, regionWidth * 0.08)) {
-        rowHits.push({ y, count, minX, maxX, span });
-      }
+    if (boxRatio > videoRatio) {
+      displayHeight = rect.height;
+      displayWidth = displayHeight * videoRatio;
+      offsetX = (rect.width - displayWidth) / 2;
+    } else {
+      displayWidth = rect.width;
+      displayHeight = displayWidth / videoRatio;
+      offsetY = (rect.height - displayHeight) / 2;
     }
 
-    if (rowHits.length < 2) return null;
-
-    // Pick the longest continuous horizontal lime band.  This is the EXP bar.
-    let bestStart = 0;
-    let bestEnd = 0;
-    let currentStart = 0;
-
-    for (let index = 1; index <= rowHits.length; index += 1) {
-      const separated = index === rowHits.length || rowHits[index].y - rowHits[index - 1].y > 2;
-      if (separated) {
-        const currentEnd = index - 1;
-        const currentCluster = rowHits.slice(currentStart, currentEnd + 1);
-        const bestCluster = rowHits.slice(bestStart, bestEnd + 1);
-        const currentScore = currentCluster.reduce((sum, row) => sum + row.span + row.count, 0);
-        const bestScore = bestCluster.reduce((sum, row) => sum + row.span + row.count, 0);
-
-        if (currentScore > bestScore) {
-          bestStart = currentStart;
-          bestEnd = currentEnd;
-        }
-        currentStart = index;
-      }
-    }
-
-    const cluster = rowHits.slice(bestStart, bestEnd + 1);
-    if (cluster.length < 2) return null;
-
-    const minX = Math.min(...cluster.map((row) => row.minX)) + searchXStart;
-    const maxX = Math.max(...cluster.map((row) => row.maxX)) + searchXStart;
-    const minY = Math.min(...cluster.map((row) => row.y)) + searchYStart;
-    const maxY = Math.max(...cluster.map((row) => row.y)) + searchYStart;
-    const count = cluster.reduce((sum, row) => sum + row.count, 0);
-
-    if (count < 60 || maxX - minX < width * 0.035 || maxY <= minY) return null;
-    return { minX, minY, maxX, maxY, count };
+    return { rect, displayWidth, displayHeight, offsetX, offsetY };
   }
 
-  function autoDetectOcrCrop() {
-    const video = videoRef.current;
-    if (!video || !video.videoWidth || !video.videoHeight) {
-      setOcrMessage('尚未取得畫面，無法自動抓取 OCR 裁切區域。');
-      return false;
+  function pointerToVideoPercent(clientX: number, clientY: number) {
+    const geo = getVideoDisplayGeometry();
+    if (!geo) return null;
+    const x = ((clientX - geo.rect.left - geo.offsetX) / geo.displayWidth) * 100;
+    const y = ((clientY - geo.rect.top - geo.offsetY) / geo.displayHeight) * 100;
+    return {
+      x: Math.max(0, Math.min(100, x)),
+      y: Math.max(0, Math.min(100, y)),
+    };
+  }
+
+  function cropToOverlayBox(crop = ocrCrop) {
+    const geo = getVideoDisplayGeometry();
+    if (!geo) return null;
+
+    return {
+      x: geo.offsetX + (crop.x / 100) * geo.displayWidth,
+      y: geo.offsetY + (crop.y / 100) * geo.displayHeight,
+      w: (crop.w / 100) * geo.displayWidth,
+      h: (crop.h / 100) * geo.displayHeight,
+    };
+  }
+
+  function onVideoPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (!manualSelectMode) return;
+    const point = pointerToVideoPercent(event.clientX, event.clientY);
+    if (!point) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragStart(point);
+    setDragBox({ x: point.x, y: point.y, w: 0, h: 0 });
+  }
+
+  function onVideoPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!manualSelectMode || !dragStart) return;
+    const point = pointerToVideoPercent(event.clientX, event.clientY);
+    if (!point) return;
+
+    const x = Math.min(dragStart.x, point.x);
+    const y = Math.min(dragStart.y, point.y);
+    const w = Math.abs(point.x - dragStart.x);
+    const h = Math.abs(point.y - dragStart.y);
+    setDragBox({ x, y, w, h });
+  }
+
+  function onVideoPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    if (!manualSelectMode || !dragBox) return;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    setDragStart(null);
+
+    if (dragBox.w < 0.5 || dragBox.h < 0.5) {
+      setDragBox(null);
+      setOcrMessage('框選區域太小，請重新框選 EXP 數值與綠色經驗條。');
+      return;
     }
-
-    const frame = document.createElement('canvas');
-    frame.width = video.videoWidth;
-    frame.height = video.videoHeight;
-    const frameCtx = frame.getContext('2d', { willReadFrequently: true });
-    if (!frameCtx) return false;
-    frameCtx.drawImage(video, 0, 0, frame.width, frame.height);
-
-    const box = findExpBarBoundingBox(frame);
-
-    if (!box) {
-      const fallback = { x: 0.1, y: 85.2, w: 13.2, h: 5.6 };
-      setOcrCrop(fallback);
-      setOcrMessage('自動抓取失敗，已改用左下 EXP 預設裁切區。');
-      drawOcrCropPreview(fallback);
-      return false;
-    }
-
-    const barWidth = box.maxX - box.minX + 1;
-    const barHeight = box.maxY - box.minY + 1;
-
-    // Include: EXP label + current EXP + [percent] above the green bar.
-    // Do not include too much right/bottom area, otherwise OCR picks unrelated UI.
-    const cropX = Math.max(0, box.minX - Math.max(3, Math.round(barWidth * 0.02)));
-    const cropY = Math.max(0, box.minY - Math.max(22, Math.round(barHeight * 2.65)));
-    const cropRight = Math.min(frame.width, box.maxX + Math.max(4, Math.round(barWidth * 0.018)));
-    const cropBottom = Math.min(frame.height, box.maxY + Math.max(2, Math.round(barHeight * 0.15)));
 
     const next = {
-      x: Math.round((cropX / frame.width) * 1000) / 10,
-      y: Math.round((cropY / frame.height) * 1000) / 10,
-      w: Math.max(6, Math.round(((cropRight - cropX) / frame.width) * 1000) / 10),
-      h: Math.max(4, Math.round(((cropBottom - cropY) / frame.height) * 1000) / 10),
+      x: Math.round(dragBox.x * 10) / 10,
+      y: Math.round(dragBox.y * 10) / 10,
+      w: Math.round(dragBox.w * 10) / 10,
+      h: Math.round(dragBox.h * 10) / 10,
     };
 
     setOcrCrop(next);
-    setOcrMessage(`已自動抓取左下 EXP 區域：X ${next.x} / Y ${next.y} / 寬 ${next.w} / 高 ${next.h}`);
+    setDragBox(null);
+    setManualSelectMode(false);
     drawOcrCropPreview(next);
-    return true;
+    setOcrMessage(`已套用手動框選區域：X ${next.x} / Y ${next.y} / 寬 ${next.w} / 高 ${next.h}。按「儲存為預設裁切區」後會固定保存。`);
+  }
+
+  function saveCropAsDefault() {
+    localStorage.setItem(TRAINING_OCR_CROP_STORAGE_KEY, JSON.stringify(ocrCrop));
+    setOcrMessage(`已儲存為預設裁切區：X ${ocrCrop.x} / Y ${ocrCrop.y} / 寬 ${ocrCrop.w} / 高 ${ocrCrop.h}。此座標以擷取畫面百分比保存，不受網站視窗大小影響。`);
+  }
+
+  function resetSavedCrop() {
+    localStorage.removeItem(TRAINING_OCR_CROP_STORAGE_KEY);
+    setOcrCrop(DEFAULT_OCR_CROP);
+    setOcrMessage('已清除保存的預設裁切區，並恢復系統預設。');
   }
 
   function preprocessCrop(sourceCanvas: HTMLCanvasElement) {
@@ -1459,8 +1460,6 @@ function TrainingEfficiencyPanel() {
       setOcrMessage('尚未取得可辨識的螢幕畫面。');
       return;
     }
-
-    if (autoCropEnabled) autoDetectOcrCrop();
 
     const crop = drawOcrCropPreview();
     if (!crop) {
@@ -1523,7 +1522,7 @@ function TrainingEfficiencyPanel() {
 
     setRunning(true);
     setOcrActive(true);
-    setOcrMessage('正在準備畫面並自動抓取左下 EXP 區域…');
+    setOcrMessage('正在準備畫面並使用目前裁切區啟動 OCR…');
 
     const ready = await waitForVideoReady();
     if (!ready) {
@@ -1532,7 +1531,7 @@ function TrainingEfficiencyPanel() {
       return;
     }
 
-    if (autoCropEnabled) autoDetectOcrCrop();
+    drawOcrCropPreview();
 
     if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
     void runOcrOnce();
@@ -1549,6 +1548,9 @@ function TrainingEfficiencyPanel() {
     setOcrMessage('分析已暫停。');
   }
 
+  const overlayBox = cropToOverlayBox();
+  const activeBox = dragBox ? cropToOverlayBox(dragBox) : overlayBox;
+
   return (
     <section className="grid gap-4">
       <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
@@ -1558,7 +1560,7 @@ function TrainingEfficiencyPanel() {
               <h2 className="text-2xl font-black text-slate-950">練功效率偵測</h2>
               <Pill tone={ocrActive ? 'green' : running ? 'orange' : 'slate'}>{ocrActive ? 'OCR 自動辨識中' : running ? '統計中' : '未啟動'}</Pill>
             </div>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">按「開始分析」後會自動啟動畫面擷取、抓取左下 EXP 區域並啟動 OCR。畫面中的 EXP 區域會像附圖那樣包含上方數值與下方綠色經驗條。</p>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">先在螢幕擷取對照上框選完整 EXP 區域，再儲存為預設裁切區。保存的是原始擷取畫面百分比座標，不受網站視窗大小影響。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析'}</Button>
@@ -1570,11 +1572,11 @@ function TrainingEfficiencyPanel() {
         <div className="mt-4 flex items-center gap-3 rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-3">
           <input id="training-debug-toggle" type="checkbox" checked={debugEnabled} onChange={(event) => setDebugEnabled(event.target.checked)} className="h-4 w-4 rounded border-orange-300 text-orange-500 focus:ring-orange-400" />
           <label htmlFor="training-debug-toggle" className="text-sm font-black text-orange-700">Debug</label>
-          <span className="text-xs font-semibold text-orange-600">勾選後才顯示 OCR 間隔秒數、OCR 成功 / 失敗 / 最近辨識資訊與裁切調整資訊。</span>
+          <span className="text-xs font-semibold text-orange-600">勾選後顯示 OCR 間隔秒數、成功 / 失敗 / 最近辨識與裁切座標資訊。</span>
         </div>
 
         <div className="mt-5 grid gap-4">
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px_160px] xl:items-end">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_260px_160px] xl:items-end">
             <Field label="升級所需總 EXP（選填）">
               <Input inputMode="numeric" value={targetExpInput} placeholder="例如 16500000" onChange={(event) => setTargetExpInput(event.target.value.replace(/[^0-9]/g, ''))} />
             </Field>
@@ -1586,48 +1588,55 @@ function TrainingEfficiencyPanel() {
                 <span>螢幕擷取對照</span>
                 {captureActive ? <button className="text-rose-600" onClick={stopCapture}>停止</button> : null}
               </div>
-              <video ref={videoRef} autoPlay muted playsInline className="h-24 w-full rounded-xl bg-slate-950 object-contain" />
+              <div
+                ref={videoWrapRef}
+                className={classNames('relative h-28 overflow-hidden rounded-xl bg-slate-950', manualSelectMode ? 'cursor-crosshair ring-2 ring-orange-300' : '')}
+                onPointerDown={onVideoPointerDown}
+                onPointerMove={onVideoPointerMove}
+                onPointerUp={onVideoPointerUp}
+              >
+                <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-contain" />
+                {activeBox ? (
+                  <div
+                    className="pointer-events-none absolute border-2 border-orange-400 bg-orange-400/15 shadow-[0_0_0_999px_rgba(15,23,42,0.35)]"
+                    style={{ left: activeBox.x, top: activeBox.y, width: activeBox.w, height: activeBox.h }}
+                  />
+                ) : null}
+              </div>
             </div>
             <div className="rounded-2xl border border-orange-100 bg-white/85 p-2">
               <div className="mb-1 text-[11px] font-black text-orange-700">OCR 裁切預覽</div>
-              <canvas ref={previewCanvasRef} className="h-24 w-full rounded-xl bg-slate-950 object-contain" />
+              <canvas ref={previewCanvasRef} className="h-28 w-full rounded-xl bg-slate-950 object-contain" />
             </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-3">
+            <Button variant="secondary" disabled={!captureActive} onClick={() => setManualSelectMode((prev) => !prev)}>{manualSelectMode ? '取消框選' : '手動框選裁切區'}</Button>
+            <Button variant="secondary" disabled={!captureActive} onClick={saveCropAsDefault}>儲存為預設裁切區</Button>
+            <Button variant="ghost" onClick={resetSavedCrop}>清除預設裁切區</Button>
+            <span className="self-center text-xs font-semibold text-orange-700">框選時請包含：EXP 字樣、數字、百分比與下方綠色經驗條。</span>
           </div>
 
           {debugEnabled ? (
             <>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-5">
                 <Field label="OCR 間隔秒數">
                   <Select value={ocrIntervalSec} onChange={(event) => setOcrIntervalSec(Number(event.target.value))}>
                     {[1, 2, 3, 5, 10].map((sec) => <option key={sec} value={sec}>{sec} 秒</option>)}
                   </Select>
                 </Field>
-                <div className="sm:col-span-2 rounded-3xl border border-orange-100 bg-orange-50/70 p-4">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <div className="text-sm font-black text-orange-700">OCR 裁切區域</div>
-                      <div className="mt-1 text-xs font-semibold leading-6 text-orange-700">預設會自動抓取左下 EXP 區域。關閉自動抓取後，可手動調整數值。</div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="secondary" disabled={!captureActive} onClick={autoDetectOcrCrop}>重新自動抓取</Button>
-                      <Button variant="ghost" onClick={() => setAutoCropEnabled((prev) => !prev)}>{autoCropEnabled ? '自動抓取：開' : '自動抓取：關'}</Button>
-                    </div>
-                  </div>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-4">
-                    <Field label="X">
-                      <Input type="number" min="0" max="100" value={ocrCrop.x} disabled={autoCropEnabled} onChange={(event) => setOcrCrop((prev) => ({ ...prev, x: Math.max(0, Math.min(100, Number(event.target.value))) }))} />
-                    </Field>
-                    <Field label="Y">
-                      <Input type="number" min="0" max="100" value={ocrCrop.y} disabled={autoCropEnabled} onChange={(event) => setOcrCrop((prev) => ({ ...prev, y: Math.max(0, Math.min(100, Number(event.target.value))) }))} />
-                    </Field>
-                    <Field label="寬">
-                      <Input type="number" min="1" max="100" value={ocrCrop.w} disabled={autoCropEnabled} onChange={(event) => setOcrCrop((prev) => ({ ...prev, w: Math.max(1, Math.min(100, Number(event.target.value))) }))} />
-                    </Field>
-                    <Field label="高">
-                      <Input type="number" min="1" max="100" value={ocrCrop.h} disabled={autoCropEnabled} onChange={(event) => setOcrCrop((prev) => ({ ...prev, h: Math.max(1, Math.min(100, Number(event.target.value))) }))} />
-                    </Field>
-                  </div>
-                </div>
+                <Field label="X">
+                  <Input type="number" min="0" max="100" value={ocrCrop.x} onChange={(event) => setOcrCrop((prev) => ({ ...prev, x: Math.max(0, Math.min(100, Number(event.target.value))) }))} />
+                </Field>
+                <Field label="Y">
+                  <Input type="number" min="0" max="100" value={ocrCrop.y} onChange={(event) => setOcrCrop((prev) => ({ ...prev, y: Math.max(0, Math.min(100, Number(event.target.value))) }))} />
+                </Field>
+                <Field label="寬">
+                  <Input type="number" min="1" max="100" value={ocrCrop.w} onChange={(event) => setOcrCrop((prev) => ({ ...prev, w: Math.max(1, Math.min(100, Number(event.target.value))) }))} />
+                </Field>
+                <Field label="高">
+                  <Input type="number" min="1" max="100" value={ocrCrop.h} onChange={(event) => setOcrCrop((prev) => ({ ...prev, h: Math.max(1, Math.min(100, Number(event.target.value))) }))} />
+                </Field>
               </div>
 
               <div className="grid gap-3 md:grid-cols-3">
@@ -1673,7 +1682,7 @@ function TrainingEfficiencyPanel() {
               <span className="font-bold text-slate-400">{new Date(sample.timestamp).toLocaleTimeString('zh-TW')}</span>
               <span className="font-black text-slate-700">EXP {formatTrainingNumber(sample.exp)}</span>
             </div>
-          )) : <div className="py-6 text-center text-sm font-bold text-slate-400">尚無紀錄。按「開始分析」後會自動啟動 OCR，或手動輸入 EXP 後加入紀錄。</div>}
+          )) : <div className="py-6 text-center text-sm font-bold text-slate-400">尚無紀錄。先框選並儲存裁切區，再按「開始分析」啟動 OCR。</div>}
         </div>
       </section>
     </section>
@@ -2109,7 +2118,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V44</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V45</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
