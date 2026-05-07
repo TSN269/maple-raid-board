@@ -1,2 +1,2 @@
-UI-V43
-Fix OCR crop to target the bottom-left green EXP bar and shrink capture/preview panels to UI-V39-like size.
+UI-V44
+Training OCR crop scans bottom-left only and previews moved to the right of manual EXP correction.

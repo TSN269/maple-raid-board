@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-V43
+# Maple Raid Board — TSN UI-V44
 
-> 版本基準：UI-V43  
+> 版本基準：UI-V44  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,32 +72,32 @@
 
 ---
 
-## 3. 目前 UI-V43 主要變更
+## 3. 目前 UI-V44 主要變更
 
-UI-V43 是以 UI-V42 為基礎，修正：
+UI-V44 是以 UI-V43 為基礎，修正與調整：
 
 ```text
-1. OCR 裁切區域再次修正
-   - 改為先偵測左下角綠色 EXP 經驗條
-   - 再由經驗條位置往上裁切，包含 EXP 文字、數字、百分比與經驗條
-   - 避免把其他亮色文字一起抓進裁切區
-   - 自動抓取失敗時套用更接近附圖的左下 EXP 預設裁切區
+1. OCR 裁切區域再修正
+   - 改為只在左下角 25% 寬度與底部區域尋找 EXP 綠色經驗條
+   - 以最長的綠色水平條作為 EXP bar
+   - 由 EXP bar 向上裁切，包含 EXP 文字、EXP 數字、百分比與綠色經驗條
+   - 預設裁切區改為更接近附圖的左下 EXP 區域
 
-2. 縮小練功效率偵測右側預覽欄位
-   - 螢幕擷取對照縮回接近 UI-V39 尺寸
-   - OCR 裁切預覽縮小
-   - 右側欄寬由 420px 調回 360px
+2. 練功效率偵測版面調整
+   - 「螢幕擷取對照」移到「手動修正目前 EXP」右邊
+   - 「OCR 裁切預覽」也移到「手動修正目前 EXP」右邊
+   - 兩個預覽欄位改成小型卡片，不再佔用右側大欄位
 
 3. Debug 行為維持
    - 未勾選 Debug 時不顯示 OCR 間隔秒數
    - 未勾選 Debug 時不顯示 OCR 成功、失敗 / 忽略、最近辨識與裁切調整
 
 4. 頁首版本顯示
-   - TSN UI-V43
+   - TSN UI-V44
 ```
 
-UI-V43 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V43 不需要重跑 SQL。
+UI-V44 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V44 不需要重跑 SQL。
 
 ---
 
@@ -164,7 +164,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v43"
+git commit -m "deploy ui v44"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -174,7 +174,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v43"
+git commit -m "deploy ui v44"
 git push
 ```
 
@@ -701,6 +701,15 @@ OCR 裁切區域改為抓取左下 EXP 文字與綠色經驗條
 OCR 裁切區域改為先抓左下綠色 EXP 經驗條再往上包含 EXP 文字
 自動抓取失敗時套用更接近附圖的左下 EXP 預設裁切區
 螢幕擷取對照與 OCR 裁切預覽縮小至接近 UI-V39 尺寸
+```
+
+### UI-V44
+
+```text
+OCR 裁切區域只掃描左下角並以最長綠色 EXP bar 作為定位
+螢幕擷取對照移到手動修正目前 EXP 右邊
+OCR 裁切預覽移到手動修正目前 EXP 右邊
+兩個預覽欄位改為小型卡片
 目前最新版本
 ```
 ### UI-V33 SQLFIX1
@@ -808,7 +817,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v43"
+git commit -m "deploy ui v44"
 git push
 ```
 
