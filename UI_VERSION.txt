@@ -1,2 +1,2 @@
-UI-V40
-Training efficiency detector uses screen capture + tesseract.js CDN OCR to automatically read EXP, with manual correction fallback.
+UI-V41
+Start Analysis automatically starts screen capture and OCR; OCR crop area is auto-detected with optional manual override.

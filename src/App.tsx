@@ -5,7 +5,7 @@ import { RaidDetail } from './components/RaidDetail';
 import { RaidList } from './components/RaidList';
 import { SignupPanel } from './components/SignupPanel';
 import { NotificationCenter, buildDerivedNotifications, type RaidNotification } from './components/NotificationCenter';
-import { Button, Field, Input, Pill, classNames } from './components/ui';
+import { Button, Field, Input, Pill, Select, classNames } from './components/ui';
 import { getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta, getRaidStatusMeta } from './data/bossArt';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import type { MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup, RaidStatus, RoleRequirementMap } from './types';
@@ -1114,11 +1114,11 @@ function TrainingChart({ samples }: { samples: TrainingSample[] }) {
 
 function TrainingEfficiencyPanel() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const ocrTimerRef = useRef<number | null>(null);
   const ocrBusyRef = useRef(false);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [running, setRunning] = useState(false);
   const [captureActive, setCaptureActive] = useState(false);
   const [ocrActive, setOcrActive] = useState(false);
@@ -1127,12 +1127,13 @@ function TrainingEfficiencyPanel() {
   const [targetExpInput, setTargetExpInput] = useState('');
   const [now, setNow] = useState(Date.now());
   const [message, setMessage] = useState('');
+  const [ocrMessage, setOcrMessage] = useState('按「開始分析」後會自動啟動畫面擷取、偵測 EXP 裁切區域並啟動 OCR。');
   const [ocrText, setOcrText] = useState('');
-  const [ocrMessage, setOcrMessage] = useState('尚未啟動 OCR。');
-  const [ocrOk, setOcrOk] = useState(0);
-  const [ocrFail, setOcrFail] = useState(0);
+  const [ocrSuccessCount, setOcrSuccessCount] = useState(0);
+  const [ocrFailCount, setOcrFailCount] = useState(0);
   const [ocrIntervalSec, setOcrIntervalSec] = useState(3);
-  const [crop, setCrop] = useState({ x: 58, y: 82, w: 34, h: 13 });
+  const [ocrCrop, setOcrCrop] = useState({ x: 58, y: 82, w: 34, h: 13 });
+  const [autoCropEnabled, setAutoCropEnabled] = useState(true);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -1166,18 +1167,31 @@ function TrainingEfficiencyPanel() {
       setMessage(source === 'ocr' ? 'OCR 辨識到的 EXP 格式不正確。' : '請輸入正確的目前 EXP。');
       return false;
     }
+
     const last = samples[samples.length - 1];
     if (source === 'ocr' && last) {
       if (exp < last.exp) {
-        setOcrFail((prev) => prev + 1);
+        setOcrFailCount((prev) => prev + 1);
         setOcrMessage(`OCR 忽略：辨識值 ${formatTrainingNumber(exp)} 小於上一筆 ${formatTrainingNumber(last.exp)}。`);
         return false;
       }
+
+      const elapsed = Math.max(1, (Date.now() - last.timestamp) / 60000);
+      const delta = exp - last.exp;
+      const estimatedPerMinute = delta / elapsed;
+
+      if (samples.length >= 3 && expPerMinute > 0 && estimatedPerMinute > expPerMinute * 20 && delta > 100000) {
+        setOcrFailCount((prev) => prev + 1);
+        setOcrMessage(`OCR 忽略：辨識值跳動過大（${formatTrainingNumber(exp)}）。`);
+        return false;
+      }
+
       if (exp === last.exp) {
         setOcrMessage(`OCR 成功，但 EXP 未變化：${formatTrainingNumber(exp)}。`);
         return true;
       }
     }
+
     setSamples((prev) => [...prev, { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, timestamp: Date.now(), exp }].sort((a, b) => a.timestamp - b.timestamp));
     setExpInput(String(exp));
     setRunning(true);
@@ -1197,25 +1211,29 @@ function TrainingEfficiencyPanel() {
     setSamples([]);
     setExpInput('');
     setOcrText('');
-    setOcrOk(0);
-    setOcrFail(0);
+    setOcrSuccessCount(0);
+    setOcrFailCount(0);
     setMessage('已重置練功效率紀錄。');
     setOcrMessage('OCR 已停止並清空紀錄。');
   }
 
   async function startCapture() {
+    if (captureActive) return true;
+
     try {
       if (!navigator.mediaDevices?.getDisplayMedia) {
         setMessage('此瀏覽器不支援螢幕擷取。');
-        return;
+        return false;
       }
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
       setCaptureActive(true);
-      setMessage('已開始螢幕擷取。請調整 OCR 區域後啟動 OCR。');
+      setMessage('已開始螢幕擷取。');
+      return true;
     } catch (err) {
       setMessage(err instanceof Error ? err.message : '無法開始螢幕擷取');
+      return false;
     }
   }
 
@@ -1227,43 +1245,161 @@ function TrainingEfficiencyPanel() {
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     setCaptureActive(false);
+    setOcrMessage('已停止螢幕擷取與 OCR。');
   }
 
-  function drawCrop() {
+  function waitForVideoReady() {
+    return new Promise<boolean>((resolve) => {
+      const started = Date.now();
+      const check = () => {
+        const video = videoRef.current;
+        if (video?.videoWidth && video.videoHeight) {
+          resolve(true);
+          return;
+        }
+        if (Date.now() - started > 5000) {
+          resolve(false);
+          return;
+        }
+        window.setTimeout(check, 120);
+      };
+      check();
+    });
+  }
+
+  function findBrightTextBoundingBox(source: HTMLCanvasElement, yStartRatio: number, yEndRatio: number) {
+    const ctx = source.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+
+    const width = source.width;
+    const height = source.height;
+    const yStart = Math.floor(height * yStartRatio);
+    const yEnd = Math.floor(height * yEndRatio);
+    const data = ctx.getImageData(0, yStart, width, Math.max(1, yEnd - yStart)).data;
+
+    let minX = width;
+    let minY = height;
+    let maxX = 0;
+    let maxY = 0;
+    let count = 0;
+
+    for (let y = 0; y < yEnd - yStart; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const index = (y * width + x) * 4;
+        const r = data[index];
+        const g = data[index + 1];
+        const b = data[index + 2];
+        const bright = r > 165 && g > 165 && b > 165;
+        const blueWhite = b > 130 && r > 110 && g > 110;
+        if (bright || blueWhite) {
+          count += 1;
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y + yStart);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y + yStart);
+        }
+      }
+    }
+
+    if (count < 20 || maxX <= minX || maxY <= minY) return null;
+    return { minX, minY, maxX, maxY, count };
+  }
+
+  function autoDetectOcrCrop() {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      setOcrMessage('尚未取得畫面，無法自動抓取 OCR 裁切區域。');
+      return false;
+    }
+
+    const frame = document.createElement('canvas');
+    frame.width = video.videoWidth;
+    frame.height = video.videoHeight;
+    const frameCtx = frame.getContext('2d', { willReadFrequently: true });
+    if (!frameCtx) return false;
+    frameCtx.drawImage(video, 0, 0, frame.width, frame.height);
+
+    const searchRanges: Array<[number, number]> = [
+      [0.70, 0.98],
+      [0.50, 0.98],
+      [0.00, 1.00],
+    ];
+
+    let box: ReturnType<typeof findBrightTextBoundingBox> = null;
+    for (const [start, end] of searchRanges) {
+      box = findBrightTextBoundingBox(frame, start, end);
+      if (box) break;
+    }
+
+    if (!box) {
+      setOcrMessage('自動抓取失敗，已使用預設 EXP 區域。可先調整遊戲視窗讓 EXP 數字清楚露出。');
+      return false;
+    }
+
+    const padX = Math.round(frame.width * 0.025);
+    const padY = Math.round(frame.height * 0.018);
+    const x = Math.max(0, ((box.minX - padX) / frame.width) * 100);
+    const y = Math.max(0, ((box.minY - padY) / frame.height) * 100);
+    const w = Math.min(100 - x, ((box.maxX - box.minX + padX * 2) / frame.width) * 100);
+    const h = Math.min(100 - y, ((box.maxY - box.minY + padY * 2) / frame.height) * 100);
+
+    const next = {
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y * 10) / 10,
+      w: Math.max(5, Math.round(w * 10) / 10),
+      h: Math.max(4, Math.round(h * 10) / 10),
+    };
+
+    setOcrCrop(next);
+    setOcrMessage(`已自動抓取 OCR 裁切區域：X ${next.x} / Y ${next.y} / 寬 ${next.w} / 高 ${next.h}`);
+    drawOcrCropPreview(next);
+    return true;
+  }
+
+  function preprocessCrop(sourceCanvas: HTMLCanvasElement) {
+    const ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return sourceCanvas;
+
+    const imageData = ctx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+    const data = imageData.data;
+    for (let index = 0; index < data.length; index += 4) {
+      const gray = data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
+      const boosted = gray > 120 ? 255 : Math.max(0, gray - 30);
+      data[index] = boosted;
+      data[index + 1] = boosted;
+      data[index + 2] = boosted;
+    }
+    ctx.putImageData(imageData, 0, 0);
+
+    const scaled = document.createElement('canvas');
+    scaled.width = sourceCanvas.width * 3;
+    scaled.height = sourceCanvas.height * 3;
+    const scaledCtx = scaled.getContext('2d');
+    if (!scaledCtx) return sourceCanvas;
+    scaledCtx.imageSmoothingEnabled = false;
+    scaledCtx.drawImage(sourceCanvas, 0, 0, scaled.width, scaled.height);
+    return scaled;
+  }
+
+  function drawOcrCropPreview(nextCrop = ocrCrop) {
     const video = videoRef.current;
     const preview = previewCanvasRef.current;
     if (!video || !preview || !video.videoWidth || !video.videoHeight) return null;
+
     const sourceWidth = video.videoWidth;
     const sourceHeight = video.videoHeight;
-    const sx = Math.max(0, Math.floor((crop.x / 100) * sourceWidth));
-    const sy = Math.max(0, Math.floor((crop.y / 100) * sourceHeight));
-    const sw = Math.max(10, Math.floor((crop.w / 100) * sourceWidth));
-    const sh = Math.max(10, Math.floor((crop.h / 100) * sourceHeight));
+    const sx = Math.max(0, Math.floor((nextCrop.x / 100) * sourceWidth));
+    const sy = Math.max(0, Math.floor((nextCrop.y / 100) * sourceHeight));
+    const sw = Math.max(10, Math.floor((nextCrop.w / 100) * sourceWidth));
+    const sh = Math.max(10, Math.floor((nextCrop.h / 100) * sourceHeight));
+
     preview.width = sw;
     preview.height = sh;
-    preview.getContext('2d')?.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
-    return { sx, sy, sw, sh };
-  }
+    const pctx = preview.getContext('2d');
+    if (!pctx) return null;
+    pctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
 
-  function preprocess(source: HTMLCanvasElement) {
-    const ctx = source.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return source;
-    const imageData = ctx.getImageData(0, 0, source.width, source.height);
-    const data = imageData.data;
-    for (let i = 0; i < data.length; i += 4) {
-      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-      const value = gray > 120 ? 255 : Math.max(0, gray - 30);
-      data[i] = value; data[i + 1] = value; data[i + 2] = value;
-    }
-    ctx.putImageData(imageData, 0, 0);
-    const scaled = document.createElement('canvas');
-    scaled.width = source.width * 3;
-    scaled.height = source.height * 3;
-    const scaledCtx = scaled.getContext('2d');
-    if (!scaledCtx) return source;
-    scaledCtx.imageSmoothingEnabled = false;
-    scaledCtx.drawImage(source, 0, 0, scaled.width, scaled.height);
-    return scaled;
+    return { sx, sy, sw, sh };
   }
 
   async function runOcrOnce() {
@@ -1273,35 +1409,58 @@ function TrainingEfficiencyPanel() {
       setOcrMessage('尚未取得可辨識的螢幕畫面。');
       return;
     }
-    const box = drawCrop();
-    if (!box) return;
+
+    if (autoCropEnabled) autoDetectOcrCrop();
+
+    const crop = drawOcrCropPreview();
+    if (!crop) {
+      setOcrMessage('無法裁切 OCR 區域。');
+      return;
+    }
+
     const canvas = canvasRef.current || document.createElement('canvas');
     canvasRef.current = canvas;
-    canvas.width = box.sw;
-    canvas.height = box.sh;
+    canvas.width = crop.sw;
+    canvas.height = crop.sh;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return;
-    ctx.drawImage(video, box.sx, box.sy, box.sw, box.sh, 0, 0, box.sw, box.sh);
+    if (!ctx) {
+      setOcrMessage('瀏覽器無法建立 Canvas。');
+      return;
+    }
+
+    ctx.drawImage(video, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, crop.sw, crop.sh);
     ocrBusyRef.current = true;
     setOcrMessage('OCR 辨識中…');
+
     try {
+      const processed = preprocessCrop(canvas);
       const tesseract = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.esm.min.js') as any;
-      const result = await tesseract.recognize(preprocess(canvas), 'eng', { tessedit_char_whitelist: '0123456789,.%[] ' });
-      const raw = String(result?.data?.text || '').trim();
-      setOcrText(raw || '(無文字)');
-      const candidates = raw.replace(/[Oo]/g, '0').match(/[0-9][0-9,]{2,}/g)?.map((x) => Number(x.replace(/,/g, ''))).filter((x) => Number.isFinite(x) && x >= 0) || [];
-      const exp = candidates.length ? Math.max(...candidates) : NaN;
+      const result = await tesseract.recognize(processed, 'eng', {
+        tessedit_char_whitelist: '0123456789,.%[] ',
+      });
+      const rawText = String(result?.data?.text || '').trim();
+      setOcrText(rawText || '(無文字)');
+
+      const candidates = rawText
+        .replace(/[Oo]/g, '0')
+        .match(/[0-9][0-9,]{2,}/g)
+        ?.map((value) => Number(value.replace(/,/g, '')))
+        .filter((value) => Number.isFinite(value) && value >= 0) || [];
+      const exp = candidates.length > 0 ? Math.max(...candidates) : NaN;
+
       if (!Number.isFinite(exp)) {
-        setOcrFail((prev) => prev + 1);
-        setOcrMessage(`OCR 未找到 EXP 數字：${raw || '空白'}`);
+        setOcrFailCount((prev) => prev + 1);
+        setOcrMessage(`OCR 未找到 EXP 數字：${rawText || '空白'}`);
         return;
       }
-      if (pushSample(exp, 'ocr')) {
-        setOcrOk((prev) => prev + 1);
+
+      const accepted = pushSample(exp, 'ocr');
+      if (accepted) {
+        setOcrSuccessCount((prev) => prev + 1);
         setOcrMessage(`OCR 辨識成功：${formatTrainingNumber(exp)}`);
       }
     } catch (err) {
-      setOcrFail((prev) => prev + 1);
+      setOcrFailCount((prev) => prev + 1);
       setOcrMessage(err instanceof Error ? `OCR 失敗：${err.message}` : 'OCR 失敗');
     } finally {
       ocrBusyRef.current = false;
@@ -1310,21 +1469,48 @@ function TrainingEfficiencyPanel() {
 
   function startOcr() {
     if (!captureActive) {
-      setOcrMessage('請先按「開始螢幕擷取」。');
+      setOcrMessage('請先按「開始分析」，系統會自動啟動螢幕擷取與 OCR。');
       return;
     }
     if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
     setOcrActive(true);
     setRunning(true);
     void runOcrOnce();
-    ocrTimerRef.current = window.setInterval(() => void runOcrOnce(), Math.max(1, ocrIntervalSec) * 1000);
+    ocrTimerRef.current = window.setInterval(() => {
+      void runOcrOnce();
+    }, Math.max(1, ocrIntervalSec) * 1000);
+  }
+
+  async function startAnalysis() {
+    const ok = await startCapture();
+    if (!ok) return;
+
+    setRunning(true);
+    setOcrActive(true);
+    setOcrMessage('正在準備畫面並自動抓取 OCR 裁切區域…');
+
+    const ready = await waitForVideoReady();
+    if (!ready) {
+      setOcrActive(false);
+      setOcrMessage('等待螢幕畫面逾時，請重新開始分析。');
+      return;
+    }
+
+    if (autoCropEnabled) autoDetectOcrCrop();
+
+    if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
+    void runOcrOnce();
+    ocrTimerRef.current = window.setInterval(() => {
+      void runOcrOnce();
+    }, Math.max(1, ocrIntervalSec) * 1000);
   }
 
   function stopOcr() {
     if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
     ocrTimerRef.current = null;
     setOcrActive(false);
-    setOcrMessage('OCR 已暫停。');
+    setRunning(false);
+    setOcrMessage('分析已暫停。');
   }
 
   return (
@@ -1336,11 +1522,11 @@ function TrainingEfficiencyPanel() {
               <h2 className="text-2xl font-black text-slate-950">練功效率偵測</h2>
               <Pill tone={ocrActive ? 'green' : running ? 'orange' : 'slate'}>{ocrActive ? 'OCR 自動辨識中' : running ? '統計中' : '未啟動'}</Pill>
             </div>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">使用螢幕擷取 + OCR 自動讀取 EXP 數字。手動輸入保留作為 OCR 誤判時的修正備援。</p>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">按「開始分析」後會自動啟動螢幕擷取、抓取 EXP 裁切區域並啟動 OCR。手動輸入保留作為 OCR 誤判時的修正備援。</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={startCapture} disabled={captureActive}>開始螢幕擷取</Button>
-            <Button variant="secondary" onClick={ocrActive ? stopOcr : startOcr}>{ocrActive ? '暫停 OCR' : '啟動 OCR'}</Button>
+            <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析'}</Button>
+            <Button variant="secondary" onClick={ocrActive ? stopOcr : startOcr}>{ocrActive ? '暫停分析' : '啟動 OCR'}</Button>
             <Button variant="secondary" onClick={() => void runOcrOnce()} disabled={!captureActive}>辨識一次</Button>
             <Button variant="ghost" onClick={resetAll}>重置</Button>
           </div>
@@ -1349,35 +1535,69 @@ function TrainingEfficiencyPanel() {
         <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="grid gap-4">
             <div className="grid gap-3 sm:grid-cols-3">
-              <Field label="OCR 間隔秒數"><Input type="number" min="1" max="10" value={ocrIntervalSec} onChange={(e) => setOcrIntervalSec(Math.max(1, Math.min(10, Number(e.target.value))))} /></Field>
-              <Field label="升級所需總 EXP（選填）"><Input inputMode="numeric" value={targetExpInput} placeholder="例如 16500000" onChange={(e) => setTargetExpInput(e.target.value.replace(/[^0-9]/g, ''))} /></Field>
-              <Field label="手動修正目前 EXP"><Input inputMode="numeric" value={expInput} placeholder="OCR 誤判時手動輸入" onChange={(e) => setExpInput(e.target.value.replace(/[^0-9]/g, ''))} /></Field>
+              <Field label="OCR 間隔秒數">
+                <Select value={ocrIntervalSec} onChange={(event) => setOcrIntervalSec(Number(event.target.value))}>
+                  {[1, 2, 3, 5, 10].map((sec) => <option key={sec} value={sec}>{sec} 秒</option>)}
+                </Select>
+              </Field>
+              <Field label="升級所需總 EXP（選填）">
+                <Input inputMode="numeric" value={targetExpInput} placeholder="例如 16500000" onChange={(event) => setTargetExpInput(event.target.value.replace(/[^0-9]/g, ''))} />
+              </Field>
+              <Field label="手動修正目前 EXP">
+                <Input inputMode="numeric" value={expInput} placeholder="OCR 誤判時手動輸入" onChange={(event) => setExpInput(event.target.value.replace(/[^0-9]/g, ''))} />
+              </Field>
             </div>
+
             <div className="rounded-3xl border border-orange-100 bg-orange-50/70 p-4">
-              <div className="mb-3 text-sm font-black text-orange-700">OCR 裁切區域（百分比）</div>
-              <div className="grid gap-3 sm:grid-cols-4">
-                <Field label="X"><Input type="number" min="0" max="100" value={crop.x} onChange={(e) => setCrop((p) => ({ ...p, x: Math.max(0, Math.min(100, Number(e.target.value))) }))} /></Field>
-                <Field label="Y"><Input type="number" min="0" max="100" value={crop.y} onChange={(e) => setCrop((p) => ({ ...p, y: Math.max(0, Math.min(100, Number(e.target.value))) }))} /></Field>
-                <Field label="寬"><Input type="number" min="1" max="100" value={crop.w} onChange={(e) => setCrop((p) => ({ ...p, w: Math.max(1, Math.min(100, Number(e.target.value))) }))} /></Field>
-                <Field label="高"><Input type="number" min="1" max="100" value={crop.h} onChange={(e) => setCrop((p) => ({ ...p, h: Math.max(1, Math.min(100, Number(e.target.value))) }))} /></Field>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-sm font-black text-orange-700">OCR 裁切區域</div>
+                  <div className="mt-1 text-xs font-semibold leading-6 text-orange-700">預設會自動掃描畫面亮色文字並抓取 EXP 區域；失敗時可關閉自動抓取並手動微調。</div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="secondary" disabled={!captureActive} onClick={autoDetectOcrCrop}>自動抓取裁切區</Button>
+                  <Button variant="ghost" onClick={() => setAutoCropEnabled((prev) => !prev)}>{autoCropEnabled ? '自動抓取：開' : '自動抓取：關'}</Button>
+                </div>
               </div>
-              <div className="mt-3 text-xs font-semibold leading-6 text-orange-700">調整裁切區域，讓右側預覽只包含 EXP 數字。OCR 會抓最大數字作為目前 EXP。</div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                <Field label="X">
+                  <Input type="number" min="0" max="100" value={ocrCrop.x} disabled={autoCropEnabled} onChange={(event) => setOcrCrop((prev) => ({ ...prev, x: Math.max(0, Math.min(100, Number(event.target.value))) }))} />
+                </Field>
+                <Field label="Y">
+                  <Input type="number" min="0" max="100" value={ocrCrop.y} disabled={autoCropEnabled} onChange={(event) => setOcrCrop((prev) => ({ ...prev, y: Math.max(0, Math.min(100, Number(event.target.value))) }))} />
+                </Field>
+                <Field label="寬">
+                  <Input type="number" min="1" max="100" value={ocrCrop.w} disabled={autoCropEnabled} onChange={(event) => setOcrCrop((prev) => ({ ...prev, w: Math.max(1, Math.min(100, Number(event.target.value))) }))} />
+                </Field>
+                <Field label="高">
+                  <Input type="number" min="1" max="100" value={ocrCrop.h} disabled={autoCropEnabled} onChange={(event) => setOcrCrop((prev) => ({ ...prev, h: Math.max(1, Math.min(100, Number(event.target.value))) }))} />
+                </Field>
+              </div>
             </div>
+
             <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-3xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">OCR 成功：{ocrOk}</div>
-              <div className="rounded-3xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-black text-rose-700">OCR 失敗 / 忽略：{ocrFail}</div>
+              <div className="rounded-3xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">OCR 成功：{ocrSuccessCount}</div>
+              <div className="rounded-3xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-black text-rose-700">OCR 失敗 / 忽略：{ocrFailCount}</div>
               <div className="rounded-3xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-black text-orange-700">最近辨識：{ocrText || '--'}</div>
             </div>
-            <div className="flex flex-wrap gap-2"><Button onClick={addSample}>手動加入紀錄</Button><Button variant="secondary" onClick={() => setExpInput(String(currentExp + Math.max(0, Math.round(expPerMinute))))}>+1分鐘估算</Button></div>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={addSample}>手動加入紀錄</Button>
+              <Button variant="secondary" onClick={() => setExpInput(String(currentExp + Math.max(0, Math.round(expPerMinute))))}>+1分鐘估算</Button>
+            </div>
           </div>
+
           <div className="grid gap-3">
             <div className="rounded-3xl border border-orange-100 bg-orange-50/70 p-3">
               <div className="mb-2 flex items-center justify-between text-xs font-black text-orange-700"><span>螢幕擷取對照</span>{captureActive ? <button className="text-rose-600" onClick={stopCapture}>停止</button> : null}</div>
               <video ref={videoRef} autoPlay muted playsInline className="aspect-video w-full rounded-2xl bg-slate-950 object-contain" />
             </div>
-            <div className="rounded-3xl border border-orange-100 bg-white/85 p-3"><div className="mb-2 text-xs font-black text-orange-700">OCR 裁切預覽</div><canvas ref={previewCanvasRef} className="max-h-36 w-full rounded-2xl bg-slate-950 object-contain" /></div>
+            <div className="rounded-3xl border border-orange-100 bg-white/85 p-3">
+              <div className="mb-2 text-xs font-black text-orange-700">OCR 裁切預覽</div>
+              <canvas ref={previewCanvasRef} className="max-h-36 w-full rounded-2xl bg-slate-950 object-contain" />
+            </div>
           </div>
         </div>
+
         {message ? <div className="mt-4 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-700">{message}</div> : null}
         <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600">{ocrMessage}</div>
       </section>
@@ -1393,16 +1613,27 @@ function TrainingEfficiencyPanel() {
         <TrainingStatCard title="預估 60 分" value={formatTrainingNumber(predicted60)} icon="👁" />
         <TrainingStatCard title="預估升級時間" value={formatTrainingDuration(etaMinutes)} icon="👁" />
       </div>
+
       <TrainingChart samples={samples} />
+
       <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
-        <div className="flex items-center justify-between gap-3"><h3 className="text-lg font-black text-slate-950">最近 OCR / 手動紀錄</h3><span className="text-xs font-black text-slate-400">資料筆數：{samples.length}</span></div>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-lg font-black text-slate-950">最近 OCR / 手動紀錄</h3>
+          <span className="text-xs font-black text-slate-400">資料筆數：{samples.length}</span>
+        </div>
         <div className="mt-3 max-h-72 overflow-auto rounded-2xl border border-orange-100 bg-orange-50/50 p-3">
-          {samples.length > 0 ? samples.slice().reverse().map((sample) => <div key={sample.id} className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 border-b border-orange-100 py-2 text-sm last:border-b-0"><span className="font-bold text-slate-400">{new Date(sample.timestamp).toLocaleTimeString('zh-TW')}</span><span className="font-black text-slate-700">EXP {formatTrainingNumber(sample.exp)}</span></div>) : <div className="py-6 text-center text-sm font-bold text-slate-400">尚無紀錄。請先開始螢幕擷取並啟動 OCR，或手動輸入 EXP 後加入紀錄。</div>}
+          {samples.length > 0 ? samples.slice().reverse().map((sample) => (
+            <div key={sample.id} className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 border-b border-orange-100 py-2 text-sm last:border-b-0">
+              <span className="font-bold text-slate-400">{new Date(sample.timestamp).toLocaleTimeString('zh-TW')}</span>
+              <span className="font-black text-slate-700">EXP {formatTrainingNumber(sample.exp)}</span>
+            </div>
+          )) : <div className="py-6 text-center text-sm font-bold text-slate-400">尚無紀錄。按「開始分析」後會自動啟動 OCR，或手動輸入 EXP 後加入紀錄。</div>}
         </div>
       </section>
     </section>
   );
 }
+
 function SettingsPanel({ groups, leaderCodes, signupCodes, onForgetLeaderCode, onForgetSignupCode }: { groups: RaidGroup[]; leaderCodes: Record<string, string>; signupCodes: Record<string, string>; onForgetLeaderCode: (groupId: string) => void; onForgetSignupCode: (groupId: string) => void }) {
   const [copied, setCopied] = useState<string | null>(null);
   const savedGroupIds = Array.from(new Set([...Object.keys(leaderCodes), ...Object.keys(signupCodes)]));
@@ -1832,7 +2063,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V40</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V41</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
