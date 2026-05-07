@@ -1061,18 +1061,71 @@ function getMaxWindowExpDelta(samples: TrainingSample[], minutes: number) {
   return Math.max(0, best);
 }
 
+function getMedianTrainingValue(values: number[]) {
+  const sorted = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  if (sorted.length === 0) return 0;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
 function buildExpPerMinutePoints(samples: TrainingSample[]) {
   if (samples.length < 2) return [] as Array<{ minute: number; value: number }>;
   const start = samples[0].timestamp;
-  const points: Array<{ minute: number; value: number }> = [];
+  const rawPoints: Array<{ minute: number; value: number }> = [];
+
   for (let i = 1; i < samples.length; i += 1) {
     const prev = samples[i - 1];
     const current = samples[i];
     const elapsed = Math.max(1, current.timestamp - prev.timestamp) / 60000;
     const value = Math.max(0, (current.exp - prev.exp) / elapsed);
-    points.push({ minute: (current.timestamp - start) / 60000, value });
+    rawPoints.push({ minute: (current.timestamp - start) / 60000, value });
   }
-  return points;
+
+  if (rawPoints.length < 4) return rawPoints;
+  const positiveValues = rawPoints.map((point) => point.value).filter((value) => value > 0);
+  const median = getMedianTrainingValue(positiveValues);
+  if (median <= 0) return rawPoints;
+
+  return rawPoints.filter((point) => {
+    if (point.value <= 0) return true;
+    return point.value <= Math.max(median * 8, median + 250000);
+  });
+}
+
+function isExtremeTrainingOcrSample(samples: TrainingSample[], exp: number, now: number) {
+  if (samples.length < 4) return false;
+  const recent = samples.slice(-10);
+  const last = recent[recent.length - 1];
+  if (!last) return false;
+
+  const rawValues = recent.map((sample) => sample.exp);
+  const medianExp = getMedianTrainingValue(rawValues);
+  const rawDeviation = Math.abs(exp - medianExp);
+
+  const rates: number[] = [];
+  for (let index = 1; index < recent.length; index += 1) {
+    const prev = recent[index - 1];
+    const current = recent[index];
+    const elapsed = Math.max(1, current.timestamp - prev.timestamp) / 60000;
+    const delta = current.exp - prev.exp;
+    if (delta > 0) rates.push(delta / elapsed);
+  }
+
+  const medianRate = getMedianTrainingValue(rates);
+  const elapsedFromLast = Math.max(1, now - last.timestamp) / 60000;
+  const deltaFromLast = exp - last.exp;
+  const candidateRate = Math.max(0, deltaFromLast / elapsedFromLast);
+
+  if (medianRate > 0) {
+    const expected = last.exp + medianRate * elapsedFromLast;
+    const predictionDeviation = Math.abs(exp - expected);
+    const rateTooHigh = candidateRate > Math.max(medianRate * 10, medianRate + 500000) && deltaFromLast > Math.max(250000, medianRate * elapsedFromLast * 5);
+    const valueTooFarFromTrend = predictionDeviation > Math.max(1000000, medianRate * elapsedFromLast * 12, medianExp * 0.12);
+    if (rateTooHigh || valueTooFarFromTrend) return true;
+  }
+
+  if (medianExp > 0 && rawDeviation > Math.max(5000000, medianExp * 0.25) && exp > last.exp) return true;
+  return false;
 }
 
 function TrainingStatCard({ title, value, sub, icon }: { title: string; value: string; sub?: string; icon?: string }) {
@@ -1090,36 +1143,62 @@ function TrainingChart({ samples }: { samples: TrainingSample[] }) {
   const points = buildExpPerMinutePoints(samples);
   const width = 980;
   const height = 300;
-  const paddingX = 34;
-  const paddingY = 24;
+  const paddingLeft = 54;
+  const paddingRight = 34;
+  const paddingTop = 24;
+  const paddingBottom = 34;
   const maxMinute = Math.max(1, ...points.map((point) => point.minute));
   const maxValue = Math.max(1000, ...points.map((point) => point.value));
+  const plotWidth = width - paddingLeft - paddingRight;
+  const plotHeight = height - paddingTop - paddingBottom;
+
+  function pointToXY(point: { minute: number; value: number }) {
+    return {
+      x: paddingLeft + (point.minute / maxMinute) * plotWidth,
+      y: height - paddingBottom - (point.value / maxValue) * plotHeight,
+    };
+  }
+
   const path = points.map((point, index) => {
-    const x = paddingX + (point.minute / maxMinute) * (width - paddingX * 2);
-    const y = height - paddingY - (point.value / maxValue) * (height - paddingY * 2);
+    const { x, y } = pointToXY(point);
     return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
   }).join(' ');
-  const fillPath = path ? `${path} L ${width - paddingX} ${height - paddingY} L ${paddingX} ${height - paddingY} Z` : '';
+
+  const yTicks = [0, 0.25, 0.5, 0.75, 1];
 
   return (
     <div className="rounded-[1.8rem] border border-orange-100 bg-slate-950 p-4 shadow-[0_24px_70px_-46px_rgba(15,23,42,0.95)]">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs font-black text-orange-100/80">
-        <span>EXP / 分趨勢</span>
-        <span>{formatTrainingNumber(maxValue)} EXP / 分</span>
+        <span>EXP / 分折線圖</span>
+        <span>最高刻度 {formatTrainingNumber(maxValue)} EXP / 分</span>
       </div>
       <div className="overflow-x-auto">
         <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[760px] rounded-2xl bg-slate-950">
-          {[0.2, 0.4, 0.6, 0.8, 1].map((ratio) => (
-            <line key={ratio} x1={paddingX} x2={width - paddingX} y1={height - paddingY - ratio * (height - paddingY * 2)} y2={height - paddingY - ratio * (height - paddingY * 2)} stroke="rgba(251,146,60,0.18)" strokeDasharray="6 6" />
-          ))}
-          {fillPath ? <path d={fillPath} fill="rgba(249,115,22,0.22)" /> : null}
-          {path ? <path d={path} fill="none" stroke="rgb(251,146,60)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /> : null}
-          {points.length === 0 ? <text x={width / 2} y={height / 2} textAnchor="middle" fill="rgba(255,237,213,0.72)" fontSize="16" fontWeight="800">加入至少 2 筆 EXP 紀錄後顯示趨勢圖</text> : null}
-          <text x={paddingX} y={height - 6} fill="rgba(255,237,213,0.65)" fontSize="12">0.0 分</text>
-          <text x={width - paddingX} y={height - 6} textAnchor="end" fill="rgba(255,237,213,0.65)" fontSize="12">{maxMinute.toFixed(1)} 分</text>
+          {yTicks.map((ratio) => {
+            const y = height - paddingBottom - ratio * plotHeight;
+            return (
+              <g key={ratio}>
+                <line x1={paddingLeft} x2={width - paddingRight} y1={y} y2={y} stroke="rgba(251,146,60,0.16)" strokeDasharray="6 6" />
+                <text x={paddingLeft - 10} y={y + 4} textAnchor="end" fill="rgba(255,237,213,0.55)" fontSize="11">{formatTrainingNumber(maxValue * ratio)}</text>
+              </g>
+            );
+          })}
+          <line x1={paddingLeft} x2={paddingLeft} y1={paddingTop} y2={height - paddingBottom} stroke="rgba(255,237,213,0.18)" />
+          <line x1={paddingLeft} x2={width - paddingRight} y1={height - paddingBottom} y2={height - paddingBottom} stroke="rgba(255,237,213,0.18)" />
+          {path ? <path d={path} fill="none" stroke="rgb(251,146,60)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" /> : null}
+          {points.map((point, index) => {
+            const { x, y } = pointToXY(point);
+            return <circle key={`${point.minute}-${index}`} cx={x} cy={y} r="4" fill="rgb(255,237,213)" stroke="rgb(251,146,60)" strokeWidth="2" />;
+          })}
+          {points.length === 0 ? <text x={width / 2} y={height / 2} textAnchor="middle" fill="rgba(255,237,213,0.72)" fontSize="16" fontWeight="800">加入至少 2 筆有效 EXP 紀錄後顯示折線圖</text> : null}
+          <text x={paddingLeft} y={height - 8} fill="rgba(255,237,213,0.65)" fontSize="12">0.0 分</text>
+          <text x={width - paddingRight} y={height - 8} textAnchor="end" fill="rgba(255,237,213,0.65)" fontSize="12">{maxMinute.toFixed(1)} 分</text>
         </svg>
       </div>
-      <div className="mt-3 flex items-center gap-2 text-xs font-bold text-orange-100/70"><span className="h-1 w-10 rounded-full bg-orange-400" />EXP / 分</div>
+      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-bold text-orange-100/70">
+        <span className="inline-flex items-center gap-2"><span className="h-1 w-10 rounded-full bg-orange-400" />EXP / 分</span>
+        <span>極端 OCR 誤判值會被忽略，不寫入趨勢圖資料。</span>
+      </div>
     </div>
   );
 }
@@ -1441,12 +1520,16 @@ function TrainingEfficiencyPanel() {
         return false;
       }
 
-      const elapsed = Math.max(1, (Date.now() - last.timestamp) / 60000);
+      const nowForOutlierCheck = Date.now();
+      const elapsed = Math.max(1, (nowForOutlierCheck - last.timestamp) / 60000);
       const delta = exp - last.exp;
       const estimatedPerMinute = delta / elapsed;
-      if (samples.length >= 3 && expPerMinute > 0 && estimatedPerMinute > expPerMinute * 20 && delta > 100000) {
+      if (
+        (samples.length >= 3 && expPerMinute > 0 && estimatedPerMinute > expPerMinute * 20 && delta > 100000) ||
+        isExtremeTrainingOcrSample(samples, exp, nowForOutlierCheck)
+      ) {
         setOcrFailCount((prev) => prev + 1);
-        setOcrMessage(`OCR 忽略：辨識值跳動過大（${formatTrainingNumber(exp)}）。`);
+        setOcrMessage(`OCR 忽略：辨識值與近期大多數 EXP 差異過大（${formatTrainingNumber(exp)}），未加入趨勢圖資料。`);
         return false;
       }
 
@@ -2779,7 +2862,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.2</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.3</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>

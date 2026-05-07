@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-5.2
+# Maple Raid Board — TSN UI-5.3
 
-> 版本基準：UI-5.2  
+> 版本基準：UI-5.3  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,39 +72,32 @@
 
 ---
 
-## 3. 目前 UI-5.2 主要變更
+## 3. 目前 UI-5.3 主要變更
 
-UI-5.2 是以 UI-5.1 為基礎，新增與調整：
+UI-5.3 是以 UI-5.2 為基礎，新增與調整：
 
 ```text
-1. 練功效率分析控制調整
-   - 新增「停止分析」按鈕
-   - 停止分析會停止 OCR 與計時
-   - 「暫停分析」改為可暫停 / 繼續
-   - 分析中顯示「暫停分析」
-   - 暫停中顯示「繼續分析」
+1. 下方 EXP / 分趨勢圖改為折線圖呈現
+   - 移除原本面積填色視覺
+   - 改為折線與節點標記
+   - 補上 Y 軸刻度與 0 分 / 目前分鐘標記
 
-2. 快捷鍵
-   - F8：開始分析
-   - F9：暫停 / 繼續分析
-   - F10：停止分析
+2. OCR 極端值過濾
+   - 若 OCR 辨識到的經驗值與近期大多數資料差異過大
+   - 會視為極端誤判值
+   - 不加入趨勢圖資料
+   - 不影響原本有效的手動紀錄與正常 OCR 紀錄
 
-3. 版面調整
-   - 「手動修正目前 EXP」移到與「手動加入紀錄」同一列
-   - 「複製統計圖片」改名為「擷取統計資訊」
+3. 趨勢圖資料額外保護
+   - EXP / 分折線圖會再次過濾異常尖峰點
+   - 避免單筆 OCR 誤判造成圖表比例被拉壞
 
-4. 統計欄位調整
-   - EXP 增量後方新增百分比，例如 +13,977,995 [10.56%]
-   - 預估 10 分改為「預估 10 分( 近10分 | 最高 )」
-   - 預估 60 分改為「預估 60 分( 近60分 | 最高 )」
-   - 會同時顯示預估值、近 10 / 60 分與最高值
-
-5. 頁首版本顯示
-   - TSN UI-5.2
+4. 頁首版本顯示
+   - TSN UI-5.3
 ```
 
-UI-5.2 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-3.3 SQLFIX1 的 SQL，升級 UI-5.2 不需要重跑 SQL。
+UI-5.3 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-3.3 SQLFIX1 的 SQL，升級 UI-5.3 不需要重跑 SQL。
 
 ---
 
@@ -171,7 +164,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui 5.2"
+git commit -m "deploy ui 5.3"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -181,7 +174,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui 5.2"
+git commit -m "deploy ui 5.3"
 git push
 ```
 
@@ -843,6 +836,14 @@ OCR 裁切預覽移到手動修正目前 EXP 右邊
 新增 F8 開始、F9 暫停 / 繼續、F10 停止快捷鍵
 手動修正目前 EXP 移到手動加入紀錄同一列
 統計欄位新增 EXP 增量百分比與近 10 / 60 分、最高值顯示
+```
+
+### UI-5.3
+
+```text
+下方 EXP / 分趨勢圖改為折線圖呈現
+OCR 辨識到與大多數經驗數值差異過大的極端值時不加入趨勢圖資料
+折線圖額外過濾異常尖峰點，避免誤判值拉壞圖表比例
 目前最新版本
 ```
 
@@ -892,7 +893,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 5.2"
+git commit -m "deploy ui 5.3"
 git push
 ```
 

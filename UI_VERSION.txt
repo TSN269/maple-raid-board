@@ -1,2 +1,2 @@
-UI-5.2
-Added stop analysis, pause/continue timer, F8/F9/F10 shortcuts, moved manual EXP correction, renamed share button, and expanded training stats fields.
+UI-5.3
+Training trend chart is now a line chart and extreme OCR outliers are ignored from trend data.
