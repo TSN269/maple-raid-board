@@ -1,9 +1,9 @@
--- Maple Raid Board Supabase schema / UI-V32
+-- Maple Raid Board Supabase schema / UI-3.2
 -- Permission model:
 --   - anonymous/general players: read raid data and submit signup through RPC only
 --   - raid leader: manage one raid by leader management code through RPC functions
 --   - anti-spam: per-raid signup code, duplicate-name prevention, input validation, honeypot, browser nonce cooldown
--- Run this whole file in Supabase SQL Editor after deploying UI-V13.
+-- Run this whole file in Supabase SQL Editor after deploying UI-1.3.
 
 create schema if not exists extensions;
 create extension if not exists pgcrypto with schema extensions;
@@ -44,7 +44,7 @@ alter table public.raid_groups drop constraint if exists raid_groups_title_lengt
 alter table public.raid_groups drop constraint if exists raid_groups_leader_length_check;
 alter table public.raid_groups drop constraint if exists raid_groups_notice_length_check;
 
--- Clean old/demo rows before applying stricter V13 constraints.
+-- Clean old/demo rows before applying stricter 1.3 constraints.
 -- Older UI versions allowed longer titles/leaders/notices, so constraints must be added after cleanup.
 update public.raid_groups
 set
@@ -630,7 +630,7 @@ values
   ('demo-papulatus-casual', '橘子', '箭神', 111, '主輸出', 1, '已確認', '');
 
 
--- UI-V20 羅茱工具：Supabase 多人即時同步房間
+-- UI-2.0 羅茱工具：Supabase 多人即時同步房間
 -- Demo/production note: room password is validated by RPC; routes are shared in realtime.
 
 create or replace function public.rojhu_empty_routes()

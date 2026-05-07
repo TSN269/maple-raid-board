@@ -1131,7 +1131,7 @@ function TrainingEfficiencyPanel() {
   const [targetExpInput, setTargetExpInput] = useState('');
   const [now, setNow] = useState(Date.now());
   const [message, setMessage] = useState('');
-  const [ocrMessage, setOcrMessage] = useState('按「開始分析」後會自動啟動畫面擷取並自動抓取 OCR 裁切區；Debug 內仍可手動框選保存。');
+  const [ocrMessage, setOcrMessage] = useState('按「開始分析」後會自動啟動畫面擷取並自動抓取 OCR 裁切區；Debug 內才會顯示手動框選、儲存預設與清除預設。');
   const [ocrText, setOcrText] = useState('');
   const [ocrSuccessCount, setOcrSuccessCount] = useState(0);
   const [ocrFailCount, setOcrFailCount] = useState(0);
@@ -1621,10 +1621,26 @@ function TrainingEfficiencyPanel() {
 
     try {
       const processed = preprocessCrop(canvas);
-      const tesseract = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.esm.min.js') as any;
-      const result = await tesseract.recognize(processed, 'eng', {
-        tessedit_char_whitelist: 'EXP0123456789,.%[] ',
-      });
+      const tesseractModule = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.esm.min.js') as any;
+      const tesseractApi = tesseractModule.default ?? tesseractModule;
+      const recognize = tesseractApi.recognize ?? tesseractModule.recognize;
+      let result: any;
+
+      if (typeof recognize === 'function') {
+        result = await recognize(processed, 'eng', {
+          tessedit_char_whitelist: 'EXP0123456789,.%[] ',
+        });
+      } else {
+        const createWorker = tesseractApi.createWorker ?? tesseractModule.createWorker;
+        if (typeof createWorker !== 'function') throw new Error('tesseract.js recognize/createWorker API unavailable');
+        const worker = await createWorker('eng');
+        if (typeof worker.setParameters === 'function') {
+          await worker.setParameters({ tessedit_char_whitelist: 'EXP0123456789,.%[] ' });
+        }
+        result = await worker.recognize(processed);
+        if (typeof worker.terminate === 'function') await worker.terminate();
+      }
+
       const rawText = String(result?.data?.text || '').trim();
       setOcrText(rawText || '(無文字)');
 
@@ -1690,7 +1706,8 @@ function TrainingEfficiencyPanel() {
   const activeBox = dragBox ? cropToOverlayBox(dragBox) : overlayBox;
 
   return (
-    <section className="grid gap-4">
+    <section className="w-full min-w-0 overflow-x-auto pb-2">
+      <div className="grid min-w-[1080px] gap-4">
       <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
@@ -1824,6 +1841,7 @@ function TrainingEfficiencyPanel() {
           )) : <div className="py-6 text-center text-sm font-bold text-slate-400">尚無紀錄。先框選並儲存裁切區，再按「開始分析」啟動 OCR。</div>}
         </div>
       </section>
+      </div>
     </section>
   );
 }
@@ -2257,7 +2275,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V46</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-4.7</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>

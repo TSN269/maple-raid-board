@@ -385,7 +385,7 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRoleR
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_68%_28%,rgba(239,68,68,0.52),transparent_26%),radial-gradient(circle_at_82%_75%,rgba(249,115,22,0.34),transparent_32%),linear-gradient(120deg,#09090b_0%,#1c1917_45%,#431407_100%)]" />
           <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_20%_20%,#fff_1px,transparent_1px)] [background-size:24px_24px]" />
           {bossArt.image ? <img src={bossArt.image} alt={bossArt.label} className="absolute -right-10 bottom-0 top-0 hidden h-full w-[36%] object-contain opacity-95 drop-shadow-[0_20px_30px_rgba(0,0,0,0.45)] lg:block" /> : null}
-          <div className="absolute right-8 top-8 hidden rounded-3xl border border-white/10 bg-black/25 px-4 py-3 text-xs font-black text-orange-100 shadow-2xl backdrop-blur lg:block">Leader Mode UI-V12</div>
+          <div className="absolute right-8 top-8 hidden rounded-3xl border border-white/10 bg-black/25 px-4 py-3 text-xs font-black text-orange-100 shadow-2xl backdrop-blur lg:block">Leader Mode UI-1.2</div>
           <div className="relative p-6 md:p-8">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 max-w-4xl">
