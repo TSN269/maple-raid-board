@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-V37
+# Maple Raid Board — TSN UI-V39
 
-> 版本基準：UI-V37  
+> 版本基準：UI-V39  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,26 +72,28 @@
 
 ---
 
-## 3. 目前 UI-V37 主要變更
+## 3. 目前 UI-V39 主要變更
 
-UI-V37 是以 UI-V36 為基礎，調整：
+UI-V39 是以 UI-V38 為基礎，修正：
 
 ```text
-1. 楓突襲「隊伍角色定位需求」區塊改為團長模式限定
-   - 一般玩家模式不顯示此區塊
-   - 團長解鎖後才看得到需求設定
-   - 團長解鎖後才可編輯並儲存需求
+1. 修正練功效率偵測頁面開啟後空白 / crash
+   - 原因：TrainingEfficiencyPanel 使用 Field 元件
+   - 但 App.tsx 沒有從 components/ui 匯入 Field
+   - UI-V39 已補上 Field import
 
-2. 報名頁仍會依照已設定的需求顯示角色定位
-   - 一般玩家不用看到需求設定區
-   - 但報名時仍只會看到需求內的定位選項
+2. 練功效率偵測功能維持 UI-V38 設計
+   - 統計卡片
+   - EXP / 分趨勢圖
+   - 開始 / 暫停 / 重置
+   - 本站橘色楓葉風格
 
 3. 頁首版本顯示
-   - TSN UI-V37
+   - TSN UI-V39
 ```
 
-UI-V37 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V37 不需要重跑 SQL。
+UI-V39 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-V33 SQLFIX1 的 SQL，升級 UI-V39 不需要重跑 SQL。
 
 ---
 
@@ -158,7 +160,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v37"
+git commit -m "deploy ui v39"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -168,7 +170,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v37"
+git commit -m "deploy ui v39"
 git push
 ```
 
@@ -701,6 +703,24 @@ on conflict update 同步更新 role_requirements
 楓突襲隊伍角色定位需求區塊改為團長模式才顯示
 一般玩家模式不顯示需求設定區
 報名頁仍依照已設定需求限制可選角色定位
+```
+
+### UI-V38
+
+```text
+左側導覽在羅茱工具下方新增練功效率按鈕
+新增練功效率偵測頁面
+統計面板仿練功分析工具呈現 EXP / 分、預估 10 / 60 分與升級時間
+新增 EXP / 分趨勢圖並套用本站橘色風格
+目前最新版本
+```
+
+### UI-V39
+
+```text
+修正練功效率偵測頁面 Field is not defined 錯誤
+App.tsx 補上 Field import
+練功效率偵測頁面可正常開啟
 目前最新版本
 ```
 
@@ -750,7 +770,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v37"
+git commit -m "deploy ui v39"
 git push
 ```
 

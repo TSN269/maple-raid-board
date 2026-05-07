@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { deleteRaidGroup, deleteRaidMember, fetchRaidGroups, insertRaidGroup, insertRaidMember, updateRaidGroupStatus, updateRaidMemberStatus, updateRaidRoleRequirements, verifyLeaderCode } from './api/raids';
 import { CreateRaidModal } from './components/CreateRaidModal';
 import { RaidDetail } from './components/RaidDetail';
@@ -385,7 +385,7 @@ function statusLabel(status: RaidStatus | MemberStatus) {
   return map[status] || status;
 }
 
-type ActivePanel = 'home' | 'raid' | 'signup' | 'favorite' | 'notice' | 'rojhuTools' | 'settings';
+type ActivePanel = 'home' | 'raid' | 'signup' | 'favorite' | 'notice' | 'rojhuTools' | 'trainingEfficiency' | 'settings';
 
 function NavigationRail({ activePanel, onChange, noticeCount }: { activePanel: ActivePanel; onChange: (panel: ActivePanel) => void; noticeCount: number }) {
   const items: Array<{ icon: string; label: string; panel: ActivePanel; badge?: string; helper?: string }> = [
@@ -395,6 +395,7 @@ function NavigationRail({ activePanel, onChange, noticeCount }: { activePanel: A
     { icon: '☆', label: '團連結收藏', panel: 'favorite', helper: '團連結 / 帶邀請碼連結快速收藏' },
     { icon: '●', label: '通知', panel: 'notice', badge: noticeCount > 0 ? String(Math.min(99, noticeCount)) : undefined, helper: '開團提醒 / 狀態變更 / 候補轉正' },
     { icon: '🧰', label: '羅茱工具', panel: 'rojhuTools', helper: '常用連結與快速操作' },
+    { icon: '⚡', label: '練功效率', panel: 'trainingEfficiency', helper: 'EXP / 分與升級時間估算' },
     { icon: '⚙', label: '設定', panel: 'settings', helper: '本機保存的團管理碼 / 邀請碼 / 邀請連結' },
   ];
 
@@ -1012,6 +1013,255 @@ function RojhuToolsPanel() {
   );
 }
 
+
+type TrainingSample = {
+  id: string;
+  timestamp: number;
+  exp: number;
+};
+
+function formatTrainingNumber(value: number) {
+  if (!Number.isFinite(value)) return '0';
+  return Math.round(value).toLocaleString('en-US');
+}
+
+function formatTrainingDuration(minutes: number) {
+  if (!Number.isFinite(minutes) || minutes <= 0) return '--';
+  const total = Math.ceil(minutes);
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  if (hours <= 0) return `${mins} 分鐘`;
+  return `${hours}小時 ${mins}分鐘`;
+}
+
+function getTrainingElapsedMinutes(samples: TrainingSample[], now: number) {
+  if (samples.length === 0) return 0;
+  const start = samples[0].timestamp;
+  const end = samples.length > 1 ? Math.max(now, samples[samples.length - 1].timestamp) : now;
+  return Math.max(0, (end - start) / 60000);
+}
+
+function getWindowExpDelta(samples: TrainingSample[], minutes: number, now: number) {
+  if (samples.length < 2) return 0;
+  const last = samples[samples.length - 1];
+  const cutoff = now - minutes * 60000;
+  const baseline = [...samples].reverse().find((sample) => sample.timestamp <= cutoff) || samples[0];
+  return Math.max(0, last.exp - baseline.exp);
+}
+
+function buildExpPerMinutePoints(samples: TrainingSample[]) {
+  if (samples.length < 2) return [] as Array<{ minute: number; value: number }>;
+  const start = samples[0].timestamp;
+  const points: Array<{ minute: number; value: number }> = [];
+  for (let i = 1; i < samples.length; i += 1) {
+    const prev = samples[i - 1];
+    const current = samples[i];
+    const elapsed = Math.max(1, current.timestamp - prev.timestamp) / 60000;
+    const value = Math.max(0, (current.exp - prev.exp) / elapsed);
+    points.push({ minute: (current.timestamp - start) / 60000, value });
+  }
+  return points;
+}
+
+function TrainingStatCard({ title, value, sub, icon }: { title: string; value: string; sub?: string; icon?: string }) {
+  return (
+    <div className="relative overflow-hidden rounded-[1.6rem] border border-orange-100/80 bg-white/85 p-4 shadow-[0_18px_55px_-44px_rgba(124,45,18,0.75)]">
+      <div className="absolute right-4 top-3 text-lg text-orange-400">{icon || '👁'}</div>
+      <div className="text-center text-xs font-black text-slate-400">{title}</div>
+      <div className="mt-2 text-center text-2xl font-black tracking-tight text-slate-950">{value}</div>
+      {sub ? <div className="mx-auto mt-2 w-fit rounded-full bg-orange-100 px-3 py-1 text-xs font-black text-orange-700">{sub}</div> : null}
+    </div>
+  );
+}
+
+function TrainingChart({ samples }: { samples: TrainingSample[] }) {
+  const points = buildExpPerMinutePoints(samples);
+  const width = 980;
+  const height = 300;
+  const paddingX = 34;
+  const paddingY = 24;
+  const maxMinute = Math.max(1, ...points.map((point) => point.minute));
+  const maxValue = Math.max(1000, ...points.map((point) => point.value));
+  const path = points.map((point, index) => {
+    const x = paddingX + (point.minute / maxMinute) * (width - paddingX * 2);
+    const y = height - paddingY - (point.value / maxValue) * (height - paddingY * 2);
+    return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+  }).join(' ');
+  const fillPath = path ? `${path} L ${width - paddingX} ${height - paddingY} L ${paddingX} ${height - paddingY} Z` : '';
+
+  return (
+    <div className="rounded-[1.8rem] border border-orange-100 bg-slate-950 p-4 shadow-[0_24px_70px_-46px_rgba(15,23,42,0.95)]">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs font-black text-orange-100/80">
+        <span>EXP / 分趨勢</span>
+        <span>{formatTrainingNumber(maxValue)} EXP / 分</span>
+      </div>
+      <div className="overflow-x-auto">
+        <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[760px] rounded-2xl bg-slate-950">
+          {[0.2, 0.4, 0.6, 0.8, 1].map((ratio) => (
+            <line key={ratio} x1={paddingX} x2={width - paddingX} y1={height - paddingY - ratio * (height - paddingY * 2)} y2={height - paddingY - ratio * (height - paddingY * 2)} stroke="rgba(251,146,60,0.18)" strokeDasharray="6 6" />
+          ))}
+          {fillPath ? <path d={fillPath} fill="rgba(249,115,22,0.22)" /> : null}
+          {path ? <path d={path} fill="none" stroke="rgb(251,146,60)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /> : null}
+          {points.length === 0 ? <text x={width / 2} y={height / 2} textAnchor="middle" fill="rgba(255,237,213,0.72)" fontSize="16" fontWeight="800">加入至少 2 筆 EXP 紀錄後顯示趨勢圖</text> : null}
+          <text x={paddingX} y={height - 6} fill="rgba(255,237,213,0.65)" fontSize="12">0.0 分</text>
+          <text x={width - paddingX} y={height - 6} textAnchor="end" fill="rgba(255,237,213,0.65)" fontSize="12">{maxMinute.toFixed(1)} 分</text>
+        </svg>
+      </div>
+      <div className="mt-3 flex items-center gap-2 text-xs font-bold text-orange-100/70"><span className="h-1 w-10 rounded-full bg-orange-400" />EXP / 分</div>
+    </div>
+  );
+}
+
+function TrainingEfficiencyPanel() {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [running, setRunning] = useState(false);
+  const [captureActive, setCaptureActive] = useState(false);
+  const [samples, setSamples] = useState<TrainingSample[]>([]);
+  const [expInput, setExpInput] = useState('');
+  const [targetExpInput, setTargetExpInput] = useState('');
+  const [now, setNow] = useState(Date.now());
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+
+  const firstSample = samples[0];
+  const lastSample = samples[samples.length - 1];
+  const elapsedMinutes = getTrainingElapsedMinutes(samples, now);
+  const totalExp = firstSample && lastSample ? Math.max(0, lastSample.exp - firstSample.exp) : 0;
+  const expPerMinute = elapsedMinutes > 0 ? totalExp / elapsedMinutes : 0;
+  const targetExp = Math.max(0, Number(targetExpInput.replace(/,/g, '')) || 0);
+  const currentExp = lastSample?.exp || Math.max(0, Number(expInput.replace(/,/g, '')) || 0);
+  const currentPercent = targetExp > 0 ? Math.min(999.99, (currentExp / targetExp) * 100) : 0;
+  const percentPerMinute = targetExp > 0 ? (expPerMinute / targetExp) * 100 : 0;
+  const etaMinutes = targetExp > currentExp && expPerMinute > 0 ? (targetExp - currentExp) / expPerMinute : 0;
+  const accumulated10 = getWindowExpDelta(samples, 10, now);
+  const accumulated60 = getWindowExpDelta(samples, 60, now);
+  const predicted10 = expPerMinute * 10;
+  const predicted60 = expPerMinute * 60;
+
+  function addSample() {
+    const exp = Number(expInput.replace(/,/g, ''));
+    if (!Number.isFinite(exp) || exp < 0) {
+      setMessage('請輸入正確的目前 EXP。');
+      return;
+    }
+    setSamples((prev) => [...prev, { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, timestamp: Date.now(), exp }].sort((a, b) => a.timestamp - b.timestamp));
+    setRunning(true);
+    setMessage('已加入 EXP 紀錄。');
+  }
+
+  function resetAll() {
+    setRunning(false);
+    setSamples([]);
+    setExpInput('');
+    setMessage('已重置練功效率紀錄。');
+  }
+
+  async function startCapture() {
+    try {
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        setMessage('此瀏覽器不支援螢幕擷取。');
+        return;
+      }
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      setCaptureActive(true);
+      setMessage('已開始螢幕擷取。此版本統計以手動輸入 EXP 加入紀錄為主。');
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : '無法開始螢幕擷取');
+    }
+  }
+
+  function stopCapture() {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCaptureActive(false);
+  }
+
+  return (
+    <section className="grid gap-4">
+      <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-2xl font-black text-slate-950">練功效率偵測</h2>
+              <Pill tone={running ? 'green' : 'slate'}>{running ? '統計中' : '未啟動'}</Pill>
+            </div>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">仿 EXP/分練功分析工具的統計面板。可開啟螢幕擷取作對照，並用目前 EXP 加入紀錄來計算 EXP/分、10/60 分預估與升級時間。</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={startCapture} disabled={captureActive}>開始螢幕擷取</Button>
+            <Button variant="secondary" onClick={() => setRunning((prev) => !prev)}>{running ? '暫停分析' : '啟動分析'}</Button>
+            <Button variant="ghost" onClick={resetAll}>重置</Button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="目前 EXP">
+              <Input inputMode="numeric" value={expInput} placeholder="例如 913179" onChange={(event) => setExpInput(event.target.value.replace(/[^0-9]/g, ''))} />
+            </Field>
+            <Field label="升級所需總 EXP（選填）">
+              <Input inputMode="numeric" value={targetExpInput} placeholder="例如 16500000" onChange={(event) => setTargetExpInput(event.target.value.replace(/[^0-9]/g, ''))} />
+            </Field>
+            <div className="flex items-end gap-2">
+              <Button className="w-full" onClick={addSample}>加入紀錄</Button>
+              <Button variant="secondary" onClick={() => setExpInput(String(currentExp + Math.max(0, Math.round(expPerMinute))))}>+1分鐘估算</Button>
+            </div>
+          </div>
+          <div className="rounded-3xl border border-orange-100 bg-orange-50/70 p-3">
+            <div className="mb-2 flex items-center justify-between text-xs font-black text-orange-700"><span>螢幕擷取對照</span>{captureActive ? <button className="text-rose-600" onClick={stopCapture}>停止</button> : null}</div>
+            <video ref={videoRef} autoPlay muted playsInline className="aspect-video w-full rounded-2xl bg-slate-950 object-contain" />
+          </div>
+        </div>
+
+        {message ? <div className="mt-4 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-700">{message}</div> : null}
+      </section>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <TrainingStatCard title="EXP" value={`${formatTrainingNumber(currentExp)}${targetExp > 0 ? ` [${currentPercent.toFixed(2)}%]` : ''}`} sub={totalExp > 0 ? `+${formatTrainingNumber(totalExp)}` : undefined} icon="👁" />
+        <TrainingStatCard title="EXP / 分" value={`⚡ ${formatTrainingNumber(expPerMinute)}`} icon="👁" />
+        <TrainingStatCard title="統計時間" value={formatTrainingDuration(elapsedMinutes)} sub={running ? '100.0%' : undefined} icon="👁" />
+        <TrainingStatCard title="EXP累積 (10分)" value={`${formatTrainingNumber(accumulated10)} (${elapsedMinutes < 10 ? '<10m' : '10m'})`} icon="👁" />
+        <TrainingStatCard title="預估 10 分" value={`🟢 ${formatTrainingNumber(predicted10)}`} icon="👁" />
+        <TrainingStatCard title="預估百分比 (1 | 10 | 60分)" value={targetExp > 0 ? `${percentPerMinute.toFixed(2)}% | ${(percentPerMinute * 10).toFixed(2)}% | ${(percentPerMinute * 60).toFixed(2)}%` : '-- | -- | --'} icon="👁" />
+        <TrainingStatCard title="EXP累積 (60分)" value={`${formatTrainingNumber(accumulated60)} (${elapsedMinutes < 60 ? '<1h' : '60m'})`} icon="👁" />
+        <TrainingStatCard title="預估 60 分" value={formatTrainingNumber(predicted60)} icon="👁" />
+        <TrainingStatCard title="預估升級時間" value={formatTrainingDuration(etaMinutes)} icon="👁" />
+      </div>
+
+      <TrainingChart samples={samples} />
+
+      <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-lg font-black text-slate-950">最近擷取 / 紀錄</h3>
+          <span className="text-xs font-black text-slate-400">資料筆數：{samples.length}</span>
+        </div>
+        <div className="mt-3 max-h-72 overflow-auto rounded-2xl border border-orange-100 bg-orange-50/50 p-3">
+          {samples.length > 0 ? samples.slice().reverse().map((sample) => (
+            <div key={sample.id} className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 border-b border-orange-100 py-2 text-sm last:border-b-0">
+              <span className="font-bold text-slate-400">{new Date(sample.timestamp).toLocaleTimeString('zh-TW')}</span>
+              <span className="font-black text-slate-700">EXP {formatTrainingNumber(sample.exp)}</span>
+            </div>
+          )) : <div className="py-6 text-center text-sm font-bold text-slate-400">尚無紀錄。輸入目前 EXP 後按「加入紀錄」。</div>}
+        </div>
+      </section>
+    </section>
+  );
+}
+
 function SettingsPanel({ groups, leaderCodes, signupCodes, onForgetLeaderCode, onForgetSignupCode }: { groups: RaidGroup[]; leaderCodes: Record<string, string>; signupCodes: Record<string, string>; onForgetLeaderCode: (groupId: string) => void; onForgetSignupCode: (groupId: string) => void }) {
   const [copied, setCopied] = useState<string | null>(null);
   const savedGroupIds = Array.from(new Set([...Object.keys(leaderCodes), ...Object.keys(signupCodes)]));
@@ -1441,7 +1691,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V37</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-V38</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
@@ -1579,6 +1829,8 @@ export default function App() {
             />
           ) : activePanel === 'rojhuTools' ? (
             <RojhuToolsPanel />
+          ) : activePanel === 'trainingEfficiency' ? (
+            <TrainingEfficiencyPanel />
           ) : (
             <SettingsPanel
               groups={groups}

@@ -1,2 +1,2 @@
-UI-V37
-Role requirement settings section is visible only in leader mode.
+UI-V38
+Add training efficiency detector panel with stats cards, EXP/min chart, and screen capture preview.
