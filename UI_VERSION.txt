@@ -1,2 +1,2 @@
-UI-5.3
-Training trend chart is now a line chart and extreme OCR outliers are ignored from trend data.
+UI-5.4
+Adjusted training trend chart and exported stats image to use the site style, made exported stats text fit in one line where possible, and changed upgrade level display to the next level.

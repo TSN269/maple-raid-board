@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-5.3
+# Maple Raid Board — TSN UI-5.4
 
-> 版本基準：UI-5.3  
+> 版本基準：UI-5.4  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,32 +72,35 @@
 
 ---
 
-## 3. 目前 UI-5.3 主要變更
+## 3. 目前 UI-5.4 主要變更
 
-UI-5.3 是以 UI-5.2 為基礎，新增與調整：
+UI-5.4 是以 UI-5.3 為基礎，新增與調整：
 
 ```text
-1. 下方 EXP / 分趨勢圖改為折線圖呈現
-   - 移除原本面積填色視覺
-   - 改為折線與節點標記
-   - 補上 Y 軸刻度與 0 分 / 目前分鐘標記
+1. 趨勢圖顏色風格改為跟網站一致
+   - 改為本站白底 / 橘色主題風格
+   - 折線圖、刻度與說明區塊更貼近站內樣式
 
-2. OCR 極端值過濾
-   - 若 OCR 辨識到的經驗值與近期大多數資料差異過大
-   - 會視為極端誤判值
-   - 不加入趨勢圖資料
-   - 不影響原本有效的手動紀錄與正常 OCR 紀錄
+2. 擷取統計資訊圖片顏色風格改為跟網站一致
+   - 圖片改為本站白底暖色調卡片風格
+   - 與頁面視覺更一致，分享時更統一
 
-3. 趨勢圖資料額外保護
-   - EXP / 分折線圖會再次過濾異常尖峰點
-   - 避免單筆 OCR 誤判造成圖表比例被拉壞
+3. 擷取統計資訊圖片內容盡量單行顯示
+   - 圖片寬度加大
+   - 卡片文字自動縮字
+   - 盡量避免像「預估百分比」跑到第二行
 
-4. 頁首版本顯示
-   - TSN UI-5.3
+4. 預估升級時間的等級改為升級後等級
+   - 例如目前等級 148
+   - 顯示為等級 149
+   - 頁面卡片與擷取圖片都同步修正
+
+5. 頁首版本顯示
+   - TSN UI-5.4
 ```
 
-UI-5.3 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-3.3 SQLFIX1 的 SQL，升級 UI-5.3 不需要重跑 SQL。
+UI-5.4 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-3.3 SQLFIX1 的 SQL，升級 UI-5.4 不需要重跑 SQL。
 
 ---
 
@@ -164,7 +167,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui 5.3"
+git commit -m "deploy ui 5.4"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -174,7 +177,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui 5.3"
+git commit -m "deploy ui 5.4"
 git push
 ```
 
@@ -844,6 +847,15 @@ OCR 裁切預覽移到手動修正目前 EXP 右邊
 下方 EXP / 分趨勢圖改為折線圖呈現
 OCR 辨識到與大多數經驗數值差異過大的極端值時不加入趨勢圖資料
 折線圖額外過濾異常尖峰點，避免誤判值拉壞圖表比例
+```
+
+### UI-5.4
+
+```text
+趨勢圖顏色風格改為跟網站一致
+擷取統計資訊圖片顏色風格改為跟網站一致
+擷取圖片資訊內容盡量單行顯示，避免預估百分比換行
+預估升級時間等級改為升級後等級
 目前最新版本
 ```
 
@@ -893,7 +905,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 5.3"
+git commit -m "deploy ui 5.4"
 git push
 ```
 

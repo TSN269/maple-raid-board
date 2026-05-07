@@ -1167,36 +1167,48 @@ function TrainingChart({ samples }: { samples: TrainingSample[] }) {
   const yTicks = [0, 0.25, 0.5, 0.75, 1];
 
   return (
-    <div className="rounded-[1.8rem] border border-orange-100 bg-slate-950 p-4 shadow-[0_24px_70px_-46px_rgba(15,23,42,0.95)]">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs font-black text-orange-100/80">
+    <div className="rounded-[1.8rem] border border-orange-100 bg-white/85 p-4 shadow-[0_24px_70px_-46px_rgba(124,45,18,0.25)] backdrop-blur-xl">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs font-black text-slate-500">
         <span>EXP / 分折線圖</span>
         <span>最高刻度 {formatTrainingNumber(maxValue)} EXP / 分</span>
       </div>
       <div className="overflow-x-auto">
-        <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[760px] rounded-2xl bg-slate-950">
+        <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[760px] rounded-2xl">
+          <defs>
+            <linearGradient id="trainingChartBg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#fff7ed" />
+              <stop offset="55%" stopColor="#ffffff" />
+              <stop offset="100%" stopColor="#fffaf5" />
+            </linearGradient>
+            <linearGradient id="trainingChartLine" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#f97316" />
+              <stop offset="100%" stopColor="#fb923c" />
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" width={width} height={height} rx="18" fill="url(#trainingChartBg)" />
           {yTicks.map((ratio) => {
             const y = height - paddingBottom - ratio * plotHeight;
             return (
               <g key={ratio}>
-                <line x1={paddingLeft} x2={width - paddingRight} y1={y} y2={y} stroke="rgba(251,146,60,0.16)" strokeDasharray="6 6" />
-                <text x={paddingLeft - 10} y={y + 4} textAnchor="end" fill="rgba(255,237,213,0.55)" fontSize="11">{formatTrainingNumber(maxValue * ratio)}</text>
+                <line x1={paddingLeft} x2={width - paddingRight} y1={y} y2={y} stroke="rgba(249,115,22,0.14)" strokeDasharray="6 6" />
+                <text x={paddingLeft - 10} y={y + 4} textAnchor="end" fill="rgba(71,85,105,0.72)" fontSize="11">{formatTrainingNumber(maxValue * ratio)}</text>
               </g>
             );
           })}
-          <line x1={paddingLeft} x2={paddingLeft} y1={paddingTop} y2={height - paddingBottom} stroke="rgba(255,237,213,0.18)" />
-          <line x1={paddingLeft} x2={width - paddingRight} y1={height - paddingBottom} y2={height - paddingBottom} stroke="rgba(255,237,213,0.18)" />
-          {path ? <path d={path} fill="none" stroke="rgb(251,146,60)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" /> : null}
+          <line x1={paddingLeft} x2={paddingLeft} y1={paddingTop} y2={height - paddingBottom} stroke="rgba(148,163,184,0.28)" />
+          <line x1={paddingLeft} x2={width - paddingRight} y1={height - paddingBottom} y2={height - paddingBottom} stroke="rgba(148,163,184,0.28)" />
+          {path ? <path d={path} fill="none" stroke="url(#trainingChartLine)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" /> : null}
           {points.map((point, index) => {
             const { x, y } = pointToXY(point);
-            return <circle key={`${point.minute}-${index}`} cx={x} cy={y} r="4" fill="rgb(255,237,213)" stroke="rgb(251,146,60)" strokeWidth="2" />;
+            return <circle key={`${point.minute}-${index}`} cx={x} cy={y} r="4" fill="#ffffff" stroke="#f97316" strokeWidth="2.25" />;
           })}
-          {points.length === 0 ? <text x={width / 2} y={height / 2} textAnchor="middle" fill="rgba(255,237,213,0.72)" fontSize="16" fontWeight="800">加入至少 2 筆有效 EXP 紀錄後顯示折線圖</text> : null}
-          <text x={paddingLeft} y={height - 8} fill="rgba(255,237,213,0.65)" fontSize="12">0.0 分</text>
-          <text x={width - paddingRight} y={height - 8} textAnchor="end" fill="rgba(255,237,213,0.65)" fontSize="12">{maxMinute.toFixed(1)} 分</text>
+          {points.length === 0 ? <text x={width / 2} y={height / 2} textAnchor="middle" fill="rgba(71,85,105,0.75)" fontSize="16" fontWeight="800">加入至少 2 筆有效 EXP 紀錄後顯示折線圖</text> : null}
+          <text x={paddingLeft} y={height - 8} fill="rgba(71,85,105,0.72)" fontSize="12">0.0 分</text>
+          <text x={width - paddingRight} y={height - 8} textAnchor="end" fill="rgba(71,85,105,0.72)" fontSize="12">{maxMinute.toFixed(1)} 分</text>
         </svg>
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-bold text-orange-100/70">
-        <span className="inline-flex items-center gap-2"><span className="h-1 w-10 rounded-full bg-orange-400" />EXP / 分</span>
+      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-bold text-slate-500">
+        <span className="inline-flex items-center gap-2"><span className="h-1 w-10 rounded-full bg-orange-500" />EXP / 分</span>
         <span>極端 OCR 誤判值會被忽略，不寫入趨勢圖資料。</span>
       </div>
     </div>
@@ -2099,7 +2111,7 @@ function TrainingEfficiencyPanel() {
       { title: '預估百分比 (1 | 10 | 60分)', value: targetExp > 0 ? `${percentPerMinute.toFixed(2)}% | ${(percentPerMinute * 10).toFixed(2)}% | ${(percentPerMinute * 60).toFixed(2)}%` : '-- | -- | --', sub: '' },
       { title: 'EXP累積 (60分)', value: `${formatTrainingNumber(accumulated60)} (${elapsedMinutes < 60 ? '<1h' : '60m'})`, sub: '' },
       { title: '預估 60 分( 近60分 | 最高 )', value: `${formatTrainingNumber(predicted60)} (${formatTrainingNumber(accumulated60)} | ${formatTrainingNumber(highest60)})`, sub: '' },
-      { title: '預估升級時間', value: formatTrainingDuration(etaMinutes), sub: currentLevel > 0 ? `等級 ${currentLevel}` : '' },
+      { title: '預估升級時間', value: formatTrainingDuration(etaMinutes), sub: currentLevel > 0 ? `等級 ${Math.min(200, currentLevel + 1)}` : '' },
     ];
   }
 
@@ -2137,20 +2149,37 @@ function TrainingEfficiencyPanel() {
     return lines;
   }
 
+  function fitCanvasFontSize(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+    startSize: number,
+    minSize = 14,
+    weight = 900,
+  ) {
+    let fontSize = startSize;
+    while (fontSize > minSize) {
+      ctx.font = `${weight} ${fontSize}px sans-serif`;
+      if (ctx.measureText(text).width <= maxWidth) return fontSize;
+      fontSize -= 1;
+    }
+    return minSize;
+  }
+
   async function exportTrainingStatsImage() {
     if (shareBusy) return;
     setShareBusy(true);
 
     try {
       const rows = getTrainingStatsShareRows();
-      const width = 1240;
-      const headerH = 120;
-      const footerH = 68;
+      const width = 1420;
+      const headerH = 126;
+      const footerH = 60;
       const cols = 3;
       const gap = 24;
-      const side = 36;
+      const side = 32;
       const cardW = Math.floor((width - side * 2 - gap * (cols - 1)) / cols);
-      const cardH = 152;
+      const cardH = 150;
       const rowCount = Math.ceil(rows.length / cols);
       const height = headerH + rowCount * cardH + Math.max(0, rowCount - 1) * gap + footerH;
 
@@ -2163,22 +2192,28 @@ function TrainingEfficiencyPanel() {
       ctx.scale(ratio, ratio);
 
       const bg = ctx.createLinearGradient(0, 0, width, height);
-      bg.addColorStop(0, '#0f172a');
-      bg.addColorStop(0.55, '#111827');
-      bg.addColorStop(1, '#1e1b4b');
+      bg.addColorStop(0, '#fff7ed');
+      bg.addColorStop(0.55, '#ffffff');
+      bg.addColorStop(1, '#fff7ed');
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, width, height);
 
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = '900 32px sans-serif';
-      ctx.fillText('TSN 練功效率統計', side, 54);
+      const glow = ctx.createRadialGradient(width * 0.82, height * 0.18, 0, width * 0.82, height * 0.18, width * 0.4);
+      glow.addColorStop(0, 'rgba(251,146,60,0.16)');
+      glow.addColorStop(1, 'rgba(251,146,60,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, width, height);
 
-      ctx.fillStyle = '#cbd5e1';
-      ctx.font = '600 16px sans-serif';
+      ctx.fillStyle = '#0f172a';
+      ctx.font = '900 32px sans-serif';
+      ctx.fillText('TSN 練功效率統計', side, 50);
+
+      ctx.fillStyle = '#475569';
+      ctx.font = '700 16px sans-serif';
       const subtitle = analysisStartedAt
         ? `開始分析：${new Date(analysisStartedAt).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}`
         : '尚未開始分析';
-      ctx.fillText(subtitle, side, 82);
+      ctx.fillText(subtitle, side, 80);
 
       ctx.textBaseline = 'top';
 
@@ -2189,41 +2224,37 @@ function TrainingEfficiencyPanel() {
         const y = headerH + row * (cardH + gap);
 
         const cardGrad = ctx.createLinearGradient(x, y, x + cardW, y + cardH);
-        cardGrad.addColorStop(0, 'rgba(30,41,59,0.96)');
-        cardGrad.addColorStop(1, 'rgba(15,23,42,0.92)');
+        cardGrad.addColorStop(0, 'rgba(255,255,255,0.98)');
+        cardGrad.addColorStop(1, 'rgba(255,247,237,0.95)');
         drawRoundedRect(ctx, x, y, cardW, cardH, 24);
         ctx.fillStyle = cardGrad;
         ctx.fill();
 
         ctx.lineWidth = 1.4;
-        ctx.strokeStyle = 'rgba(96,165,250,0.20)';
+        ctx.strokeStyle = 'rgba(251,146,60,0.24)';
         ctx.stroke();
 
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '700 16px sans-serif';
+        ctx.fillStyle = '#64748b';
+        const titleSize = fitCanvasFontSize(ctx, item.title, cardW - 36, 15, 11, 800);
+        ctx.font = `800 ${titleSize}px sans-serif`;
         ctx.fillText(item.title, x + 18, y + 18);
 
-        ctx.fillStyle = '#f8fafc';
-        const valueFont = item.value.length > 24 ? 24 : item.value.length > 16 ? 28 : 34;
-        ctx.font = `900 ${valueFont}px sans-serif`;
-        const valueLines = wrapCanvasText(ctx, item.value, cardW - 36, 2);
-        valueLines.forEach((line, lineIndex) => {
-          ctx.fillText(line, x + 18, y + 50 + lineIndex * (valueFont + 4));
-        });
+        const valueSize = fitCanvasFontSize(ctx, item.value, cardW - 36, 28, 18, 900);
+        ctx.font = `900 ${valueSize}px sans-serif`;
+        ctx.fillStyle = '#0f172a';
+        ctx.fillText(item.value, x + 18, y + 56);
 
         if (item.sub) {
-          ctx.fillStyle = '#fb923c';
-          ctx.font = '700 15px sans-serif';
-          const subLines = wrapCanvasText(ctx, item.sub, cardW - 36, 2);
-          subLines.forEach((line, lineIndex) => {
-            ctx.fillText(line, x + 18, y + cardH - 40 + lineIndex * 16);
-          });
+          const subSize = fitCanvasFontSize(ctx, item.sub, cardW - 36, 14, 11, 800);
+          ctx.font = `800 ${subSize}px sans-serif`;
+          ctx.fillStyle = '#ea580c';
+          ctx.fillText(item.sub, x + 18, y + cardH - 36);
         }
       });
 
-      ctx.fillStyle = 'rgba(203,213,225,0.8)';
+      ctx.fillStyle = 'rgba(71,85,105,0.8)';
       ctx.font = '600 14px sans-serif';
-      ctx.fillText('Maple Raid Board • Training Efficiency', side, height - 28);
+      ctx.fillText('Maple Raid Board • Training Efficiency', side, height - 24);
 
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob((output) => {
@@ -2407,7 +2438,7 @@ function TrainingEfficiencyPanel() {
         <TrainingStatCard title="預估百分比 (1 | 10 | 60分)" value={targetExp > 0 ? `${percentPerMinute.toFixed(2)}% | ${(percentPerMinute * 10).toFixed(2)}% | ${(percentPerMinute * 60).toFixed(2)}%` : '-- | -- | --'} icon="👁" />
         <TrainingStatCard title="EXP累積 (60分)" value={`${formatTrainingNumber(accumulated60)} (${elapsedMinutes < 60 ? '<1h' : '60m'})`} icon="👁" />
         <TrainingStatCard title="預估 60 分( 近60分 | 最高 )" value={`${formatTrainingNumber(predicted60)} (${formatTrainingNumber(accumulated60)} | ${formatTrainingNumber(highest60)})`} icon="👁" />
-        <TrainingStatCard title="預估升級時間" value={formatTrainingDuration(etaMinutes)} icon="👁" />
+        <TrainingStatCard title="預估升級時間" value={formatTrainingDuration(etaMinutes)} sub={currentLevel > 0 ? `等級 ${Math.min(200, currentLevel + 1)}` : undefined} icon="👁" />
       </div>
 
       <TrainingChart samples={samples} />
@@ -2862,7 +2893,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.3</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.4</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
