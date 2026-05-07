@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-4.8
+# Maple Raid Board — TSN UI-4.9
 
-> 版本基準：UI-4.8  
+> 版本基準：UI-4.9  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,26 +72,30 @@
 
 ---
 
-## 3. 目前 UI-4.8 主要變更
+## 3. 目前 UI-4.9 主要變更
 
-UI-4.8 是以 UI-4.7 為基礎，修正與調整：
+UI-4.9 是以 UI-4.8 為基礎，修正與調整：
 
 ```text
-1. 最近 OCR / 手動紀錄改為 Debug 限定
-   - 未勾選 Debug 不顯示此欄
-   - 勾選 Debug 後才顯示 OCR / 手動紀錄明細與資料筆數
+1. 統計時間開始分析時間格式調整
+   - 改為完整日期時間
+   - 格式類似：2026/5/7 16:42:11
 
-2. 統計時間欄位調整
-   - 原本副資訊顯示 100%
-   - 改為顯示按下「開始分析」的時間
-   - 格式為「開始 HH:MM:SS」
+2. 練功效率「升級所需總 EXP（選填）」改為「當前等級」
+   - 使用者只要輸入當前等級
+   - 系統依照 Artale 升級經驗表自動帶入升下一级所需经验
+   - 該數字即作為原本的升級所需總 EXP
 
-3. 頁首版本顯示
-   - TSN UI-4.8
+3. 內建 Artale 1～200 等級經驗表
+   - 對應 mapleartale.com/exp-table/ 的「升下一级所需经验」欄位
+   - 不需要使用者手動查表或輸入總 EXP
+
+4. 頁首版本顯示
+   - TSN UI-4.9
 ```
 
-UI-4.8 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-3.3 SQLFIX1 的 SQL，升級 UI-4.8 不需要重跑 SQL。
+UI-4.9 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-3.3 SQLFIX1 的 SQL，升級 UI-4.9 不需要重跑 SQL。
 
 ---
 
@@ -158,7 +162,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui 4.8"
+git commit -m "deploy ui 4.9"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -168,7 +172,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui 4.8"
+git commit -m "deploy ui 4.9"
 git push
 ```
 
@@ -795,6 +799,15 @@ OCR 裁切預覽移到手動修正目前 EXP 右邊
 ```text
 最近 OCR / 手動紀錄改為 Debug 勾選後才顯示
 統計時間欄位副資訊由 100% 改為顯示開始分析時間
+```
+
+### UI-4.9
+
+```text
+統計時間開始分析時間改為完整日期時間格式
+練功效率的升級所需總 EXP 改為輸入當前等級
+依照 Artale 經驗表的升下一级所需经验自動帶入升級所需總 EXP
+內建 1～200 等級經驗表
 目前最新版本
 ```
 
@@ -844,7 +857,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 4.8"
+git commit -m "deploy ui 4.9"
 git push
 ```
 

@@ -1112,6 +1112,209 @@ function TrainingChart({ samples }: { samples: TrainingSample[] }) {
   );
 }
 
+const ARTALE_EXP_BY_LEVEL: Record<number, number> = {
+  1: 15,
+  2: 34,
+  3: 57,
+  4: 92,
+  5: 135,
+  6: 372,
+  7: 560,
+  8: 840,
+  9: 1242,
+  10: 1716,
+  11: 2360,
+  12: 3216,
+  13: 4200,
+  14: 5460,
+  15: 7050,
+  16: 8840,
+  17: 11040,
+  18: 13716,
+  19: 16680,
+  20: 20216,
+  21: 24402,
+  22: 28980,
+  23: 34320,
+  24: 40512,
+  25: 47216,
+  26: 54900,
+  27: 63666,
+  28: 73080,
+  29: 83720,
+  30: 95700,
+  31: 108480,
+  32: 122760,
+  33: 138666,
+  34: 155540,
+  35: 174216,
+  36: 194832,
+  37: 216600,
+  38: 240500,
+  39: 266682,
+  40: 294216,
+  41: 324240,
+  42: 356916,
+  43: 391160,
+  44: 428280,
+  45: 468450,
+  46: 510420,
+  47: 555680,
+  48: 604416,
+  49: 655200,
+  50: 709716,
+  51: 748608,
+  52: 789631,
+  53: 832902,
+  54: 878545,
+  55: 926689,
+  56: 977471,
+  57: 1031036,
+  58: 1087536,
+  59: 1147132,
+  60: 1209994,
+  61: 1276301,
+  62: 1346242,
+  63: 1420016,
+  64: 1497832,
+  65: 1579913,
+  66: 1666492,
+  67: 1757815,
+  68: 1854143,
+  69: 1955750,
+  70: 2062925,
+  71: 2175973,
+  72: 2295216,
+  73: 2420993,
+  74: 2553663,
+  75: 2693603,
+  76: 2841212,
+  77: 2996910,
+  78: 3161140,
+  79: 3334370,
+  80: 3517093,
+  81: 3709829,
+  82: 3913127,
+  83: 4127566,
+  84: 4353756,
+  85: 4592341,
+  86: 4844001,
+  87: 5109452,
+  88: 5389449,
+  89: 5684790,
+  90: 5996316,
+  91: 6324914,
+  92: 6671519,
+  93: 7037118,
+  94: 7422752,
+  95: 7829518,
+  96: 8258575,
+  97: 8711144,
+  98: 9188514,
+  99: 9692044,
+  100: 10223168,
+  101: 10783397,
+  102: 11374327,
+  103: 11997640,
+  104: 12655110,
+  105: 13348610,
+  106: 14080113,
+  107: 14851703,
+  108: 15665576,
+  109: 16524049,
+  110: 17429566,
+  111: 18384706,
+  112: 19392187,
+  113: 20454878,
+  114: 21575805,
+  115: 22758159,
+  116: 24005306,
+  117: 25320796,
+  118: 26708375,
+  119: 28171993,
+  120: 29715818,
+  121: 31344244,
+  122: 33061908,
+  123: 34873700,
+  124: 36784778,
+  125: 38800583,
+  126: 40926854,
+  127: 43169645,
+  128: 45535341,
+  129: 48030677,
+  130: 50662758,
+  131: 53439077,
+  132: 56367538,
+  133: 59456479,
+  134: 62714694,
+  135: 66151459,
+  136: 69776558,
+  137: 73600313,
+  138: 77633610,
+  139: 81887931,
+  140: 86375389,
+  141: 91108760,
+  142: 96101520,
+  143: 101367883,
+  144: 106922842,
+  145: 112782213,
+  146: 118962678,
+  147: 125481832,
+  148: 132358236,
+  149: 139611467,
+  150: 147262175,
+  151: 155332142,
+  152: 163844343,
+  153: 172823012,
+  154: 182293713,
+  155: 192283408,
+  156: 202820538,
+  157: 213935103,
+  158: 225658746,
+  159: 238024845,
+  160: 251068606,
+  161: 264827165,
+  162: 279339693,
+  163: 294647508,
+  164: 310794191,
+  165: 327825712,
+  166: 345790561,
+  167: 364739883,
+  168: 384727628,
+  169: 405810702,
+  170: 428049128,
+  171: 451506220,
+  172: 476248760,
+  173: 502347192,
+  174: 529875818,
+  175: 558913012,
+  176: 589541445,
+  177: 621848316,
+  178: 655925603,
+  179: 691870326,
+  180: 729784819,
+  181: 769777027,
+  182: 811960808,
+  183: 856456260,
+  184: 903390063,
+  185: 952895838,
+  186: 1005114529,
+  187: 1060194805,
+  188: 1118293480,
+  189: 1179575962,
+  190: 1244216724,
+  191: 1312399800,
+  192: 1384319309,
+  193: 1460180007,
+  194: 1540197871,
+  195: 1624600714,
+  196: 1713628833,
+  197: 1807535693,
+  198: 1906588648,
+  199: 2011069705,
+  200: 2121276324,
+};
+
 function TrainingEfficiencyPanel() {
   const TRAINING_OCR_CROP_STORAGE_KEY = 'maple_raid_board_training_ocr_crop_v46';
   const DEFAULT_OCR_CROP = { x: 50.4, y: 93.6, w: 13, h: 6.4 };
@@ -1128,7 +1331,7 @@ function TrainingEfficiencyPanel() {
   const [ocrActive, setOcrActive] = useState(false);
   const [samples, setSamples] = useState<TrainingSample[]>([]);
   const [expInput, setExpInput] = useState('');
-  const [targetExpInput, setTargetExpInput] = useState('');
+  const [currentLevelInput, setCurrentLevelInput] = useState('');
   const [analysisStartedAt, setAnalysisStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
   const [message, setMessage] = useState('');
@@ -1193,7 +1396,8 @@ function TrainingEfficiencyPanel() {
   const elapsedMinutes = getTrainingElapsedMinutes(samples, now);
   const totalExp = firstSample && lastSample ? Math.max(0, lastSample.exp - firstSample.exp) : 0;
   const expPerMinute = elapsedMinutes > 0 ? totalExp / elapsedMinutes : 0;
-  const targetExp = Math.max(0, Number(targetExpInput.replace(/,/g, '')) || 0);
+  const currentLevel = Math.max(0, Math.min(200, Number(currentLevelInput) || 0));
+  const targetExp = ARTALE_EXP_BY_LEVEL[currentLevel] || 0;
   const currentExp = lastSample?.exp || Math.max(0, Number(expInput.replace(/,/g, '')) || 0);
   const currentPercent = targetExp > 0 ? Math.min(999.99, (currentExp / targetExp) * 100) : 0;
   const percentPerMinute = targetExp > 0 ? (expPerMinute / targetExp) * 100 : 0;
@@ -1735,8 +1939,11 @@ function TrainingEfficiencyPanel() {
 
         <div className="mt-5 grid gap-4">
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_260px_160px] xl:items-end">
-            <Field label="升級所需總 EXP（選填）">
-              <Input inputMode="numeric" value={targetExpInput} placeholder="例如 16500000" onChange={(event) => setTargetExpInput(event.target.value.replace(/[^0-9]/g, ''))} />
+            <Field label="當前等級">
+              <Input inputMode="numeric" value={currentLevelInput} placeholder="例如 90" onChange={(event) => setCurrentLevelInput(event.target.value.replace(/[^0-9]/g, ''))} />
+              <div className="mt-2 text-xs font-bold text-orange-700">
+                {targetExp > 0 ? `升下一级所需经验：${formatTrainingNumber(targetExp)}` : '輸入 1～200 等級後自動帶入升級所需總 EXP'}
+              </div>
             </Field>
             <Field label="手動修正目前 EXP">
               <Input inputMode="numeric" value={expInput} placeholder="OCR 誤判時手動輸入" onChange={(event) => setExpInput(event.target.value.replace(/[^0-9]/g, ''))} />
@@ -1819,7 +2026,7 @@ function TrainingEfficiencyPanel() {
       <div className="grid gap-4 md:grid-cols-3">
         <TrainingStatCard title="EXP" value={`${formatTrainingNumber(currentExp)}${targetExp > 0 ? ` [${currentPercent.toFixed(2)}%]` : ''}`} sub={totalExp > 0 ? `+${formatTrainingNumber(totalExp)}` : undefined} icon="👁" />
         <TrainingStatCard title="EXP / 分" value={`⚡ ${formatTrainingNumber(expPerMinute)}`} icon="👁" />
-        <TrainingStatCard title="統計時間" value={formatTrainingDuration(elapsedMinutes)} sub={analysisStartedAt ? `開始 ${new Date(analysisStartedAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : undefined} icon="👁" />
+        <TrainingStatCard title="統計時間" value={formatTrainingDuration(elapsedMinutes)} sub={analysisStartedAt ? `開始 ${new Date(analysisStartedAt).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}` : undefined} icon="👁" />
         <TrainingStatCard title="EXP累積 (10分)" value={`${formatTrainingNumber(accumulated10)} (${elapsedMinutes < 10 ? '<10m' : '10m'})`} icon="👁" />
         <TrainingStatCard title="預估 10 分" value={`🟢 ${formatTrainingNumber(predicted10)}`} icon="👁" />
         <TrainingStatCard title="預估百分比 (1 | 10 | 60分)" value={targetExp > 0 ? `${percentPerMinute.toFixed(2)}% | ${(percentPerMinute * 10).toFixed(2)}% | ${(percentPerMinute * 60).toFixed(2)}%` : '-- | -- | --'} icon="👁" />
@@ -2280,7 +2487,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-4.8</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-4.9</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
