@@ -2060,9 +2060,24 @@ function TrainingEfficiencyPanel() {
       const shareNavigator = navigator as Navigator & {
         share?: (data: { title?: string; text?: string; files?: File[] }) => Promise<void>;
         canShare?: (data: { files?: File[] }) => boolean;
+        clipboard?: Clipboard & {
+          write?: (data: ClipboardItem[]) => Promise<void>;
+        };
       };
 
       const file = new File([blob], filename, { type: 'image/png' });
+
+      const ClipboardItemCtor = (window as Window & { ClipboardItem?: typeof ClipboardItem }).ClipboardItem;
+      if (ClipboardItemCtor && shareNavigator.clipboard?.write) {
+        try {
+          await shareNavigator.clipboard.write([new ClipboardItemCtor({ 'image/png': blob })]);
+          setMessage('已複製統計圖片到剪貼簿，可直接貼到其他軟體對話框。');
+          return;
+        } catch (error) {
+          console.warn('Copy training stats image to clipboard failed:', error);
+        }
+      }
+
       if (shareNavigator.share && shareNavigator.canShare?.({ files: [file] })) {
         try {
           await shareNavigator.share({
@@ -2086,7 +2101,7 @@ function TrainingEfficiencyPanel() {
       link.download = filename;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-      setMessage('已下載統計圖片，可直接分享。');
+      setMessage('瀏覽器不支援直接複製圖片到剪貼簿，已改為下載統計圖片。');
     } catch (error) {
       setMessage(error instanceof Error ? `擷取統計圖片失敗：${error.message}` : '擷取統計圖片失敗');
     } finally {
@@ -2109,7 +2124,7 @@ function TrainingEfficiencyPanel() {
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析'}</Button>
             <Button variant="secondary" onClick={stopAnalysis} disabled={!ocrActive}>暫停分析</Button>
-            <Button variant="secondary" onClick={exportTrainingStatsImage} disabled={shareBusy}>{shareBusy ? "產生圖片中" : "擷取統計圖片"}</Button>
+            <Button variant="secondary" onClick={exportTrainingStatsImage} disabled={shareBusy}>{shareBusy ? "產生圖片中" : "複製統計圖片"}</Button>
             <Button variant="ghost" onClick={resetAll}>重置</Button>
           </div>
         </div>
@@ -2670,7 +2685,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.0</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.1</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>

@@ -1,2 +1,2 @@
-UI-5.0
-Added a button to export training statistics as a shareable PNG image.
+UI-5.1
+Training stats image now supports copying PNG directly to the clipboard for pasting into chat dialogs, with share/download fallback.
