@@ -1129,6 +1129,7 @@ function TrainingEfficiencyPanel() {
   const [samples, setSamples] = useState<TrainingSample[]>([]);
   const [expInput, setExpInput] = useState('');
   const [targetExpInput, setTargetExpInput] = useState('');
+  const [analysisStartedAt, setAnalysisStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
   const [message, setMessage] = useState('');
   const [ocrMessage, setOcrMessage] = useState('按「開始分析」後會自動啟動畫面擷取並自動抓取 OCR 裁切區；Debug 內才會顯示手動框選、儲存預設與清除預設。');
@@ -1249,6 +1250,7 @@ function TrainingEfficiencyPanel() {
     ocrTimerRef.current = null;
     setSamples([]);
     setExpInput('');
+    setAnalysisStartedAt(null);
     setOcrText('');
     setOcrSuccessCount(0);
     setOcrFailCount(0);
@@ -1676,6 +1678,7 @@ function TrainingEfficiencyPanel() {
 
     setRunning(true);
     setOcrActive(true);
+    setAnalysisStartedAt(Date.now());
     setOcrMessage('正在準備畫面並自動抓取 OCR 裁切區…');
 
     const ready = await waitForVideoReady();
@@ -1816,7 +1819,7 @@ function TrainingEfficiencyPanel() {
       <div className="grid gap-4 md:grid-cols-3">
         <TrainingStatCard title="EXP" value={`${formatTrainingNumber(currentExp)}${targetExp > 0 ? ` [${currentPercent.toFixed(2)}%]` : ''}`} sub={totalExp > 0 ? `+${formatTrainingNumber(totalExp)}` : undefined} icon="👁" />
         <TrainingStatCard title="EXP / 分" value={`⚡ ${formatTrainingNumber(expPerMinute)}`} icon="👁" />
-        <TrainingStatCard title="統計時間" value={formatTrainingDuration(elapsedMinutes)} sub={running ? '100.0%' : undefined} icon="👁" />
+        <TrainingStatCard title="統計時間" value={formatTrainingDuration(elapsedMinutes)} sub={analysisStartedAt ? `開始 ${new Date(analysisStartedAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : undefined} icon="👁" />
         <TrainingStatCard title="EXP累積 (10分)" value={`${formatTrainingNumber(accumulated10)} (${elapsedMinutes < 10 ? '<10m' : '10m'})`} icon="👁" />
         <TrainingStatCard title="預估 10 分" value={`🟢 ${formatTrainingNumber(predicted10)}`} icon="👁" />
         <TrainingStatCard title="預估百分比 (1 | 10 | 60分)" value={targetExp > 0 ? `${percentPerMinute.toFixed(2)}% | ${(percentPerMinute * 10).toFixed(2)}% | ${(percentPerMinute * 60).toFixed(2)}%` : '-- | -- | --'} icon="👁" />
@@ -1827,20 +1830,22 @@ function TrainingEfficiencyPanel() {
 
       <TrainingChart samples={samples} />
 
-      <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-lg font-black text-slate-950">最近 OCR / 手動紀錄</h3>
-          <span className="text-xs font-black text-slate-400">資料筆數：{samples.length}</span>
-        </div>
-        <div className="mt-3 max-h-72 overflow-auto rounded-2xl border border-orange-100 bg-orange-50/50 p-3">
-          {samples.length > 0 ? samples.slice().reverse().map((sample) => (
-            <div key={sample.id} className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 border-b border-orange-100 py-2 text-sm last:border-b-0">
-              <span className="font-bold text-slate-400">{new Date(sample.timestamp).toLocaleTimeString('zh-TW')}</span>
-              <span className="font-black text-slate-700">EXP {formatTrainingNumber(sample.exp)}</span>
-            </div>
-          )) : <div className="py-6 text-center text-sm font-bold text-slate-400">尚無紀錄。先框選並儲存裁切區，再按「開始分析」啟動 OCR。</div>}
-        </div>
-      </section>
+      {debugEnabled ? (
+        <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-lg font-black text-slate-950">最近 OCR / 手動紀錄</h3>
+            <span className="text-xs font-black text-slate-400">資料筆數：{samples.length}</span>
+          </div>
+          <div className="mt-3 max-h-72 overflow-auto rounded-2xl border border-orange-100 bg-orange-50/50 p-3">
+            {samples.length > 0 ? samples.slice().reverse().map((sample) => (
+              <div key={sample.id} className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 border-b border-orange-100 py-2 text-sm last:border-b-0">
+                <span className="font-bold text-slate-400">{new Date(sample.timestamp).toLocaleTimeString('zh-TW')}</span>
+                <span className="font-black text-slate-700">EXP {formatTrainingNumber(sample.exp)}</span>
+              </div>
+            )) : <div className="py-6 text-center text-sm font-bold text-slate-400">尚無紀錄。先框選並儲存裁切區，再按「開始分析」啟動 OCR。</div>}
+          </div>
+        </section>
+      ) : null}
       </div>
     </section>
   );
@@ -2275,7 +2280,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-4.7</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-4.8</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>

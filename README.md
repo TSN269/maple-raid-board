@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-4.7
+# Maple Raid Board — TSN UI-4.8
 
-> 版本基準：UI-4.7  
+> 版本基準：UI-4.8  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,39 +72,26 @@
 
 ---
 
-## 3. 目前 UI-4.7 主要變更
+## 3. 目前 UI-4.8 主要變更
 
-UI-4.7 是以 UI-4.6 為基礎，修正與調整：
+UI-4.8 是以 UI-4.7 為基礎，修正與調整：
 
 ```text
-1. 修正 OCR 無法辨識經驗值數字
-   - 修正 tesseract.recognize is not a function
-   - 兼容 tesseract.js CDN default / named export 差異
-   - 若 recognize 不存在，改用 createWorker 備援流程
+1. 最近 OCR / 手動紀錄改為 Debug 限定
+   - 未勾選 Debug 不顯示此欄
+   - 勾選 Debug 後才顯示 OCR / 手動紀錄明細與資料筆數
 
-2. 手動框選裁切區功能維持 Debug 限定
-   - 未勾選 Debug 不顯示手動框選
-   - 未勾選 Debug 不顯示儲存預設
-   - 未勾選 Debug 不顯示清除預設
-   - 未勾選 Debug 不顯示 OCR 間隔、成功、失敗 / 忽略、最近辨識與座標資訊
+2. 統計時間欄位調整
+   - 原本副資訊顯示 100%
+   - 改為顯示按下「開始分析」的時間
+   - 格式為「開始 HH:MM:SS」
 
-3. 練功效率頁面強制左右欄
-   - 練功效率內容維持固定寬度版面
-   - 手機瀏覽器可橫向滑動
-   - 修正手機上無法看到右側欄位的問題
-
-4. 版號格式全面調整
-   - UI-V1 改為 UI-0.1
-   - UI-V10 改為 UI-1.0
-   - UI-V15 改為 UI-1.5
-   - UI-V47 改為 UI-4.7
-
-5. 頁首版本顯示
-   - TSN UI-4.7
+3. 頁首版本顯示
+   - TSN UI-4.8
 ```
 
-UI-4.7 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-3.3 SQLFIX1 的 SQL，升級 UI-4.7 不需要重跑 SQL。
+UI-4.8 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-3.3 SQLFIX1 的 SQL，升級 UI-4.8 不需要重跑 SQL。
 
 ---
 
@@ -171,7 +158,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v46"
+git commit -m "deploy ui 4.8"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -181,7 +168,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v46"
+git commit -m "deploy ui 4.8"
 git push
 ```
 
@@ -676,67 +663,6 @@ Logo 改為楓葉 SVG
 報名頁只顯示需求內的角色定位，不再回退顯示全部定位
 ```
 
-### UI-4.0
-
-```text
-練功效率偵測改為 OCR 自動辨識 EXP
-新增螢幕擷取裁切區域設定
-新增 OCR 自動加入 EXP 樣本
-保留手動修正 EXP 備援
-使用 tesseract.js CDN 前端 OCR
-```
-
-### UI-4.1
-
-```text
-開始分析會自動啟動畫面擷取與 OCR
-OCR 裁切區域改為自動抓取
-可重新自動抓取裁切區，也可關閉自動模式後手動微調
-```
-
-### UI-4.2
-
-```text
-OCR 裁切區域改為抓取左下 EXP 文字與綠色經驗條
-移除啟動 OCR 與辨識一次按鈕
-新增 Debug 勾選選項，未勾選時隱藏 OCR 除錯資訊
-```
-
-### UI-4.3
-
-```text
-OCR 裁切區域改為先抓左下綠色 EXP 經驗條再往上包含 EXP 文字
-自動抓取失敗時套用更接近附圖的左下 EXP 預設裁切區
-螢幕擷取對照與 OCR 裁切預覽縮小至接近 UI-3.9 尺寸
-```
-
-### UI-4.4
-
-```text
-OCR 裁切區域只掃描左下角並以最長綠色 EXP bar 作為定位
-螢幕擷取對照移到手動修正目前 EXP 右邊
-OCR 裁切預覽移到手動修正目前 EXP 右邊
-兩個預覽欄位改為小型卡片
-```
-
-### UI-4.5
-
-```text
-練功效率 OCR 改為可在螢幕擷取對照上手動框選裁切區
-框選後可儲存為預設裁切區
-裁切區以原始擷取畫面百分比保存，不受網站視窗大小影響
-移除不穩定的自動抓取裁切區流程
-```
-
-### UI-4.6
-
-```text
-改回自動 OCR 抓取裁切區流程
-預設裁切區改為 X 50.4 / Y 93.6 / 寬 13 / 高 6.4
-手動框選裁切區功能移到 Debug 勾選後顯示
-手動框選時螢幕擷取對照會放大，方便使用者框選
-目前最新版本
-```
 ### UI-3.3 SQLFIX1
 
 ```text
@@ -784,7 +710,6 @@ on conflict update 同步更新 role_requirements
 新增練功效率偵測頁面
 統計面板仿練功分析工具呈現 EXP / 分、預估 10 / 60 分與升級時間
 新增 EXP / 分趨勢圖並套用本站橘色風格
-目前最新版本
 ```
 
 ### UI-3.9
@@ -863,6 +788,13 @@ OCR 裁切預覽移到手動修正目前 EXP 右邊
 兼容 tesseract.js CDN default / named export，並加入 createWorker 備援
 練功效率頁面強制左右欄並支援手機橫向滑動
 版號格式全面調整為 UI-0.1 / UI-1.0 / UI-4.7 格式
+```
+
+### UI-4.8
+
+```text
+最近 OCR / 手動紀錄改為 Debug 勾選後才顯示
+統計時間欄位副資訊由 100% 改為顯示開始分析時間
 目前最新版本
 ```
 
@@ -912,7 +844,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v46"
+git commit -m "deploy ui 4.8"
 git push
 ```
 

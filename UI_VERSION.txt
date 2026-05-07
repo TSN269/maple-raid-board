@@ -1,2 +1,2 @@
-UI-4.7
-Repacked with decimal version notation, OCR API compatibility fix, Debug-only manual crop tools, and mobile horizontal scrolling for Training Efficiency.
+UI-4.8
+Recent OCR/manual records are shown only in Debug mode. Training duration card shows the analysis start time instead of 100%.
