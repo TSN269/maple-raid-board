@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-V39
+# Maple Raid Board — TSN UI-V40
 
-> 版本基準：UI-V39  
+> 版本基準：UI-V40  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具  
 > 部署架構：GitHub + Supabase + Vercel
@@ -72,7 +72,7 @@
 
 ---
 
-## 3. 目前 UI-V39 主要變更
+## 3. 目前 UI-V40 主要變更
 
 UI-V39 是以 UI-V38 為基礎，修正：
 
@@ -160,7 +160,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui v39"
+git commit -m "deploy ui v40"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -170,7 +170,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui v39"
+git commit -m "deploy ui v40"
 git push
 ```
 
@@ -663,6 +663,16 @@ Logo 改為楓葉 SVG
 修正隊伍角色定位需求未連動到隊伍配置顯示
 隊伍配置空位會同步顯示團長設定的需求定位
 報名頁只顯示需求內的角色定位，不再回退顯示全部定位
+```
+
+### UI-V40
+
+```text
+練功效率偵測改為 OCR 自動辨識 EXP
+新增螢幕擷取裁切區域設定
+新增 OCR 自動加入 EXP 樣本
+保留手動修正 EXP 備援
+使用 tesseract.js CDN 前端 OCR
 目前最新版本
 ```
 ### UI-V33 SQLFIX1
@@ -770,7 +780,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui v39"
+git commit -m "deploy ui v40"
 git push
 ```
 

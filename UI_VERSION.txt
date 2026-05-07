@@ -1,2 +1,2 @@
-UI-V39
-Fix Field is not defined in TrainingEfficiencyPanel by importing Field from components/ui.
+UI-V40
+Training efficiency detector uses screen capture + tesseract.js CDN OCR to automatically read EXP, with manual correction fallback.
