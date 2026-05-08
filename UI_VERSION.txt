@@ -1,2 +1,2 @@
-UI-5.6
-Create raid modal can import selected team favorite rosters into the new raid and auto-create members after group creation.
+UI-5.7
+Moved Training Efficiency Debug toggle next to the status pill while keeping all Debug-only functions unchanged.

@@ -2404,6 +2404,10 @@ function TrainingEfficiencyPanel() {
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-2xl font-black text-slate-950">練功效率偵測</h2>
               <Pill tone={ocrActive ? 'green' : running ? 'orange' : 'slate'}>{ocrActive ? 'OCR 自動辨識中' : running ? '統計中' : '未啟動'}</Pill>
+              <label htmlFor="training-debug-toggle" className="inline-flex items-center gap-2 rounded-full border border-orange-100 bg-orange-50/80 px-3 py-1.5 text-xs font-black text-orange-700">
+                <input id="training-debug-toggle" type="checkbox" checked={debugEnabled} onChange={(event) => setDebugEnabled(event.target.checked)} className="h-4 w-4 rounded border-orange-300 text-orange-500 focus:ring-orange-400" />
+                Debug
+              </label>
             </div>
             <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">按「開始分析」會自動抓取 OCR 裁切區。需要手動校正時，勾選 Debug 後可在螢幕擷取對照上框選完整 EXP 區域並儲存為預設裁切區。</p>
           </div>
@@ -2414,12 +2418,6 @@ function TrainingEfficiencyPanel() {
             <Button variant="secondary" onClick={exportTrainingStatsImage} disabled={shareBusy}>{shareBusy ? "產生圖片中" : "擷取統計資訊"}</Button>
             <Button variant="ghost" onClick={resetAll}>重置</Button>
           </div>
-        </div>
-
-        <div className="mt-4 flex items-center gap-3 rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-3">
-          <input id="training-debug-toggle" type="checkbox" checked={debugEnabled} onChange={(event) => setDebugEnabled(event.target.checked)} className="h-4 w-4 rounded border-orange-300 text-orange-500 focus:ring-orange-400" />
-          <label htmlFor="training-debug-toggle" className="text-sm font-black text-orange-700">Debug</label>
-          <span className="text-xs font-semibold text-orange-600">勾選後顯示 OCR 間隔秒數、成功 / 失敗、最近辨識、最近 OCR / 手動紀錄與裁切座標資訊。</span>
         </div>
 
         <div className="mt-5 grid gap-4">
@@ -3014,7 +3012,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.6</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.7</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
