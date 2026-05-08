@@ -1,2 +1,2 @@
-UI-6.3
-Move the 'game id / feature code can be selected' hints to the no-record state for create raid leader and signup name fields.
+UI-6.4
+Training stats records now support clearing individual saved snapshots from the record time list.

@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-6.3 SQLFIX1
+# Maple Raid Board — TSN UI-6.4 SQLFIX1
 
-> 版本基準：UI-6.3  
+> 版本基準：UI-6.4  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具 + 練功效率偵測 + 隊伍收藏 + 遊戲ID紀錄  
 > 部署架構：GitHub + Supabase + Vercel
@@ -88,7 +88,7 @@ UI-5.8 是以 UI-5.7 為基礎，新增與調整：
    - F10：停止分析
 
 3. 頁首版本顯示
-   - TSN UI-6.3
+   - TSN UI-6.4
 ```
 
 UI-5.8 **沒有修改 Supabase schema / RPC**。  
@@ -96,29 +96,27 @@ UI-5.8 **沒有修改 Supabase schema / RPC**。
 
 ---
 
-## 3. 目前 UI-6.3 主要變更
+## 3. 目前 UI-6.4 主要變更
 
-UI-6.3 是以 UI-6.2 為基礎，調整：
+UI-6.4 是以 UI-6.3 為基礎，調整：
 
 ```text
-1. 新增突襲場次的團長角色名提示位置修正
-   - 「若有紀錄『遊戲id / 特徵碼』可下拉選取」提示
-   - 改為沒有任何遊戲id / 特徵碼紀錄時才顯示
+1. 練功效率偵測的統計資訊紀錄新增單筆清除
+   - 在每筆當下紀錄時間右側新增「清除」
+   - 可清除該時間點保存的統計資訊
+   - 行為類似「遊戲id / 特徵碼紀錄」的移除紀錄
 
-2. 我要報名的角色名稱提示位置修正
-   - 「若有紀錄『遊戲id / 特徵碼』可下拉選取」提示
-   - 改為沒有任何遊戲id / 特徵碼紀錄時才顯示
+2. 清除後的顯示邏輯
+   - 若清除的是目前正在查看的紀錄
+   - 會自動切到下一筆紀錄
+   - 若已沒有紀錄，統計資訊紀錄小頁面會關閉
 
-3. 有紀錄時的提示改為狀態說明
-   - 團長角色名顯示目前使用已紀錄的遊戲id#特徵碼下拉選單
-   - 我要報名角色名稱顯示目前使用已紀錄的遊戲id#特徵碼下拉選單
-
-4. 頁首版本顯示
-   - TSN UI-6.3
+3. 頁首版本顯示
+   - TSN UI-6.4
 ```
 
-UI-6.3 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-5.9 SQLFIX1 的 SQL，升級 UI-6.3 不需要重跑 SQL。
+UI-6.4 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-5.9 SQLFIX1 的 SQL，升級 UI-6.4 不需要重跑 SQL。
 
 ---
 
@@ -185,7 +183,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui 6.3"
+git commit -m "deploy ui 6.4"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -195,7 +193,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui 6.3"
+git commit -m "deploy ui 6.4"
 git push
 ```
 
@@ -953,7 +951,7 @@ Maple Raid Board 下方新增點擊右上蘑菇 Logo 的提示文字
 新增突襲場次與我要報名欄位提示可用遊戲id / 特徵碼紀錄下拉選取
 遊戲id / 特徵碼紀錄頁面新增匯入 / 匯出紀錄
 練功效率偵測將 +1分鐘估算 改為 紀錄統計資訊
-紀錄統計資訊可保存最近 10 次統計區內容並可點時間查看
+紀錄統計資訊可保存最近 10 次統計區內容，可點時間查看，也可清除單筆紀錄
 設定頁面新增匯入 / 匯出管理碼、邀請碼與帶邀請碼團連結紀錄
 ```
 
@@ -963,6 +961,15 @@ Maple Raid Board 下方新增點擊右上蘑菇 Logo 的提示文字
 新增突襲場次的團長角色名提示改為無遊戲id / 特徵碼紀錄時才顯示
 我要報名的角色名稱提示改為無遊戲id / 特徵碼紀錄時才顯示
 有紀錄時改顯示目前使用已紀錄的遊戲id#特徵碼下拉選單
+```
+
+### UI-6.4
+
+```text
+練功效率偵測的統計資訊紀錄新增單筆清除功能
+每筆紀錄時間右側新增清除按鈕
+可清除該時間點保存的統計資訊
+清除目前查看的紀錄後會自動切到下一筆或關閉小頁面
 目前最新版本
 ```
 
@@ -1018,7 +1025,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 6.3"
+git commit -m "deploy ui 6.4"
 git push
 ```
 

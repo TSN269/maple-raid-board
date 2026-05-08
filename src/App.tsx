@@ -2485,6 +2485,17 @@ function TrainingEfficiencyPanel() {
     setMessage('已紀錄當下統計資訊。');
   }
 
+  function removeTrainingStatsSnapshot(id: string) {
+    setTrainingStatSnapshots((prev) => {
+      const next = prev.filter((snapshot) => snapshot.id !== id);
+      setSelectedTrainingStatSnapshotId((current) => {
+        if (current !== id) return current;
+        return next[0]?.id || null;
+      });
+      return next;
+    });
+  }
+
   async function exportTrainingStatsImage() {
     if (shareBusy) return;
     setShareBusy(true);
@@ -2779,17 +2790,32 @@ function TrainingEfficiencyPanel() {
                   <div className="mb-2 text-xs font-black text-orange-700">紀錄時間</div>
                   <div className="grid gap-2">
                     {trainingStatSnapshots.map((snapshot) => (
-                      <button
+                      <div
                         key={snapshot.id}
-                        type="button"
-                        onClick={() => setSelectedTrainingStatSnapshotId(snapshot.id)}
                         className={classNames(
-                          'rounded-2xl border px-3 py-2 text-left text-xs font-black transition',
+                          'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-2xl border px-2 py-2 transition',
                           snapshot.id === selectedSnapshot.id ? 'border-orange-300 bg-white text-orange-700 ring-2 ring-orange-100' : 'border-orange-100 bg-white/70 text-slate-500 hover:bg-white',
                         )}
                       >
-                        {new Date(snapshot.timestamp).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTrainingStatSnapshotId(snapshot.id)}
+                          className="truncate px-1 text-left text-xs font-black"
+                          title={new Date(snapshot.timestamp).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                        >
+                          {new Date(snapshot.timestamp).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            removeTrainingStatsSnapshot(snapshot.id);
+                          }}
+                          className="rounded-lg px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50"
+                        >
+                          清除
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -3418,7 +3444,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.3</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.4</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
