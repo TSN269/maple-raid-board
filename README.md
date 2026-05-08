@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-6.4 SQLFIX1
+# Maple Raid Board — TSN UI-6.5 SQLFIX1
 
-> 版本基準：UI-6.4  
+> 版本基準：UI-6.5  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具 + 練功效率偵測 + 隊伍收藏 + 遊戲ID紀錄  
 > 部署架構：GitHub + Supabase + Vercel
@@ -88,7 +88,7 @@ UI-5.8 是以 UI-5.7 為基礎，新增與調整：
    - F10：停止分析
 
 3. 頁首版本顯示
-   - TSN UI-6.4
+   - TSN UI-6.5
 ```
 
 UI-5.8 **沒有修改 Supabase schema / RPC**。  
@@ -96,27 +96,30 @@ UI-5.8 **沒有修改 Supabase schema / RPC**。
 
 ---
 
-## 3. 目前 UI-6.4 主要變更
+## 3. 目前 UI-6.5 主要變更
 
-UI-6.4 是以 UI-6.3 為基礎，調整：
+UI-6.5 是以 UI-6.4 為基礎，調整：
 
 ```text
-1. 練功效率偵測的統計資訊紀錄新增單筆清除
-   - 在每筆當下紀錄時間右側新增「清除」
-   - 可清除該時間點保存的統計資訊
-   - 行為類似「遊戲id / 特徵碼紀錄」的移除紀錄
+1. 練功效率偵測新增「檢視之前統計資訊」按鈕
+   - 位置在「紀錄統計資訊」按鈕右側
+   - 用來開啟統計資訊紀錄小頁面
 
-2. 清除後的顯示邏輯
-   - 若清除的是目前正在查看的紀錄
-   - 會自動切到下一筆紀錄
-   - 若已沒有紀錄，統計資訊紀錄小頁面會關閉
+2. 「紀錄統計資訊」功能調整
+   - 按下後只紀錄當下統計區資訊
+   - 不再自動彈出統計資訊紀錄小頁面
 
-3. 頁首版本顯示
-   - TSN UI-6.4
+3. 統計資訊紀錄小頁面移到「檢視之前統計資訊」
+   - 點擊「檢視之前統計資訊」才開啟
+   - 若目前沒有紀錄，會提示沒有之前的統計資訊紀錄
+   - 原本單筆清除功能維持不變
+
+4. 頁首版本顯示
+   - TSN UI-6.5
 ```
 
-UI-6.4 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-5.9 SQLFIX1 的 SQL，升級 UI-6.4 不需要重跑 SQL。
+UI-6.5 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-5.9 SQLFIX1 的 SQL，升級 UI-6.5 不需要重跑 SQL。
 
 ---
 
@@ -183,7 +186,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui 6.4"
+git commit -m "deploy ui 6.5"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -193,7 +196,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui 6.4"
+git commit -m "deploy ui 6.5"
 git push
 ```
 
@@ -951,7 +954,7 @@ Maple Raid Board 下方新增點擊右上蘑菇 Logo 的提示文字
 新增突襲場次與我要報名欄位提示可用遊戲id / 特徵碼紀錄下拉選取
 遊戲id / 特徵碼紀錄頁面新增匯入 / 匯出紀錄
 練功效率偵測將 +1分鐘估算 改為 紀錄統計資訊
-紀錄統計資訊可保存最近 10 次統計區內容，可點時間查看，也可清除單筆紀錄
+紀錄統計資訊可保存最近 10 次統計區內容；需按「檢視之前統計資訊」查看，也可清除單筆紀錄
 設定頁面新增匯入 / 匯出管理碼、邀請碼與帶邀請碼團連結紀錄
 ```
 
@@ -970,6 +973,14 @@ Maple Raid Board 下方新增點擊右上蘑菇 Logo 的提示文字
 每筆紀錄時間右側新增清除按鈕
 可清除該時間點保存的統計資訊
 清除目前查看的紀錄後會自動切到下一筆或關閉小頁面
+```
+
+### UI-6.5
+
+```text
+紀錄統計資訊按鈕右側新增檢視之前統計資訊按鈕
+紀錄統計資訊只保留紀錄功能，不再自動彈出紀錄小頁面
+統計資訊紀錄小頁面改由檢視之前統計資訊按鈕開啟
 目前最新版本
 ```
 
@@ -1025,7 +1036,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 6.4"
+git commit -m "deploy ui 6.5"
 git push
 ```
 

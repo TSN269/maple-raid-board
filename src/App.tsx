@@ -2481,8 +2481,15 @@ function TrainingEfficiencyPanel() {
     };
 
     setTrainingStatSnapshots((prev) => [snapshot, ...prev].slice(0, 10));
-    setSelectedTrainingStatSnapshotId(snapshot.id);
     setMessage('已紀錄當下統計資訊。');
+  }
+
+  function openTrainingStatsSnapshotViewer() {
+    if (trainingStatSnapshots.length === 0) {
+      setMessage('目前沒有之前的統計資訊紀錄。');
+      return;
+    }
+    setSelectedTrainingStatSnapshotId(trainingStatSnapshots[0].id);
   }
 
   function removeTrainingStatsSnapshot(id: string) {
@@ -2744,12 +2751,13 @@ function TrainingEfficiencyPanel() {
             </>
           ) : null}
 
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,360px)_auto_auto] xl:items-end">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,360px)_auto_auto_auto] xl:items-end">
             <Field label="手動修正目前 EXP">
               <Input inputMode="numeric" value={expInput} placeholder="OCR 誤判時手動輸入" onChange={(event) => setExpInput(event.target.value.replace(/[^0-9]/g, ''))} />
             </Field>
             <Button onClick={addSample}>手動加入紀錄</Button>
             <Button variant="secondary" onClick={recordTrainingStatsSnapshot}>紀錄統計資訊</Button>
+            <Button variant="secondary" onClick={openTrainingStatsSnapshotViewer} disabled={trainingStatSnapshots.length === 0}>檢視之前統計資訊</Button>
           </div>
         </div>
 
@@ -3444,7 +3452,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.4</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.5</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>

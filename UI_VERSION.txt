@@ -1,2 +1,2 @@
-UI-6.4
-Training stats records now support clearing individual saved snapshots from the record time list.
+UI-6.5
+Training stats snapshots no longer open automatically after recording; added a separate button to view previous stats records.
