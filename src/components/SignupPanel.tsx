@@ -153,7 +153,11 @@ export function SignupPanel({ group, onSignup, initialSignupCode = '', gameAccou
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300">{form.name.length}/16</span>
             </div>
           )}
-          {gameAccountOptions.length > 0 ? <div className="mt-2 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">若有紀錄「遊戲id / 特徵碼」可下拉選取；目前角色名稱已改由下拉選單選擇。</div> : null}
+          {gameAccountOptions.length === 0 ? (
+            <div className="mt-2 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">若有紀錄「遊戲id / 特徵碼」可下拉選取。可點擊右上蘑菇 Logo 新增紀錄。</div>
+          ) : (
+            <div className="mt-2 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">目前使用已紀錄的遊戲id#特徵碼下拉選單。</div>
+          )}
         </Field>
 
         <Field label="職業" required>

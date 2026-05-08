@@ -189,7 +189,11 @@ export function CreateRaidModal({ onClose, onCreate, teamFavorites, gameAccountO
             ) : (
               <Input value={form.leader} placeholder="角色名或暱稱" onChange={(e) => set('leader', e.target.value)} />
             )}
-            {gameAccountOptions.length > 0 ? <div className="mt-2 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">若有紀錄「遊戲id / 特徵碼」可下拉選取；目前團長角色名已改由下拉選單選擇。</div> : null}
+            {gameAccountOptions.length === 0 ? (
+              <div className="mt-2 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">若有紀錄「遊戲id / 特徵碼」可下拉選取。可點擊右上蘑菇 Logo 新增紀錄。</div>
+            ) : (
+              <div className="mt-2 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">目前使用已紀錄的遊戲id#特徵碼下拉選單。</div>
+            )}
           </Field>
           <Field label="團長管理碼">
             <Input type="password" value={form.leaderCode} placeholder="至少 4 碼，用於管理此團" onChange={(e) => set('leaderCode', e.target.value.trim())} />

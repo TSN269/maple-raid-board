@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-6.2 SQLFIX1
+# Maple Raid Board — TSN UI-6.3 SQLFIX1
 
-> 版本基準：UI-6.2  
+> 版本基準：UI-6.3  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具 + 練功效率偵測 + 隊伍收藏 + 遊戲ID紀錄  
 > 部署架構：GitHub + Supabase + Vercel
@@ -88,7 +88,7 @@ UI-5.8 是以 UI-5.7 為基礎，新增與調整：
    - F10：停止分析
 
 3. 頁首版本顯示
-   - TSN UI-6.2
+   - TSN UI-6.3
 ```
 
 UI-5.8 **沒有修改 Supabase schema / RPC**。  
@@ -96,40 +96,29 @@ UI-5.8 **沒有修改 Supabase schema / RPC**。
 
 ---
 
-## 3. 目前 UI-6.2 主要變更
+## 3. 目前 UI-6.3 主要變更
 
-UI-6.2 是以 UI-6.1 為基礎，新增與調整：
+UI-6.3 是以 UI-6.2 為基礎，調整：
 
 ```text
-1. 新增突襲場次 / 我要報名提示文字補強
-   - 新增突襲場次的團長角色名欄位新增提示
-   - 我要報名的角色名稱欄位新增提示
-   - 提示若有紀錄「遊戲id / 特徵碼」可下拉選取
+1. 新增突襲場次的團長角色名提示位置修正
+   - 「若有紀錄『遊戲id / 特徵碼』可下拉選取」提示
+   - 改為沒有任何遊戲id / 特徵碼紀錄時才顯示
 
-2. 遊戲id / 特徵碼紀錄新增匯入 / 匯出
-   - 可匯出目前保存的遊戲id / 特徵碼紀錄為 JSON
-   - 可匯入 JSON 紀錄
-   - 匯入後仍維持最多 10 筆紀錄
+2. 我要報名的角色名稱提示位置修正
+   - 「若有紀錄『遊戲id / 特徵碼』可下拉選取」提示
+   - 改為沒有任何遊戲id / 特徵碼紀錄時才顯示
 
-3. 練功效率偵測「+1分鐘估算」改為「紀錄統計資訊」
-   - 按下後會紀錄當下統計區所有資訊
-   - 會彈出統計資訊紀錄小頁面
-   - 小頁面會顯示每次按下紀錄的時間
-   - 點擊紀錄時間可查看當時的統計資訊
-   - 最多保存最近 10 次統計資訊紀錄
+3. 有紀錄時的提示改為狀態說明
+   - 團長角色名顯示目前使用已紀錄的遊戲id#特徵碼下拉選單
+   - 我要報名角色名稱顯示目前使用已紀錄的遊戲id#特徵碼下拉選單
 
-4. 設定頁面新增管理碼紀錄匯入 / 匯出
-   - 可匯出本機保存的團長管理碼
-   - 可匯出本機保存的團邀請碼
-   - 可匯出帶邀請碼的團連結資訊
-   - 可匯入管理碼 / 邀請碼紀錄
-
-5. 頁首版本顯示
-   - TSN UI-6.2
+4. 頁首版本顯示
+   - TSN UI-6.3
 ```
 
-UI-6.2 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-5.9 SQLFIX1 的 SQL，升級 UI-6.2 不需要重跑 SQL。
+UI-6.3 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-5.9 SQLFIX1 的 SQL，升級 UI-6.3 不需要重跑 SQL。
 
 ---
 
@@ -196,7 +185,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui 6.2"
+git commit -m "deploy ui 6.3"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -206,7 +195,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui 6.2"
+git commit -m "deploy ui 6.3"
 git push
 ```
 
@@ -966,6 +955,14 @@ Maple Raid Board 下方新增點擊右上蘑菇 Logo 的提示文字
 練功效率偵測將 +1分鐘估算 改為 紀錄統計資訊
 紀錄統計資訊可保存最近 10 次統計區內容並可點時間查看
 設定頁面新增匯入 / 匯出管理碼、邀請碼與帶邀請碼團連結紀錄
+```
+
+### UI-6.3
+
+```text
+新增突襲場次的團長角色名提示改為無遊戲id / 特徵碼紀錄時才顯示
+我要報名的角色名稱提示改為無遊戲id / 特徵碼紀錄時才顯示
+有紀錄時改顯示目前使用已紀錄的遊戲id#特徵碼下拉選單
 目前最新版本
 ```
 
@@ -1021,7 +1018,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 6.2"
+git commit -m "deploy ui 6.3"
 git push
 ```
 

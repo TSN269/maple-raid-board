@@ -1,2 +1,2 @@
-UI-6.2
-Added game account import/export, management code import/export, training stats snapshots, and dropdown hints.
+UI-6.3
+Move the 'game id / feature code can be selected' hints to the no-record state for create raid leader and signup name fields.
