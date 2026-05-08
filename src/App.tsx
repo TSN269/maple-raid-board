@@ -8,7 +8,7 @@ import { NotificationCenter, buildDerivedNotifications, type RaidNotification } 
 import { Button, Field, Input, Pill, Select, classNames } from './components/ui';
 import { getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta, getRaidStatusMeta } from './data/bossArt';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
-import type { MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup, RaidStatus, RoleRequirementMap } from './types';
+import type { MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup, RaidStatus, RoleRequirementMap, TeamFavorite } from './types';
 
 function getInitialGroupId() {
   return new URLSearchParams(window.location.search).get('group') || 'demo-zakum-soon';
@@ -20,6 +20,21 @@ const SIGNUP_CODE_STORAGE_KEY = 'maple_raid_board_signup_codes_v15';
 const NOTIFICATION_EVENTS_STORAGE_KEY = 'maple_raid_board_notifications_v14';
 const NOTIFICATION_READ_STORAGE_KEY = 'maple_raid_board_notification_reads_v14';
 const NOTIFICATION_SNAPSHOT_STORAGE_KEY = 'maple_raid_board_notification_snapshot_v14';
+const TEAM_FAVORITES_STORAGE_KEY = 'maple_raid_board_team_favorites_v55';
+
+function loadTeamFavorites(): TeamFavorite[] {
+  try {
+    const raw = localStorage.getItem(TEAM_FAVORITES_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item === 'object') as TeamFavorite[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveTeamFavorites(items: TeamFavorite[]) {
+  localStorage.setItem(TEAM_FAVORITES_STORAGE_KEY, JSON.stringify(items));
+}
 
 function loadLeaderCodes(): Record<string, string> {
   try {
@@ -385,7 +400,7 @@ function statusLabel(status: RaidStatus | MemberStatus) {
   return map[status] || status;
 }
 
-type ActivePanel = 'home' | 'raid' | 'signup' | 'favorite' | 'notice' | 'rojhuTools' | 'trainingEfficiency' | 'settings';
+type ActivePanel = 'home' | 'raid' | 'signup' | 'favorite' | 'teamFavorite' | 'notice' | 'rojhuTools' | 'trainingEfficiency' | 'settings';
 
 function NavigationRail({ activePanel, onChange, noticeCount }: { activePanel: ActivePanel; onChange: (panel: ActivePanel) => void; noticeCount: number }) {
   const items: Array<{ icon: string; label: string; panel: ActivePanel; badge?: string; helper?: string }> = [
@@ -393,6 +408,7 @@ function NavigationRail({ activePanel, onChange, noticeCount }: { activePanel: A
     { icon: '🍁', label: '楓突襲', panel: 'raid', helper: '突襲詳細內容' },
     { icon: '✎', label: '我要報名', panel: 'signup', helper: '報名表單' },
     { icon: '☆', label: '團連結收藏', panel: 'favorite', helper: '團連結 / 帶邀請碼連結快速收藏' },
+    { icon: '☷', label: '隊伍收藏', panel: 'teamFavorite', helper: '已收藏的楓突襲隊伍名單' },
     { icon: '●', label: '通知', panel: 'notice', badge: noticeCount > 0 ? String(Math.min(99, noticeCount)) : undefined, helper: '開團提醒 / 狀態變更 / 候補轉正' },
     { icon: '🧰', label: '羅茱工具', panel: 'rojhuTools', helper: '常用連結與快速操作' },
     { icon: '⚡', label: '練功效率', panel: 'trainingEfficiency', helper: 'EXP / 分與升級時間估算' },
@@ -479,6 +495,69 @@ function LinkFavoritesPanel({ selectedGroup, selectedSignupCode, onGoSettings }:
         </div>
       ) : (
         <div className="mt-6 rounded-3xl border border-dashed border-orange-200 bg-orange-50 p-8 text-center text-sm font-semibold text-slate-500">尚未選取任何突襲場次。</div>
+      )}
+    </section>
+  );
+}
+
+
+function TeamFavoritesPanel({ favorites, onRemove, onGoRaid, onSelectGroup }: { favorites: TeamFavorite[]; onRemove: (id: string) => void; onGoRaid: () => void; onSelectGroup: (groupId: string) => void }) {
+  return (
+    <section className="rounded-[2rem] border border-orange-100/80 bg-white/80 p-6 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">Team Favorites</div>
+          <h2 className="mt-2 text-2xl font-black text-slate-950">隊伍收藏</h2>
+          <p className="mt-2 max-w-2xl text-sm font-semibold leading-7 text-slate-500">這裡顯示從「楓突襲」已結束場次的隊伍配置收藏下來的隊伍名單。資料只保存於目前瀏覽器。</p>
+        </div>
+        <Pill tone="orange">收藏 {favorites.length} 隊</Pill>
+      </div>
+
+      {favorites.length === 0 ? (
+        <div className="mt-6 rounded-3xl border border-dashed border-orange-200 bg-orange-50/70 p-8 text-center">
+          <div className="text-lg font-black text-slate-950">尚無收藏隊伍</div>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">到「楓突襲」已結束的突襲場次，在「隊伍配置」欄按「收藏隊伍 1 / 2 / 3」即可加入。</p>
+        </div>
+      ) : (
+        <div className="mt-6 grid gap-4 xl:grid-cols-2">
+          {favorites.map((favorite) => (
+            <article key={favorite.id} className="rounded-3xl border border-orange-100 bg-white/90 p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="truncate text-lg font-black text-slate-950">{favorite.groupTitle}</h3>
+                    <Pill tone="orange">隊伍 {favorite.party}</Pill>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-2 text-sm font-semibold text-slate-500">
+                    <span>{getBossDisplayName(favorite.boss)}</span>
+                    <span>{favorite.raidDate} {favorite.raidTime}</span>
+                    <span>團長：{favorite.leader}</span>
+                  </div>
+                  <div className="mt-1 text-xs font-semibold text-slate-400">收藏時間：{new Date(favorite.savedAt).toLocaleString('zh-TW')}</div>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button variant="secondary" className="px-3 py-2 text-xs" onClick={() => { onSelectGroup(favorite.groupId); onGoRaid(); }}>回到場次</Button>
+                  <Button variant="ghost" className="px-3 py-2 text-xs" onClick={() => onRemove(favorite.id)}>移除</Button>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-2">
+                {favorite.members.length > 0 ? favorite.members.map((member, index) => (
+                  <div key={`${favorite.id}-${member.name}-${index}`} className="grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-2 rounded-2xl border border-orange-50 bg-orange-50/70 px-3 py-2">
+                    <div className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-slate-800 to-slate-600 text-xs font-black text-white">{index + 1}</div>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-black text-slate-800">{member.name}</div>
+                      <div className="truncate text-xs font-semibold text-slate-500">Lv.{member.level} · {member.job} · {member.status}</div>
+                    </div>
+                    <span className="rounded-full bg-white px-2 py-1 text-[11px] font-black text-orange-700">{member.role}</span>
+                  </div>
+                )) : (
+                  <div className="rounded-2xl border border-dashed border-orange-100 bg-orange-50/50 p-4 text-center text-sm font-semibold text-slate-500">此收藏沒有成員資料。</div>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
       )}
     </section>
   );
@@ -2562,6 +2641,7 @@ export default function App() {
   const [initialInvite] = useState(() => ({ groupId: getInitialGroupId(), code: getInviteCodeFromUrl() }));
   const [localNotificationEvents, setLocalNotificationEvents] = useState<RaidNotification[]>(() => loadLocalNotificationEvents());
   const [notificationReadIds, setNotificationReadIds] = useState<string[]>(() => loadNotificationReadIds());
+  const [teamFavorites, setTeamFavorites] = useState<TeamFavorite[]>(() => loadTeamFavorites());
 
   const selectedGroup = useMemo(() => groups.find((g) => g.id === selectedId) || groups[0], [groups, selectedId]);
   const selectedDifficulty = useMemo(() => selectedGroup ? getBossDifficultyMeta(`${selectedGroup.title} ${selectedGroup.boss}`) : null, [selectedGroup]);
@@ -2835,6 +2915,27 @@ export default function App() {
     saveNotificationSnapshot(snapshot);
   }
 
+  function rememberTeamFavorite(favorite: TeamFavorite) {
+    setTeamFavorites((prev) => {
+      const next = [
+        favorite,
+        ...prev.filter((item) => !(item.groupId === favorite.groupId && item.party === favorite.party)),
+      ].slice(0, 60);
+      saveTeamFavorites(next);
+      return next;
+    });
+    setRefreshNotice(`已收藏「${favorite.groupTitle}」隊伍 ${favorite.party}。`);
+    window.setTimeout(() => setRefreshNotice(null), 3200);
+  }
+
+  function forgetTeamFavorite(id: string) {
+    setTeamFavorites((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      saveTeamFavorites(next);
+      return next;
+    });
+  }
+
   async function createGroup(group: NewRaidGroup) {
     await runAction(async () => {
       await insertRaidGroup(group);
@@ -2893,7 +2994,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.4</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.5</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
@@ -2991,6 +3092,7 @@ export default function App() {
                 signupCode={signupCodes[selectedGroup.id] || ''}
                 onSignupCodeSave={(code) => rememberSignupCode(selectedGroup.id, code)}
                 onSignupCodeForget={() => forgetSignupCode(selectedGroup.id)}
+                onTeamFavoriteSave={rememberTeamFavorite}
               />
             ) : (
               <div className="rounded-[2rem] border border-orange-100 bg-white/85 p-10 text-center text-slate-500 shadow-sm">沒有可顯示的場次。請先執行 Supabase SQL seed。</div>
@@ -3017,6 +3119,8 @@ export default function App() {
             )
           ) : activePanel === 'favorite' ? (
             <LinkFavoritesPanel selectedGroup={selectedGroup} selectedSignupCode={selectedSignupCode} onGoSettings={() => setActivePanel('settings')} />
+          ) : activePanel === 'teamFavorite' ? (
+            <TeamFavoritesPanel favorites={teamFavorites} onRemove={forgetTeamFavorite} onSelectGroup={setSelectedId} onGoRaid={() => setActivePanel('raid')} />
           ) : activePanel === 'notice' ? (
             <NotificationCenter
               groups={groups}

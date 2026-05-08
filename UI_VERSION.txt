@@ -1,2 +1,2 @@
-UI-5.4
-Adjusted training trend chart and exported stats image to use the site style, made exported stats text fit in one line where possible, and changed upgrade level display to the next level.
+UI-5.5
+Added team favorites under link favorites and team roster collection from finished raid team configuration.

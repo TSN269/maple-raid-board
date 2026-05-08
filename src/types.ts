@@ -16,6 +16,28 @@ export type RaidMember = {
   updatedAt: string;
 };
 
+export type TeamFavoriteMember = {
+  name: string;
+  job: string;
+  level: number;
+  role: string;
+  status: MemberStatus;
+  note: string;
+};
+
+export type TeamFavorite = {
+  id: string;
+  groupId: string;
+  groupTitle: string;
+  boss: string;
+  raidDate: string;
+  raidTime: string;
+  leader: string;
+  party: number;
+  savedAt: string;
+  members: TeamFavoriteMember[];
+};
+
 export type RaidGroup = {
   id: string;
   title: string;

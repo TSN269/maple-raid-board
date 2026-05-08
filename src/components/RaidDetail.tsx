@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getBossArtMeta, getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta, getRaidStatusMeta } from '../data/bossArt';
 import { roleOptions, statusOptions } from '../data/options';
-import type { MemberStatus, RaidGroup, RaidMember, RaidStatus, RoleRequirementMap } from '../types';
+import type { MemberStatus, RaidGroup, RaidMember, RaidStatus, RoleRequirementMap, TeamFavorite } from '../types';
 import { Button, Input, Pill, Select, classNames } from './ui';
 
 type Props = {
@@ -17,6 +17,7 @@ type Props = {
   signupCode?: string;
   onSignupCodeSave: (code: string) => void;
   onSignupCodeForget: () => void;
+  onTeamFavoriteSave: (favorite: TeamFavorite) => void;
 };
 
 const groupStatusOptions: Array<{ value: RaidStatus; label: string; helper: string }> = [
@@ -264,7 +265,7 @@ function LeaderAccessPanel({ isUnlocked, onUnlock, onLock }: { isUnlocked: boole
   );
 }
 
-export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRoleRequirementsChange, onRemove, onDelete, isLeaderUnlocked, onLeaderUnlock, onLeaderLock, signupCode = '', onSignupCodeSave, onSignupCodeForget }: Props) {
+export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRoleRequirementsChange, onRemove, onDelete, isLeaderUnlocked, onLeaderUnlock, onLeaderLock, signupCode = '', onSignupCodeSave, onSignupCodeForget, onTeamFavoriteSave }: Props) {
   const [copied, setCopied] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   const [signupCodeDraft, setSignupCodeDraft] = useState(signupCode);
@@ -376,6 +377,34 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRoleR
     } finally {
       setSavingRequirements(false);
     }
+  }
+
+  function savePartyFavorite(partyNo: number) {
+    const partyMembers = orderedMembers.filter((member) => Number(member.party) === partyNo);
+    if (partyMembers.length === 0) {
+      window.alert(`隊伍 ${partyNo} 目前沒有可收藏的成員。`);
+      return;
+    }
+
+    onTeamFavoriteSave({
+      id: `${group.id}-party-${partyNo}-${Date.now()}`,
+      groupId: group.id,
+      groupTitle: group.title,
+      boss: group.boss,
+      raidDate: group.raidDate,
+      raidTime: group.raidTime,
+      leader: group.leader,
+      party: partyNo,
+      savedAt: new Date().toISOString(),
+      members: partyMembers.map((member) => ({
+        name: member.name,
+        job: member.job,
+        level: member.level,
+        role: member.role,
+        status: member.status,
+        note: member.note,
+      })),
+    });
   }
 
   return (
@@ -527,6 +556,27 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRoleR
               <Button variant="secondary" className="py-2 text-xs" onClick={() => setViewListMode((prev) => !prev)}>{viewListMode ? '返回隊伍配置' : '☷ 查看名單模式'}</Button>
             </div>
           </div>
+
+          {group.status === 'finished' ? (
+            <div className="mt-4 rounded-3xl border border-orange-100 bg-orange-50/70 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="text-sm font-black text-slate-950">收藏隊伍名單</div>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">已結束場次可將隊伍配置保存到左側「隊伍收藏」。</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {Array.from({ length: partyCount }, (_, index) => index + 1).map((partyNo) => {
+                    const count = orderedMembers.filter((member) => Number(member.party) === partyNo).length;
+                    return (
+                      <Button key={partyNo} variant="secondary" className="py-2 text-xs" disabled={count === 0} onClick={() => savePartyFavorite(partyNo)}>
+                        收藏隊伍 {partyNo}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-5 grid gap-4" style={{ gridTemplateColumns: `repeat(${partyCount}, minmax(0, 1fr))` }}>
             {Array.from({ length: partyCount }, (_, index) => index + 1).map((partyNo) => {
