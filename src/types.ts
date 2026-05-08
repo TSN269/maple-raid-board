@@ -84,6 +84,16 @@ export type NewRaidMember = {
   honeypot?: string;
 };
 
+export type ImportedRaidMemberDraft = {
+  name: string;
+  job: string;
+  level: number;
+  role: string;
+  party: number;
+  status: MemberStatus;
+  note: string;
+};
+
 type RaidGroupsRow = {
   id: string;
   title: string;

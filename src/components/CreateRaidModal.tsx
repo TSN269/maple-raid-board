@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { buildBossStorageValue, getBossArtMeta, getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta } from '../data/bossArt';
 import { bossOptions, difficultyOptions } from '../data/options';
-import type { NewRaidGroup } from '../types';
+import type { ImportedRaidMemberDraft, NewRaidGroup, TeamFavorite } from '../types';
 import { Button, Field, Input, Select, Textarea } from './ui';
 
 function getDateOffset(days: number) {
@@ -23,10 +23,11 @@ function slugify(text: string) {
 
 type Props = {
   onClose: () => void;
-  onCreate: (group: NewRaidGroup) => Promise<void>;
+  onCreate: (group: NewRaidGroup, importedMembers?: ImportedRaidMemberDraft[]) => Promise<void>;
+  teamFavorites: TeamFavorite[];
 };
 
-export function CreateRaidModal({ onClose, onCreate }: Props) {
+export function CreateRaidModal({ onClose, onCreate, teamFavorites }: Props) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     title: '',
@@ -42,7 +43,36 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
     notice: '',
   });
 
+  const [showTeamFavoritePicker, setShowTeamFavoritePicker] = useState(false);
+  const [selectedTeamFavoriteIds, setSelectedTeamFavoriteIds] = useState<string[]>([]);
+
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((prev) => ({ ...prev, [key]: value }));
+  const selectedTeamFavorites = teamFavorites.filter((favorite) => selectedTeamFavoriteIds.includes(favorite.id));
+  const importedMembers: ImportedRaidMemberDraft[] = selectedTeamFavorites.flatMap((favorite) => favorite.members.map((member) => ({
+    name: member.name,
+    job: member.job,
+    level: member.level,
+    role: member.role,
+    party: favorite.party,
+    status: member.status,
+    note: member.note,
+  })));
+  const importedMemberCount = importedMembers.length;
+
+  function toggleTeamFavorite(favorite: TeamFavorite) {
+    setSelectedTeamFavoriteIds((prev) => {
+      const exists = prev.includes(favorite.id);
+      const next = exists ? prev.filter((id) => id !== favorite.id) : [...prev, favorite.id];
+      if (!exists) {
+        const nextCount = teamFavorites
+          .filter((item) => next.includes(item.id))
+          .reduce((sum, item) => sum + item.members.length, 0);
+        setForm((formPrev) => ({ ...formPrev, capacity: Math.min(18, Math.max(Number(formPrev.capacity || 1), nextCount || 1)) }));
+      }
+      return next;
+    });
+  }
+
   const previewText = `${form.boss} ${form.difficulty}`;
   const bossArt = getBossArtMeta(previewText);
   const difficultyMeta = getBossDifficultyMeta(previewText);
@@ -89,6 +119,55 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
               </div>
             </div>
           </div>
+          <div className="md:col-span-2 rounded-3xl border border-orange-100 bg-white/90 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-black text-slate-950">隊伍收藏名單</div>
+                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">可直接帶入左側「隊伍收藏」保存的隊伍名單，建立場次後自動加入成員。</p>
+              </div>
+              <Button type="button" variant="secondary" onClick={() => setShowTeamFavoritePicker((prev) => !prev)} disabled={teamFavorites.length === 0}>
+                {teamFavorites.length === 0 ? '尚無隊伍收藏' : `帶入隊伍收藏${importedMemberCount > 0 ? `（${importedMemberCount}人）` : ''}`}
+              </Button>
+            </div>
+
+            {showTeamFavoritePicker ? (
+              <div className="mt-4 grid gap-3">
+                {teamFavorites.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-orange-100 bg-orange-50/70 p-4 text-sm font-semibold text-slate-500">尚無可帶入的隊伍收藏。</div>
+                ) : teamFavorites.map((favorite) => {
+                  const selected = selectedTeamFavoriteIds.includes(favorite.id);
+                  return (
+                    <button
+                      key={favorite.id}
+                      type="button"
+                      onClick={() => toggleTeamFavorite(favorite)}
+                      className={`rounded-2xl border p-3 text-left transition ${selected ? 'border-orange-300 bg-orange-50 ring-2 ring-orange-200' : 'border-orange-100 bg-white hover:bg-orange-50/60'}`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="font-black text-slate-900">{favorite.groupTitle} · 隊伍 {favorite.party}</div>
+                        <div className="text-xs font-black text-orange-700">{selected ? '已選擇' : '點選帶入'}</div>
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+                        <span>{getBossDisplayName(favorite.boss)}</span>
+                        <span>{favorite.raidDate} {favorite.raidTime}</span>
+                        <span>{favorite.members.length} 人</span>
+                      </div>
+                      <div className="mt-2 line-clamp-2 text-xs font-semibold text-slate-500">
+                        {favorite.members.map((member) => member.name).join('、') || '無成員'}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {importedMemberCount > 0 ? (
+              <div className="mt-3 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">
+                已選擇 {selectedTeamFavorites.length} 隊，共 {importedMemberCount} 位成員。建立場次後會自動帶入隊伍名單。
+              </div>
+            ) : null}
+          </div>
+
           <Field label="日期">
             <Input type="date" value={form.raidDate} onChange={(e) => set('raidDate', e.target.value)} />
           </Field>
@@ -131,11 +210,11 @@ export function CreateRaidModal({ onClose, onCreate }: Props) {
                 const { difficulty, ...payload } = form;
                 await onCreate({
                   ...payload,
-                  capacity: Math.min(18, Math.max(1, Number(payload.capacity || 18))),
+                  capacity: Math.min(18, Math.max(1, Number(payload.capacity || 18), importedMemberCount || 1)),
                   boss: buildBossStorageValue(payload.boss, difficulty),
                   id: slugify(`${payload.title}-${difficulty}` || payload.boss),
                   status: 'open',
-                });
+                }, importedMembers);
               } finally {
                 setSaving(false);
               }

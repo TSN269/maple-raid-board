@@ -8,7 +8,7 @@ import { NotificationCenter, buildDerivedNotifications, type RaidNotification } 
 import { Button, Field, Input, Pill, Select, classNames } from './components/ui';
 import { getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta, getRaidStatusMeta } from './data/bossArt';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
-import type { MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup, RaidStatus, RoleRequirementMap, TeamFavorite } from './types';
+import type { ImportedRaidMemberDraft, MemberStatus, NewRaidGroup, NewRaidMember, RaidGroup, RaidStatus, RoleRequirementMap, TeamFavorite } from './types';
 
 function getInitialGroupId() {
   return new URLSearchParams(window.location.search).get('group') || 'demo-zakum-soon';
@@ -2936,13 +2936,33 @@ export default function App() {
     });
   }
 
-  async function createGroup(group: NewRaidGroup) {
+  async function createGroup(group: NewRaidGroup, importedMembers: ImportedRaidMemberDraft[] = []) {
     await runAction(async () => {
       await insertRaidGroup(group);
+
+      for (const [index, member] of importedMembers.entries()) {
+        await insertRaidMember({
+          groupId: group.id,
+          name: member.name,
+          job: member.job,
+          level: member.level,
+          role: member.role,
+          party: member.party,
+          status: member.status,
+          note: member.note,
+          signupCode: group.signupCode,
+          clientNonce: `team-favorite-${group.id}-${index}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        });
+      }
+
       rememberLeaderCode(group.id, group.leaderCode);
       rememberSignupCode(group.id, group.signupCode);
       setSelectedId(group.id);
       setShowCreate(false);
+      if (importedMembers.length > 0) {
+        setRefreshNotice(`已建立場次並帶入 ${importedMembers.length} 位隊伍收藏成員。`);
+        window.setTimeout(() => setRefreshNotice(null), 3200);
+      }
     });
   }
 
@@ -2994,7 +3014,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.5</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.6</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
@@ -3149,7 +3169,7 @@ export default function App() {
         </div>
       )}
 
-      {showCreate ? <CreateRaidModal onClose={() => setShowCreate(false)} onCreate={createGroup} /> : null}
+      {showCreate ? <CreateRaidModal onClose={() => setShowCreate(false)} onCreate={createGroup} teamFavorites={teamFavorites} /> : null}
     </div>
   );
 }

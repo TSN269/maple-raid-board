@@ -1,2 +1,2 @@
-UI-5.5
-Added team favorites under link favorites and team roster collection from finished raid team configuration.
+UI-5.6
+Create raid modal can import selected team favorite rosters into the new raid and auto-create members after group creation.
