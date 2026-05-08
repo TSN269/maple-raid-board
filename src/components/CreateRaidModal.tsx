@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { buildBossStorageValue, getBossArtMeta, getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta } from '../data/bossArt';
 import { bossOptions, difficultyOptions } from '../data/options';
 import type { ImportedRaidMemberDraft, NewRaidGroup, TeamFavorite } from '../types';
@@ -25,9 +25,10 @@ type Props = {
   onClose: () => void;
   onCreate: (group: NewRaidGroup, importedMembers?: ImportedRaidMemberDraft[]) => Promise<void>;
   teamFavorites: TeamFavorite[];
+  gameAccountOptions: string[];
 };
 
-export function CreateRaidModal({ onClose, onCreate, teamFavorites }: Props) {
+export function CreateRaidModal({ onClose, onCreate, teamFavorites, gameAccountOptions }: Props) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     title: '',
@@ -35,7 +36,7 @@ export function CreateRaidModal({ onClose, onCreate, teamFavorites }: Props) {
     difficulty: difficultyOptions[1],
     raidDate: getDateOffset(1),
     raidTime: '22:00',
-    leader: '',
+    leader: gameAccountOptions[0] || '',
     minLevel: 90,
     capacity: 18,
     leaderCode: '',
@@ -45,6 +46,12 @@ export function CreateRaidModal({ onClose, onCreate, teamFavorites }: Props) {
 
   const [showTeamFavoritePicker, setShowTeamFavoritePicker] = useState(false);
   const [selectedTeamFavoriteIds, setSelectedTeamFavoriteIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (gameAccountOptions.length > 0) {
+      setForm((prev) => gameAccountOptions.includes(prev.leader) ? prev : { ...prev, leader: gameAccountOptions[0] });
+    }
+  }, [gameAccountOptions]);
 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((prev) => ({ ...prev, [key]: value }));
   const selectedTeamFavorites = teamFavorites.filter((favorite) => selectedTeamFavoriteIds.includes(favorite.id));
@@ -174,8 +181,15 @@ export function CreateRaidModal({ onClose, onCreate, teamFavorites }: Props) {
           <Field label="時間 / 招募截止時間">
             <Input type="time" value={form.raidTime} onChange={(e) => set('raidTime', e.target.value)} />
           </Field>
-          <Field label="團長">
-            <Input value={form.leader} placeholder="角色名或暱稱" onChange={(e) => set('leader', e.target.value)} />
+          <Field label="團長角色名">
+            {gameAccountOptions.length > 0 ? (
+              <Select value={form.leader} onChange={(e) => set('leader', e.target.value)}>
+                {gameAccountOptions.map((account) => <option key={account} value={account}>{account}</option>)}
+              </Select>
+            ) : (
+              <Input value={form.leader} placeholder="角色名或暱稱" onChange={(e) => set('leader', e.target.value)} />
+            )}
+            {gameAccountOptions.length > 0 ? <div className="mt-2 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">已偵測到遊戲id#特徵碼紀錄，團長角色名改由下拉選單選擇。</div> : null}
           </Field>
           <Field label="團長管理碼">
             <Input type="password" value={form.leaderCode} placeholder="至少 4 碼，用於管理此團" onChange={(e) => set('leaderCode', e.target.value.trim())} />

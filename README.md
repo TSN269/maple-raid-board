@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-6.0 SQLFIX1
+# Maple Raid Board — TSN UI-6.1 SQLFIX1
 
-> 版本基準：UI-6.0  
+> 版本基準：UI-6.1  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具 + 練功效率偵測 + 隊伍收藏 + 遊戲ID紀錄  
 > 部署架構：GitHub + Supabase + Vercel
@@ -88,7 +88,7 @@ UI-5.8 是以 UI-5.7 為基礎，新增與調整：
    - F10：停止分析
 
 3. 頁首版本顯示
-   - TSN UI-6.0
+   - TSN UI-6.1
 ```
 
 UI-5.8 **沒有修改 Supabase schema / RPC**。  
@@ -96,26 +96,27 @@ UI-5.8 **沒有修改 Supabase schema / RPC**。
 
 ---
 
-## 3. 目前 UI-6.0 主要變更
+## 3. 目前 UI-6.1 主要變更
 
-UI-6.0 是以 UI-5.9 SQLFIX1 為基礎，調整：
+UI-6.1 是以 UI-6.0 為基礎，調整：
 
 ```text
-1. 遊戲id / 特徵碼紀錄限制調整
-   - 原本特徵碼必須剛好 6 位英數字元
-   - 改為最多 6 位英數字元
-   - 實際允許 1～6 位英數字元
+1. 新增突襲場次的團長角色名與遊戲id#特徵碼紀錄連動
+   - 若目前已有遊戲id#特徵碼紀錄
+   - 新增突襲場次的「團長角色名」欄位會由輸入框改為下拉式選單
+   - 下拉式選單內容為已保存的遊戲id#特徵碼紀錄
 
-2. 輸入提示同步調整
-   - 特徵碼欄位 placeholder 改為「最多 6 位，例 Z5j69F」
-   - 錯誤提示改為「特徵碼必須為 1～6 位英數字元」
+2. 建立場次時自動套用
+   - 開啟新增突襲場次視窗時
+   - 若有紀錄，會預設選取第一筆遊戲id#特徵碼
+   - 若無紀錄，維持原本手動輸入
 
 3. 頁首版本顯示
-   - TSN UI-6.0
+   - TSN UI-6.1
 ```
 
-UI-6.0 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-5.9 SQLFIX1 的 SQL，升級 UI-6.0 不需要重跑 SQL。
+UI-6.1 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-5.9 SQLFIX1 的 SQL，升級 UI-6.1 不需要重跑 SQL。
 
 ---
 
@@ -182,7 +183,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui 6.0"
+git commit -m "deploy ui 6.1"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -192,7 +193,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui 6.0"
+git commit -m "deploy ui 6.1"
 git push
 ```
 
@@ -914,6 +915,7 @@ Debug 原有功能維持不變
 右上 Logo 新增遊戲id / 特徵碼紀錄小頁面
 遊戲id#特徵碼最多保存 10 筆，特徵碼限制最多 6 位英數字元
 我要報名角色名稱若有紀錄會改為下拉式選單
+新增突襲場次團長角色名若有紀錄也會改為下拉式選單
 角色定位新增清球、清魔靈、大法
 控時只在困難鐘王出現，清球只在鐘王出現，清魔靈只在殘暴炎魔出現
 ```
@@ -933,6 +935,14 @@ Maple Raid Board 下方新增點擊右上蘑菇 Logo 的提示文字
 特徵碼限制由剛好 6 位改為最多 6 位英數字元
 允許 1～6 位英數字元
 特徵碼欄位提示與錯誤提示同步更新
+```
+
+### UI-6.1
+
+```text
+新增突襲場次的團長角色名與遊戲id#特徵碼紀錄連動
+若有遊戲id#特徵碼紀錄，團長角色名由輸入框改為下拉選單
+下拉選單內容為已保存的遊戲id#特徵碼紀錄
 目前最新版本
 ```
 
@@ -988,7 +998,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 6.0"
+git commit -m "deploy ui 6.1"
 git push
 ```
 

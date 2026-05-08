@@ -1,2 +1,2 @@
-UI-6.0
-Feature code limit changed from exactly 6 alphanumeric characters to 1-6 alphanumeric characters.
+UI-6.1
+Create raid leader field now uses saved gameId#featureCode records as a dropdown when records exist.
