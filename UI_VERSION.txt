@@ -1,2 +1,2 @@
-UI-5.9
-Added game ID/feature code records, signup name dropdown linkage, and conditional role options for Papulatus/Zakum.
+UI-5.9 SQLFIX1
+Fixes role requirement SQL whitelist and moves game ID/feature code modal trigger from left maple logo to right mushroom logo.

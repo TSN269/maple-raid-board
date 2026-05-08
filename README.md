@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-5.9
+# Maple Raid Board — TSN UI-5.9 SQLFIX1 SQLFIX1
 
-> 版本基準：UI-5.9  
+> 版本基準：UI-5.9 SQLFIX1  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具 + 練功效率偵測 + 隊伍收藏 + 遊戲ID紀錄  
 > 部署架構：GitHub + Supabase + Vercel
@@ -88,7 +88,7 @@ UI-5.8 是以 UI-5.7 為基礎，新增與調整：
    - F10：停止分析
 
 3. 頁首版本顯示
-   - TSN UI-5.9
+   - TSN UI-5.9 SQLFIX1
 ```
 
 UI-5.8 **沒有修改 Supabase schema / RPC**。  
@@ -96,41 +96,35 @@ UI-5.8 **沒有修改 Supabase schema / RPC**。
 
 ---
 
-## 3. 目前 UI-5.9 主要變更
+## 3. 目前 UI-5.9 SQLFIX1 主要變更
 
-UI-5.9 是以 UI-5.8 為基礎，新增與調整：
+UI-5.9 SQLFIX1 是以 UI-5.9 為基礎，修正：
 
 ```text
-1. 右上 Logo 新增遊戲id / 特徵碼紀錄小頁面
-   - 點擊 Logo 後可開啟紀錄視窗
-   - 可輸入遊戲id與特徵碼
-   - 顯示格式為 遊戲id#特徵碼
-   - 例如 AAA#Z5j69F
-   - 特徵碼限制為 6 位英數字元
-   - 最多保存 10 個紀錄
+1. 修正 Supabase 角色定位需求驗證
+   - 原本 SQL 只允許：打手、控時、火、煙霧機、輔助
+   - 新增允許：大法、清球、清魔靈
+   - 修正儲存隊伍角色定位需求時出現「不支援的角色定位需求：大法」
 
-2. 我要報名角色名稱與遊戲id#特徵碼紀錄連動
-   - 若已有遊戲id#特徵碼紀錄
-   - 角色名稱欄位會由輸入框改為下拉式選單
-   - 下拉式選項即為已保存的遊戲id#特徵碼紀錄
+2. 修正遊戲id / 特徵碼紀錄入口位置
+   - 原本誤綁在左上楓葉 Logo
+   - 改為右上蘑菇 Logo 點擊開啟
+   - 左上楓葉 Logo 改回純顯示
 
-3. 角色定位新增
-   - 清球
-   - 清魔靈
-   - 大法
+3. Header 提示文字
+   - 在 Maple Raid Board 下方新增提示：
+     點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」
 
-4. 角色定位條件調整
-   - 控時：只在 HARD / 困難 鐘王出現
-   - 清球：只在 Boss 為鐘王時出現
-   - 清魔靈：只在 Boss 為殘暴炎魔時出現
-   - 團長隊伍角色定位需求與玩家報名角色定位同步套用此規則
-
-5. 頁首版本顯示
-   - TSN UI-5.9
+4. 頁首版本顯示
+   - TSN UI-5.9 SQLFIX1
 ```
 
-UI-5.9 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-3.3 SQLFIX1 或之後版本的 SQL，升級 UI-5.9 不需要重跑 SQL。
+UI-5.9 SQLFIX1 **需要執行一次 SQLFIX** 才能修正資料庫 RPC 的角色定位白名單。  
+SQL 檔案：
+
+```text
+supabase/ui-5-9-sqlfix1-role-options.sql
+```
 
 ---
 
@@ -197,7 +191,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui 5.9"
+git commit -m "deploy ui 5.9 sqlfix1"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -207,7 +201,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui 5.9"
+git commit -m "deploy ui 5.9 sqlfix1"
 git push
 ```
 
@@ -931,6 +925,15 @@ Debug 原有功能維持不變
 我要報名角色名稱若有紀錄會改為下拉式選單
 角色定位新增清球、清魔靈、大法
 控時只在困難鐘王出現，清球只在鐘王出現，清魔靈只在殘暴炎魔出現
+```
+
+### UI-5.9 SQLFIX1
+
+```text
+修正 Supabase 角色定位需求白名單未包含大法、清球、清魔靈
+修正儲存隊伍角色定位需求時出現「不支援的角色定位需求：大法」
+遊戲id / 特徵碼紀錄入口改到右上蘑菇 Logo
+Maple Raid Board 下方新增點擊右上蘑菇 Logo 的提示文字
 目前最新版本
 ```
 
@@ -986,7 +989,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 5.9"
+git commit -m "deploy ui 5.9 sqlfix1"
 git push
 ```
 

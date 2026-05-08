@@ -410,15 +410,9 @@ function isRojhuRoomIdleExpired(room: RojhuRoom) {
   return Date.now() - updatedAt >= 60 * 60 * 1000;
 }
 
-function MapleLeafLogo({ onClick }: { onClick?: () => void }) {
+function MapleLeafLogo() {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-orange-500 via-red-500 to-amber-500 text-white shadow-lg shadow-orange-500/20 ring-1 ring-orange-200/60 transition hover:-translate-y-0.5 hover:shadow-orange-500/30"
-      title="遊戲ID / 特徵碼紀錄"
-      aria-label="遊戲ID / 特徵碼紀錄"
-    >
+    <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-orange-500 via-red-500 to-amber-500 text-white shadow-lg shadow-orange-500/20 ring-1 ring-orange-200/60">
       <svg viewBox="0 0 64 64" className="h-8 w-8 drop-shadow" aria-label="maple leaf logo" role="img">
         <path
           fill="currentColor"
@@ -426,7 +420,7 @@ function MapleLeafLogo({ onClick }: { onClick?: () => void }) {
         />
         <path fill="rgba(255,255,255,0.45)" d="M32 12l2.4 9.5L32 39.8l-2.4-18.3L32 12z" />
       </svg>
-    </button>
+    </div>
   );
 }
 
@@ -3158,13 +3152,14 @@ export default function App() {
       <header className="sticky top-0 z-30 border-b border-orange-100/80 bg-white/85 shadow-sm backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1560px] flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <MapleLeafLogo onClick={() => setShowGameAccountModal(true)} />
+            <MapleLeafLogo />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.9</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.9 SQLFIX1</span>
                 <span className="text-orange-500">✦</span>
               </div>
+              <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
             </div>
           </div>
 
@@ -3194,7 +3189,15 @@ export default function App() {
               </Button>
             ) : null}
             <Button className="shadow-lg shadow-orange-500/20" onClick={() => setShowCreate(true)} disabled={busy || !isSupabaseConfigured}>＋ 新增突襲</Button>
-            <div className="grid h-11 w-11 place-items-center rounded-full border border-orange-100 bg-orange-50 text-xl shadow-sm">🍄</div>
+            <button
+              type="button"
+              onClick={() => setShowGameAccountModal(true)}
+              className="grid h-11 w-11 place-items-center rounded-full border border-orange-100 bg-orange-50 text-xl shadow-sm transition hover:-translate-y-0.5 hover:bg-orange-100"
+              title="遊戲id / 特徵碼紀錄"
+              aria-label="遊戲id / 特徵碼紀錄"
+            >
+              🍄
+            </button>
           </div>
         </div>
       </header>

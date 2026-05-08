@@ -26,7 +26,7 @@ create table if not exists public.raid_groups (
 
 alter table public.raid_groups add column if not exists leader_code_hash text;
 alter table public.raid_groups add column if not exists signup_code_hash text;
-alter table public.raid_groups add column if not exists role_requirements jsonb not null default '{"1":["打手","打手","控時","火","煙霧機","輔助"],"2":["打手","打手","控時","火","煙霧機","輔助"],"3":["打手","打手","控時","火","煙霧機","輔助"]}'::jsonb;
+alter table public.raid_groups add column if not exists role_requirements jsonb not null default '{"1":["打手","打手","火","煙霧機","輔助","大法"],"2":["打手","打手","火","煙霧機","輔助","大法"],"3":["打手","打手","火","煙霧機","輔助","大法"]}'::jsonb;
 
 update public.raid_groups
 set leader_code_hash = crypt('demo123', gen_salt('bf'))
@@ -268,7 +268,7 @@ begin
     left(coalesce(p_notice, ''), 300),
     crypt(btrim(p_leader_code), gen_salt('bf')),
     crypt(btrim(p_signup_code), gen_salt('bf')),
-    '{"1":["打手","打手","控時","火","煙霧機","輔助"],"2":["打手","打手","控時","火","煙霧機","輔助"],"3":["打手","打手","控時","火","煙霧機","輔助"]}'::jsonb
+    '{"1":["打手","打手","火","煙霧機","輔助","大法"],"2":["打手","打手","火","煙霧機","輔助","大法"],"3":["打手","打手","火","煙霧機","輔助","大法"]}'::jsonb
   );
 end;
 $$;
@@ -391,7 +391,7 @@ security definer
 set search_path = public, extensions
 as $$
 declare
-  v_allowed text[] := array['打手','控時','火','煙霧機','輔助'];
+  v_allowed text[] := array['打手','控時','火','煙霧機','輔助','大法','清球','清魔靈'];
   v_party_count integer;
   v_key text;
   v_value jsonb;
@@ -596,9 +596,9 @@ end $$;
 -- Demo signup invite code: raid2026
 insert into public.raid_groups (id, title, boss, raid_date, raid_time, leader, min_level, capacity, status, notice, leader_code_hash, signup_code_hash, role_requirements)
 values
-  ('demo-zakum-soon', '炎魔固定團 - 今晚 22:30', '殘暴炎魔 Zakum｜HARD', current_date + 1, '22:30', 'Cocoa', 90, 18, 'open', '請提前 10 分鐘到門口集合。缺萬能、聖水、眼藥水請先補。', crypt('demo123', gen_salt('bf')), crypt('raid2026', gen_salt('bf')), '{"1":["打手","打手","控時","火","煙霧機","輔助"],"2":["打手","打手","控時","火","煙霧機","輔助"],"3":["打手","打手","控時","火","煙霧機","輔助"]}'::jsonb),
-  ('demo-horntail-weekend', '龍王拓荒團 - 週末', '闇黑龍王 Horntail｜HARD', current_date + 3, '21:00', 'Tyok', 120, 18, 'open', '拓荒團，請確認命中、藥水與復活規則。未達門檻可先排候補。', crypt('demo123', gen_salt('bf')), crypt('raid2026', gen_salt('bf')), '{"1":["打手","打手","控時","火","煙霧機","輔助"],"2":["打手","打手","控時","火","煙霧機","輔助"],"3":["打手","打手","控時","火","煙霧機","輔助"]}'::jsonb),
-  ('demo-papulatus-casual', '鐘王休閒團 - 缺 3', '鐘王 Papulatus｜NORMAL', current_date + 1, '23:00', 'Momo', 100, 12, 'open', '輕鬆打，報名後請留職業與等級。', crypt('demo123', gen_salt('bf')), crypt('raid2026', gen_salt('bf')), '{"1":["打手","打手","控時","火","煙霧機","輔助"],"2":["打手","打手","控時","火","煙霧機","輔助"],"3":["打手","打手","控時","火","煙霧機","輔助"]}'::jsonb)
+  ('demo-zakum-soon', '炎魔固定團 - 今晚 22:30', '殘暴炎魔 Zakum｜HARD', current_date + 1, '22:30', 'Cocoa', 90, 18, 'open', '請提前 10 分鐘到門口集合。缺萬能、聖水、眼藥水請先補。', crypt('demo123', gen_salt('bf')), crypt('raid2026', gen_salt('bf')), '{"1":["打手","打手","火","煙霧機","輔助","大法"],"2":["打手","打手","火","煙霧機","輔助","大法"],"3":["打手","打手","火","煙霧機","輔助","大法"]}'::jsonb),
+  ('demo-horntail-weekend', '龍王拓荒團 - 週末', '闇黑龍王 Horntail｜HARD', current_date + 3, '21:00', 'Tyok', 120, 18, 'open', '拓荒團，請確認命中、藥水與復活規則。未達門檻可先排候補。', crypt('demo123', gen_salt('bf')), crypt('raid2026', gen_salt('bf')), '{"1":["打手","打手","火","煙霧機","輔助","大法"],"2":["打手","打手","火","煙霧機","輔助","大法"],"3":["打手","打手","火","煙霧機","輔助","大法"]}'::jsonb),
+  ('demo-papulatus-casual', '鐘王休閒團 - 缺 3', '鐘王 Papulatus｜NORMAL', current_date + 1, '23:00', 'Momo', 100, 12, 'open', '輕鬆打，報名後請留職業與等級。', crypt('demo123', gen_salt('bf')), crypt('raid2026', gen_salt('bf')), '{"1":["打手","打手","火","煙霧機","輔助","大法"],"2":["打手","打手","火","煙霧機","輔助","大法"],"3":["打手","打手","火","煙霧機","輔助","大法"]}'::jsonb)
 on conflict (id) do update set
   title = excluded.title,
   boss = excluded.boss,
@@ -629,6 +629,12 @@ values
   ('demo-papulatus-casual', 'Momo', '暗影神偷', 125, '隊長', 1, '已確認', ''),
   ('demo-papulatus-casual', '橘子', '箭神', 111, '主輸出', 1, '已確認', '');
 
+
+
+-- UI-5.9 SQLFIX1：允許新增角色定位並修正預設需求。
+-- 修正錯誤：不支援的角色定位需求：大法
+alter table public.raid_groups
+  alter column role_requirements set default '{"1":["打手","打手","火","煙霧機","輔助","大法"],"2":["打手","打手","火","煙霧機","輔助","大法"],"3":["打手","打手","火","煙霧機","輔助","大法"]}'::jsonb;
 
 -- UI-2.0 羅茱工具：Supabase 多人即時同步房間
 -- Demo/production note: room password is validated by RPC; routes are shared in realtime.
