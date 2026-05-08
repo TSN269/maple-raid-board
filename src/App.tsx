@@ -2412,9 +2412,9 @@ function TrainingEfficiencyPanel() {
             <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">按「開始分析」會自動抓取 OCR 裁切區。需要手動校正時，勾選 Debug 後可在螢幕擷取對照上框選完整 EXP 區域並儲存為預設裁切區。</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析'}</Button>
-            <Button variant="secondary" onClick={togglePauseContinueAnalysis} disabled={!ocrActive && !paused}>{paused ? '繼續分析' : '暫停分析'}</Button>
-            <Button variant="secondary" onClick={stopAnalysis} disabled={!ocrActive && !paused && !running}>停止分析</Button>
+            <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析(F8)'}</Button>
+            <Button variant="secondary" onClick={togglePauseContinueAnalysis} disabled={!ocrActive && !paused}>{paused ? '繼續分析 (F9)' : '暫停分析 (F9)'}</Button>
+            <Button variant="secondary" onClick={stopAnalysis} disabled={!ocrActive && !paused && !running}>停止分析 (F10)</Button>
             <Button variant="secondary" onClick={exportTrainingStatsImage} disabled={shareBusy}>{shareBusy ? "產生圖片中" : "擷取統計資訊"}</Button>
             <Button variant="ghost" onClick={resetAll}>重置</Button>
           </div>
@@ -3012,7 +3012,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.7</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.8</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>

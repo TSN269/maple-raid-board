@@ -1,2 +1,2 @@
-UI-5.7
-Moved Training Efficiency Debug toggle next to the status pill while keeping all Debug-only functions unchanged.
+UI-5.8
+Training Efficiency control buttons now display their F8/F9/F10 hotkey hints directly on the buttons.
