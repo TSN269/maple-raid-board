@@ -2503,12 +2503,12 @@ function TrainingEfficiencyPanel() {
     });
   }
 
-  async function exportTrainingStatsImage() {
+  async function exportTrainingStatsImage(rowsOverride?: Array<{ title: string; value: string; sub?: string }>, subtitleOverride?: string) {
     if (shareBusy) return;
     setShareBusy(true);
 
     try {
-      const rows = getTrainingStatsShareRows();
+      const rows = rowsOverride || getTrainingStatsShareRows();
       const width = 1420;
       const headerH = 126;
       const footerH = 60;
@@ -2547,9 +2547,9 @@ function TrainingEfficiencyPanel() {
 
       ctx.fillStyle = '#475569';
       ctx.font = '700 16px sans-serif';
-      const subtitle = analysisStartedAt
+      const subtitle = subtitleOverride || (analysisStartedAt
         ? `開始分析：${new Date(analysisStartedAt).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}`
-        : '尚未開始分析';
+        : '尚未開始分析');
       ctx.fillText(subtitle, side, 80);
 
       ctx.textBaseline = 'top';
@@ -2673,7 +2673,7 @@ function TrainingEfficiencyPanel() {
             <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析(F8)'}</Button>
             <Button variant="secondary" onClick={togglePauseContinueAnalysis} disabled={!ocrActive && !paused}>{paused ? '繼續分析 (F9)' : '暫停分析 (F9)'}</Button>
             <Button variant="secondary" onClick={stopAnalysis} disabled={!ocrActive && !paused && !running}>停止分析 (F10)</Button>
-            <Button variant="secondary" onClick={exportTrainingStatsImage} disabled={shareBusy}>{shareBusy ? "產生圖片中" : "擷取統計資訊"}</Button>
+            <Button variant="secondary" onClick={() => void exportTrainingStatsImage()} disabled={shareBusy}>{shareBusy ? "產生圖片中" : "擷取統計資訊"}</Button>
             <Button variant="ghost" onClick={resetAll}>重置</Button>
           </div>
         </div>
@@ -2790,7 +2790,19 @@ function TrainingEfficiencyPanel() {
                   <h3 className="mt-1 text-2xl font-black text-slate-950">統計資訊紀錄</h3>
                   <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">最多保存最近 10 次按下「紀錄統計資訊」的內容；點擊時間可查看該時間點的統計區資訊。</p>
                 </div>
-                <Button variant="ghost" onClick={() => setSelectedTrainingStatSnapshotId(null)}>關閉</Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={() => void exportTrainingStatsImage(
+                      selectedSnapshot.rows,
+                      `紀錄時間：${new Date(selectedSnapshot.timestamp).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}`,
+                    )}
+                    disabled={shareBusy}
+                  >
+                    {shareBusy ? '產生圖片中' : '擷取統計資訊'}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setSelectedTrainingStatSnapshotId(null)}>關閉</Button>
+                </div>
               </div>
 
               <div className="mt-5 grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
@@ -3452,7 +3464,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.5</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.6</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>

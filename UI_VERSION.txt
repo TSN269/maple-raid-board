@@ -1,2 +1,2 @@
-UI-6.5
-Training stats snapshots no longer open automatically after recording; added a separate button to view previous stats records.
+UI-6.6
+Added export/copy image button to the training stats record viewer for selected historical stats snapshots.
