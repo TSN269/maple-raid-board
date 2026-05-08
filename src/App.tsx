@@ -21,6 +21,43 @@ const NOTIFICATION_EVENTS_STORAGE_KEY = 'maple_raid_board_notifications_v14';
 const NOTIFICATION_READ_STORAGE_KEY = 'maple_raid_board_notification_reads_v14';
 const NOTIFICATION_SNAPSHOT_STORAGE_KEY = 'maple_raid_board_notification_snapshot_v14';
 const TEAM_FAVORITES_STORAGE_KEY = 'maple_raid_board_team_favorites_v55';
+const GAME_ACCOUNT_RECORDS_STORAGE_KEY = 'maple_raid_board_game_account_records_v59';
+
+type GameAccountRecord = {
+  id: string;
+  gameId: string;
+  featureCode: string;
+  createdAt: string;
+};
+
+function formatGameAccountRecord(record: GameAccountRecord) {
+  return `${record.gameId}#${record.featureCode}`;
+}
+
+function loadGameAccountRecords(): GameAccountRecord[] {
+  try {
+    const raw = localStorage.getItem(GAME_ACCOUNT_RECORDS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed
+          .filter((item) => item && typeof item === 'object' && typeof item.gameId === 'string' && typeof item.featureCode === 'string')
+          .map((item) => ({
+            id: String(item.id || `${item.gameId}-${item.featureCode}`),
+            gameId: String(item.gameId).trim().slice(0, 9),
+            featureCode: String(item.featureCode).trim().slice(0, 6),
+            createdAt: String(item.createdAt || new Date().toISOString()),
+          }))
+          .filter((item) => item.gameId && /^[A-Za-z0-9]{6}$/.test(item.featureCode))
+          .slice(0, 10)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveGameAccountRecords(items: GameAccountRecord[]) {
+  localStorage.setItem(GAME_ACCOUNT_RECORDS_STORAGE_KEY, JSON.stringify(items.slice(0, 10)));
+}
 
 function loadTeamFavorites(): TeamFavorite[] {
   try {
@@ -373,9 +410,15 @@ function isRojhuRoomIdleExpired(room: RojhuRoom) {
   return Date.now() - updatedAt >= 60 * 60 * 1000;
 }
 
-function MapleLeafLogo() {
+function MapleLeafLogo({ onClick }: { onClick?: () => void }) {
   return (
-    <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-orange-500 via-red-500 to-amber-500 text-white shadow-lg shadow-orange-500/20 ring-1 ring-orange-200/60">
+    <button
+      type="button"
+      onClick={onClick}
+      className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-orange-500 via-red-500 to-amber-500 text-white shadow-lg shadow-orange-500/20 ring-1 ring-orange-200/60 transition hover:-translate-y-0.5 hover:shadow-orange-500/30"
+      title="遊戲ID / 特徵碼紀錄"
+      aria-label="遊戲ID / 特徵碼紀錄"
+    >
       <svg viewBox="0 0 64 64" className="h-8 w-8 drop-shadow" aria-label="maple leaf logo" role="img">
         <path
           fill="currentColor"
@@ -383,7 +426,7 @@ function MapleLeafLogo() {
         />
         <path fill="rgba(255,255,255,0.45)" d="M32 12l2.4 9.5L32 39.8l-2.4-18.3L32 12z" />
       </svg>
-    </div>
+    </button>
   );
 }
 
@@ -399,6 +442,105 @@ function statusLabel(status: RaidStatus | MemberStatus) {
   };
   return map[status] || status;
 }
+
+function GameAccountModal({ records, onClose, onSaveRecords }: { records: GameAccountRecord[]; onClose: () => void; onSaveRecords: (records: GameAccountRecord[]) => void }) {
+  const [gameId, setGameId] = useState('');
+  const [featureCode, setFeatureCode] = useState('');
+  const [message, setMessage] = useState('');
+
+  const formattedRecords = records.map(formatGameAccountRecord);
+
+  function addRecord() {
+    const safeGameId = gameId.trim().replace(/#/g, '').slice(0, 9);
+    const safeCode = featureCode.trim();
+
+    if (!safeGameId) {
+      setMessage('請輸入遊戲id。');
+      return;
+    }
+
+    if (!/^[A-Za-z0-9]{6}$/.test(safeCode)) {
+      setMessage('特徵碼必須為 6 位英數字元。');
+      return;
+    }
+
+    const nextRecord: GameAccountRecord = {
+      id: `${safeGameId}-${safeCode}-${Date.now()}`,
+      gameId: safeGameId,
+      featureCode: safeCode,
+      createdAt: new Date().toISOString(),
+    };
+
+    const next = [
+      nextRecord,
+      ...records.filter((record) => formatGameAccountRecord(record).toLowerCase() !== `${safeGameId}#${safeCode}`.toLowerCase()),
+    ].slice(0, 10);
+
+    onSaveRecords(next);
+    setGameId('');
+    setFeatureCode('');
+    setMessage(`已記錄 ${safeGameId}#${safeCode}。`);
+  }
+
+  function removeRecord(id: string) {
+    onSaveRecords(records.filter((record) => record.id !== id));
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/40 p-4">
+      <div className="w-full max-w-lg rounded-[2rem] border border-orange-100 bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">Game ID</div>
+            <h2 className="mt-1 text-2xl font-black text-slate-950">遊戲id / 特徵碼紀錄</h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">紀錄格式為「遊戲id#特徵碼」，最多 10 個。特徵碼限制為 6 位英數字元。</p>
+          </div>
+          <Button variant="ghost" onClick={onClose}>關閉</Button>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">
+          <Field label="遊戲id">
+            <Input value={gameId} maxLength={9} placeholder="例如 AAA" onChange={(event) => setGameId(event.target.value.replace(/#/g, '').slice(0, 9))} />
+          </Field>
+          <Field label="特徵碼">
+            <Input value={featureCode} maxLength={6} placeholder="例如 Z5j69F" onChange={(event) => setFeatureCode(event.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 6))} />
+          </Field>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button onClick={addRecord}>新增紀錄</Button>
+          <span className="text-xs font-bold text-slate-400">遊戲id 最多 9 字，避免報名角色名稱超過 16 字限制。</span>
+        </div>
+
+        {message ? <div className="mt-3 rounded-2xl border border-orange-100 bg-orange-50 px-3 py-2 text-sm font-bold text-orange-700">{message}</div> : null}
+
+        <div className="mt-5">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-sm font-black text-slate-950">目前紀錄</div>
+            <div className="text-xs font-black text-slate-400">{records.length}/10</div>
+          </div>
+          <div className="grid gap-2">
+            {records.length > 0 ? records.map((record) => (
+              <div key={record.id} className="flex items-center justify-between gap-2 rounded-2xl border border-orange-100 bg-orange-50/70 px-3 py-2">
+                <span className="font-mono text-sm font-black text-slate-800">{formatGameAccountRecord(record)}</span>
+                <button className="rounded-lg px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50" onClick={() => removeRecord(record.id)}>移除</button>
+              </div>
+            )) : (
+              <div className="rounded-2xl border border-dashed border-orange-100 bg-orange-50/60 p-5 text-center text-sm font-semibold text-slate-500">尚無遊戲id#特徵碼紀錄。</div>
+            )}
+          </div>
+        </div>
+
+        {formattedRecords.length > 0 ? (
+          <div className="mt-4 rounded-2xl bg-slate-50 px-3 py-2 text-xs font-semibold leading-6 text-slate-500">
+            我要報名頁若有紀錄，角色名稱欄會自動改為下拉式選單，選項即為目前紀錄。
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 
 type ActivePanel = 'home' | 'raid' | 'signup' | 'favorite' | 'teamFavorite' | 'notice' | 'rojhuTools' | 'trainingEfficiency' | 'settings';
 
@@ -2640,6 +2782,8 @@ export default function App() {
   const [localNotificationEvents, setLocalNotificationEvents] = useState<RaidNotification[]>(() => loadLocalNotificationEvents());
   const [notificationReadIds, setNotificationReadIds] = useState<string[]>(() => loadNotificationReadIds());
   const [teamFavorites, setTeamFavorites] = useState<TeamFavorite[]>(() => loadTeamFavorites());
+  const [gameAccountRecords, setGameAccountRecords] = useState<GameAccountRecord[]>(() => loadGameAccountRecords());
+  const [showGameAccountModal, setShowGameAccountModal] = useState(false);
 
   const selectedGroup = useMemo(() => groups.find((g) => g.id === selectedId) || groups[0], [groups, selectedId]);
   const selectedDifficulty = useMemo(() => selectedGroup ? getBossDifficultyMeta(`${selectedGroup.title} ${selectedGroup.boss}`) : null, [selectedGroup]);
@@ -2913,6 +3057,12 @@ export default function App() {
     saveNotificationSnapshot(snapshot);
   }
 
+  function updateGameAccountRecords(records: GameAccountRecord[]) {
+    const next = records.slice(0, 10);
+    setGameAccountRecords(next);
+    saveGameAccountRecords(next);
+  }
+
   function rememberTeamFavorite(favorite: TeamFavorite) {
     setTeamFavorites((prev) => {
       const next = [
@@ -3008,11 +3158,11 @@ export default function App() {
       <header className="sticky top-0 z-30 border-b border-orange-100/80 bg-white/85 shadow-sm backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1560px] flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <MapleLeafLogo />
+            <MapleLeafLogo onClick={() => setShowGameAccountModal(true)} />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.8</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.9</span>
                 <span className="text-orange-500">✦</span>
               </div>
             </div>
@@ -3130,7 +3280,7 @@ export default function App() {
                     </div>
                   </div>
                 </section>
-                <SignupPanel group={selectedGroup} onSignup={addSignup} initialSignupCode={selectedSignupCode} />
+                <SignupPanel group={selectedGroup} onSignup={addSignup} initialSignupCode={selectedSignupCode} gameAccountOptions={gameAccountRecords.map(formatGameAccountRecord)} />
               </div>
             ) : (
               <div className="rounded-[2rem] border border-orange-100 bg-white/85 p-10 text-center text-slate-500 shadow-sm">沒有可報名的場次。</div>
@@ -3167,6 +3317,7 @@ export default function App() {
         </div>
       )}
 
+      {showGameAccountModal ? <GameAccountModal records={gameAccountRecords} onClose={() => setShowGameAccountModal(false)} onSaveRecords={updateGameAccountRecords} /> : null}
       {showCreate ? <CreateRaidModal onClose={() => setShowCreate(false)} onCreate={createGroup} teamFavorites={teamFavorites} /> : null}
     </div>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getRaidStatusMeta } from '../data/bossArt';
-import { jobOptions, roleOptions } from '../data/options';
+import { getRoleOptionsForBoss, jobOptions, roleOptions } from '../data/options';
 import type { NewRaidMember, RaidGroup } from '../types';
 import { Button, Field, Input, Pill, Select, Textarea, classNames } from './ui';
 
@@ -8,6 +8,7 @@ type Props = {
   group: RaidGroup;
   onSignup: (member: NewRaidMember) => Promise<void>;
   initialSignupCode?: string;
+  gameAccountOptions?: string[];
 };
 
 const roleButtons = [
@@ -16,6 +17,9 @@ const roleButtons = [
   { value: '火', icon: '🔥', label: '火', cls: 'border-orange-200 bg-orange-50 text-orange-700' },
   { value: '煙霧機', icon: '☁', label: '煙霧機', cls: 'border-slate-200 bg-slate-50 text-slate-700' },
   { value: '輔助', icon: '✚', label: '輔助', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+  { value: '大法', icon: '✦', label: '大法', cls: 'border-sky-200 bg-sky-50 text-sky-700' },
+  { value: '清球', icon: '●', label: '清球', cls: 'border-cyan-200 bg-cyan-50 text-cyan-700' },
+  { value: '清魔靈', icon: '☄', label: '清魔靈', cls: 'border-amber-200 bg-amber-50 text-amber-700' },
 ];
 
 function getPartyCount(capacity: number) {
@@ -30,21 +34,22 @@ function uniqueRoles(roles: string[]) {
 function getSignupRoleValues(group: RaidGroup, party: number) {
   const requirements = group.roleRequirements || {};
   const partyCount = getPartyCount(group.capacity);
-  const defaultRoles = roleButtons.map((role) => role.value);
+  const allowedRoles = getRoleOptionsForBoss(group.boss);
+  const defaultRoles = roleButtons.map((role) => role.value).filter((role) => allowedRoles.includes(role));
   const hasRequirements = Object.values(requirements).some((roles) => Array.isArray(roles) && roles.some(Boolean));
 
   if (party > 0) {
-    const roles = uniqueRoles(requirements[String(party)] || []);
+    const roles = uniqueRoles(requirements[String(party)] || []).filter((role) => allowedRoles.includes(role));
     return roles.length > 0 ? roles : hasRequirements ? [] : defaultRoles;
   }
 
   const roles = uniqueRoles(
     Array.from({ length: partyCount }, (_, index) => index + 1).flatMap((partyNo) => requirements[String(partyNo)] || []),
-  );
+  ).filter((role) => allowedRoles.includes(role));
   return roles.length > 0 ? roles : hasRequirements ? [] : defaultRoles;
 }
 
-const namePattern = /^[A-Za-z0-9_\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]{2,16}$/;
+const namePattern = /^[A-Za-z0-9_#\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]{2,16}$/;
 
 function getClientNonce() {
   const key = 'maple_raid_board_client_nonce_v13';
@@ -55,7 +60,7 @@ function getClientNonce() {
   return next;
 }
 
-export function SignupPanel({ group, onSignup, initialSignupCode = '' }: Props) {
+export function SignupPanel({ group, onSignup, initialSignupCode = '', gameAccountOptions = [] }: Props) {
   const [saving, setSaving] = useState(false);
   const [clientNonce] = useState(() => getClientNonce());
   const [form, setForm] = useState({
@@ -79,6 +84,12 @@ export function SignupPanel({ group, onSignup, initialSignupCode = '' }: Props) 
     }));
   }, [group.id, group.minLevel, initialSignupCode]);
 
+  useEffect(() => {
+    if (gameAccountOptions.length > 0) {
+      setForm((prev) => gameAccountOptions.includes(prev.name) ? prev : { ...prev, name: gameAccountOptions[0] });
+    }
+  }, [gameAccountOptions]);
+
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((prev) => ({ ...prev, [key]: value }));
   const raidStatus = getRaidStatusMeta(group);
   const isFull = group.members.length >= group.capacity;
@@ -99,14 +110,15 @@ export function SignupPanel({ group, onSignup, initialSignupCode = '' }: Props) 
     if (form.signupCode.trim().length < 4) return '報名邀請碼至少 4 碼。';
     if (availableRoleValues.length === 0) return '此團尚未設定可報名的角色定位。';
     if (!availableRoleValues.includes(form.role)) return '此角色定位不在此團目前需求內。';
-    if (!form.name.trim()) return '請輸入角色名稱。';
-    if (!namePattern.test(form.name.trim())) return '角色名稱限 2～16 字，可用中文、日文、英文、數字與底線。';
+    if (!form.name.trim()) return gameAccountOptions.length > 0 ? '請選擇遊戲id#特徵碼紀錄。' : '請輸入角色名稱。';
+    if (gameAccountOptions.length > 0 && !gameAccountOptions.includes(form.name.trim())) return '角色名稱必須選擇已記錄的遊戲id#特徵碼。';
+    if (!namePattern.test(form.name.trim())) return '角色名稱限 2～16 字，可用中文、日文、英文、數字、底線與 #。';
     if (group.members.some((m) => m.name.trim().toLowerCase() === form.name.trim().toLowerCase())) return '此角色已在名單內，請勿重複報名。';
     if (Number(form.level) < Number(group.minLevel)) return `等級低於此團門檻 Lv.${group.minLevel}。`;
     if (Number(form.level) > 300) return '等級不可超過 300。';
     if (form.note.length > 100) return '備註不可超過 100 字。';
     return '';
-  }, [availableRoleValues, form, group.members, group.minLevel, isFull, raidStatus.canSignup, raidStatus.label]);
+  }, [availableRoleValues, form, gameAccountOptions, group.members, group.minLevel, isFull, raidStatus.canSignup, raidStatus.label]);
 
   const canSignup = !validationMessage;
 
@@ -131,10 +143,17 @@ export function SignupPanel({ group, onSignup, initialSignupCode = '' }: Props) 
         </Field>
 
         <Field label="角色名稱" required>
-          <div className="relative">
-            <Input maxLength={16} value={form.name} placeholder="2～16 字，例：阿楓123" onChange={(e) => set('name', e.target.value.trim())} />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300">{form.name.length}/16</span>
-          </div>
+          {gameAccountOptions.length > 0 ? (
+            <Select value={form.name} onChange={(e) => set('name', e.target.value)}>
+              {gameAccountOptions.map((account) => <option key={account} value={account}>{account}</option>)}
+            </Select>
+          ) : (
+            <div className="relative">
+              <Input maxLength={16} value={form.name} placeholder="2～16 字，例：阿楓123" onChange={(e) => set('name', e.target.value.trim())} />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300">{form.name.length}/16</span>
+            </div>
+          )}
+          {gameAccountOptions.length > 0 ? <div className="mt-2 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">已偵測到遊戲id#特徵碼紀錄，角色名稱改由下拉選單選擇。</div> : null}
         </Field>
 
         <Field label="職業" required>
@@ -213,7 +232,7 @@ export function SignupPanel({ group, onSignup, initialSignupCode = '' }: Props) 
                 clientNonce,
                 honeypot: form.website,
               });
-              setForm((prev) => ({ ...prev, name: '', note: '', signupCode: initialSignupCode, website: '' }));
+              setForm((prev) => ({ ...prev, name: gameAccountOptions[0] || '', note: '', signupCode: initialSignupCode, website: '' }));
             } finally {
               setSaving(false);
             }

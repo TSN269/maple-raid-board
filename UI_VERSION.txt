@@ -1,2 +1,2 @@
-UI-5.8
-Training Efficiency control buttons now display their F8/F9/F10 hotkey hints directly on the buttons.
+UI-5.9
+Added game ID/feature code records, signup name dropdown linkage, and conditional role options for Papulatus/Zakum.

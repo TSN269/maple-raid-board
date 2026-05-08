@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getBossArtMeta, getBossDifficultyMeta, getBossDisplayName, getBossVisualMeta, getRaidStatusMeta } from '../data/bossArt';
-import { roleOptions, statusOptions } from '../data/options';
+import { getRoleOptionsForBoss, roleOptions, statusOptions } from '../data/options';
 import type { MemberStatus, RaidGroup, RaidMember, RaidStatus, RoleRequirementMap, TeamFavorite } from '../types';
 import { Button, Input, Pill, Select, classNames } from './ui';
 
@@ -32,6 +32,9 @@ const roleAccent: Record<string, string> = {
   火: 'bg-orange-50 text-orange-700',
   煙霧機: 'bg-slate-100 text-slate-700',
   輔助: 'bg-emerald-50 text-emerald-700',
+  大法: 'bg-sky-50 text-sky-700',
+  清球: 'bg-cyan-50 text-cyan-700',
+  清魔靈: 'bg-amber-50 text-amber-700',
   主坦: 'bg-slate-100 text-slate-700',
   副坦: 'bg-emerald-50 text-emerald-700',
   輸出: 'bg-rose-50 text-rose-700',
@@ -80,17 +83,21 @@ function saveMemberOrder(order: Record<string, string[]>) {
 }
 
 
-const DEFAULT_ROLE_REQUIREMENTS = ['打手', '打手', '控時', '火', '煙霧機', '輔助'];
+const DEFAULT_ROLE_REQUIREMENTS = ['打手', '打手', '火', '煙霧機', '輔助', '大法'];
 
 function normalizeRoleRequirements(group: RaidGroup): RoleRequirementMap {
   const partyCount = getPartyCount(group.capacity);
   const source = group.roleRequirements || {};
   const result: RoleRequirementMap = {};
+  const allowedRoles = getRoleOptionsForBoss(group.boss);
+  const defaultRoles = DEFAULT_ROLE_REQUIREMENTS.filter((role) => allowedRoles.includes(role));
 
   for (let partyNo = 1; partyNo <= partyCount; partyNo += 1) {
     const key = String(partyNo);
-    const existing = Array.isArray(source[key]) ? source[key].map((role) => String(role || '').trim()).filter(Boolean).slice(0, 6) : [];
-    const slots = existing.length > 0 ? existing : DEFAULT_ROLE_REQUIREMENTS.slice();
+    const existing = Array.isArray(source[key])
+      ? source[key].map((role) => String(role || '').trim()).filter((role) => allowedRoles.includes(role)).slice(0, 6)
+      : [];
+    const slots = existing.length > 0 ? existing : defaultRoles.slice();
     while (slots.length < 6) slots.push('打手');
     result[key] = slots.slice(0, 6);
   }
@@ -283,7 +290,8 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRoleR
   const bossVisual = getBossVisualMeta(bossText);
   const raidStatus = getRaidStatusMeta(group);
   const partyCount = getPartyCount(group.capacity);
-  const roleRequirements = useMemo(() => normalizeRoleRequirements(group), [group.id, group.capacity, group.roleRequirements]);
+  const allowedRoleOptions = useMemo(() => getRoleOptionsForBoss(group.boss), [group.boss]);
+  const roleRequirements = useMemo(() => normalizeRoleRequirements(group), [group.id, group.capacity, group.boss, group.roleRequirements]);
   const visibleRoleRequirements = useMemo(() => {
     const normalized = normalizeRoleRequirements({ ...group, roleRequirements: requirementDraft });
     return normalized;
@@ -514,7 +522,7 @@ export function RaidDetail({ group, onStatusChange, onGroupStatusChange, onRoleR
                         <div key={slotIndex} className="grid grid-cols-[44px_minmax(0,1fr)] items-center gap-2">
                           <div className="text-xs font-black text-slate-400">#{slotIndex + 1}</div>
                           <Select className="py-2 text-xs" value={slots[slotIndex] || '打手'} onChange={(event) => updateRequirementSlot(partyNo, slotIndex, event.target.value)}>
-                            {roleOptions.map((role) => <option key={role}>{role}</option>)}
+                            {roleOptions.filter((role) => allowedRoleOptions.includes(role)).map((role) => <option key={role}>{role}</option>)}
                           </Select>
                         </div>
                       ))}
