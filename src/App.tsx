@@ -47,7 +47,7 @@ function loadGameAccountRecords(): GameAccountRecord[] {
             featureCode: String(item.featureCode).trim().slice(0, 6),
             createdAt: String(item.createdAt || new Date().toISOString()),
           }))
-          .filter((item) => item.gameId && /^[A-Za-z0-9]{6}$/.test(item.featureCode))
+          .filter((item) => item.gameId && /^[A-Za-z0-9]{1,6}$/.test(item.featureCode))
           .slice(0, 10)
       : [];
   } catch {
@@ -453,8 +453,8 @@ function GameAccountModal({ records, onClose, onSaveRecords }: { records: GameAc
       return;
     }
 
-    if (!/^[A-Za-z0-9]{6}$/.test(safeCode)) {
-      setMessage('特徵碼必須為 6 位英數字元。');
+    if (!/^[A-Za-z0-9]{1,6}$/.test(safeCode)) {
+      setMessage('特徵碼必須為 1～6 位英數字元。');
       return;
     }
 
@@ -487,7 +487,7 @@ function GameAccountModal({ records, onClose, onSaveRecords }: { records: GameAc
           <div>
             <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">Game ID</div>
             <h2 className="mt-1 text-2xl font-black text-slate-950">遊戲id / 特徵碼紀錄</h2>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">紀錄格式為「遊戲id#特徵碼」，最多 10 個。特徵碼限制為 6 位英數字元。</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">紀錄格式為「遊戲id#特徵碼」，最多 10 個。特徵碼限制為最多 6 位英數字元。</p>
           </div>
           <Button variant="ghost" onClick={onClose}>關閉</Button>
         </div>
@@ -497,7 +497,7 @@ function GameAccountModal({ records, onClose, onSaveRecords }: { records: GameAc
             <Input value={gameId} maxLength={9} placeholder="例如 AAA" onChange={(event) => setGameId(event.target.value.replace(/#/g, '').slice(0, 9))} />
           </Field>
           <Field label="特徵碼">
-            <Input value={featureCode} maxLength={6} placeholder="例如 Z5j69F" onChange={(event) => setFeatureCode(event.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 6))} />
+            <Input value={featureCode} maxLength={6} placeholder="最多 6 位，例 Z5j69F" onChange={(event) => setFeatureCode(event.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 6))} />
           </Field>
         </div>
 
@@ -3156,7 +3156,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-5.9 SQLFIX1</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.0</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>

@@ -1,2 +1,2 @@
-UI-5.9 SQLFIX1
-Fixes role requirement SQL whitelist and moves game ID/feature code modal trigger from left maple logo to right mushroom logo.
+UI-6.0
+Feature code limit changed from exactly 6 alphanumeric characters to 1-6 alphanumeric characters.

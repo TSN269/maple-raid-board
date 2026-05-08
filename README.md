@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-5.9 SQLFIX1 SQLFIX1
+# Maple Raid Board — TSN UI-6.0 SQLFIX1
 
-> 版本基準：UI-5.9 SQLFIX1  
+> 版本基準：UI-6.0  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具 + 練功效率偵測 + 隊伍收藏 + 遊戲ID紀錄  
 > 部署架構：GitHub + Supabase + Vercel
@@ -88,7 +88,7 @@ UI-5.8 是以 UI-5.7 為基礎，新增與調整：
    - F10：停止分析
 
 3. 頁首版本顯示
-   - TSN UI-5.9 SQLFIX1
+   - TSN UI-6.0
 ```
 
 UI-5.8 **沒有修改 Supabase schema / RPC**。  
@@ -96,35 +96,26 @@ UI-5.8 **沒有修改 Supabase schema / RPC**。
 
 ---
 
-## 3. 目前 UI-5.9 SQLFIX1 主要變更
+## 3. 目前 UI-6.0 主要變更
 
-UI-5.9 SQLFIX1 是以 UI-5.9 為基礎，修正：
-
-```text
-1. 修正 Supabase 角色定位需求驗證
-   - 原本 SQL 只允許：打手、控時、火、煙霧機、輔助
-   - 新增允許：大法、清球、清魔靈
-   - 修正儲存隊伍角色定位需求時出現「不支援的角色定位需求：大法」
-
-2. 修正遊戲id / 特徵碼紀錄入口位置
-   - 原本誤綁在左上楓葉 Logo
-   - 改為右上蘑菇 Logo 點擊開啟
-   - 左上楓葉 Logo 改回純顯示
-
-3. Header 提示文字
-   - 在 Maple Raid Board 下方新增提示：
-     點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」
-
-4. 頁首版本顯示
-   - TSN UI-5.9 SQLFIX1
-```
-
-UI-5.9 SQLFIX1 **需要執行一次 SQLFIX** 才能修正資料庫 RPC 的角色定位白名單。  
-SQL 檔案：
+UI-6.0 是以 UI-5.9 SQLFIX1 為基礎，調整：
 
 ```text
-supabase/ui-5-9-sqlfix1-role-options.sql
+1. 遊戲id / 特徵碼紀錄限制調整
+   - 原本特徵碼必須剛好 6 位英數字元
+   - 改為最多 6 位英數字元
+   - 實際允許 1～6 位英數字元
+
+2. 輸入提示同步調整
+   - 特徵碼欄位 placeholder 改為「最多 6 位，例 Z5j69F」
+   - 錯誤提示改為「特徵碼必須為 1～6 位英數字元」
+
+3. 頁首版本顯示
+   - TSN UI-6.0
 ```
+
+UI-6.0 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-5.9 SQLFIX1 的 SQL，升級 UI-6.0 不需要重跑 SQL。
 
 ---
 
@@ -191,7 +182,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui 5.9 sqlfix1"
+git commit -m "deploy ui 6.0"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -201,7 +192,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui 5.9 sqlfix1"
+git commit -m "deploy ui 6.0"
 git push
 ```
 
@@ -921,7 +912,7 @@ Debug 原有功能維持不變
 
 ```text
 右上 Logo 新增遊戲id / 特徵碼紀錄小頁面
-遊戲id#特徵碼最多保存 10 筆，特徵碼限制 6 位英數字元
+遊戲id#特徵碼最多保存 10 筆，特徵碼限制最多 6 位英數字元
 我要報名角色名稱若有紀錄會改為下拉式選單
 角色定位新增清球、清魔靈、大法
 控時只在困難鐘王出現，清球只在鐘王出現，清魔靈只在殘暴炎魔出現
@@ -934,6 +925,14 @@ Debug 原有功能維持不變
 修正儲存隊伍角色定位需求時出現「不支援的角色定位需求：大法」
 遊戲id / 特徵碼紀錄入口改到右上蘑菇 Logo
 Maple Raid Board 下方新增點擊右上蘑菇 Logo 的提示文字
+```
+
+### UI-6.0
+
+```text
+特徵碼限制由剛好 6 位改為最多 6 位英數字元
+允許 1～6 位英數字元
+特徵碼欄位提示與錯誤提示同步更新
 目前最新版本
 ```
 
@@ -989,7 +988,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 5.9 sqlfix1"
+git commit -m "deploy ui 6.0"
 git push
 ```
 
