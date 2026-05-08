@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { deleteRaidGroup, deleteRaidMember, fetchRaidGroups, insertRaidGroup, insertRaidMember, updateRaidGroupStatus, updateRaidMemberStatus, updateRaidRoleRequirements, verifyLeaderCode } from './api/raids';
 import { CreateRaidModal } from './components/CreateRaidModal';
 import { RaidDetail } from './components/RaidDetail';
@@ -480,6 +480,81 @@ function GameAccountModal({ records, onClose, onSaveRecords }: { records: GameAc
     onSaveRecords(records.filter((record) => record.id !== id));
   }
 
+  function normalizeImportedGameAccountRecords(input: unknown) {
+    const source = Array.isArray(input)
+      ? input
+      : input && typeof input === 'object' && Array.isArray((input as { records?: unknown[] }).records)
+        ? (input as { records: unknown[] }).records
+        : [];
+
+    const normalized: GameAccountRecord[] = [];
+
+    for (const item of source) {
+      let nextGameId = '';
+      let nextFeatureCode = '';
+
+      if (typeof item === 'string') {
+        const [idPart, codePart] = item.split('#');
+        nextGameId = String(idPart || '').trim().replace(/#/g, '').slice(0, 9);
+        nextFeatureCode = String(codePart || '').trim().replace(/[^A-Za-z0-9]/g, '').slice(0, 6);
+      } else if (item && typeof item === 'object') {
+        const data = item as { gameId?: unknown; game_id?: unknown; id?: unknown; featureCode?: unknown; feature_code?: unknown; code?: unknown };
+        nextGameId = String(data.gameId ?? data.game_id ?? '').trim().replace(/#/g, '').slice(0, 9);
+        nextFeatureCode = String(data.featureCode ?? data.feature_code ?? data.code ?? '').trim().replace(/[^A-Za-z0-9]/g, '').slice(0, 6);
+      }
+
+      if (nextGameId && /^[A-Za-z0-9]{1,6}$/.test(nextFeatureCode)) {
+        normalized.push({
+          id: `${nextGameId}-${nextFeatureCode}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          gameId: nextGameId,
+          featureCode: nextFeatureCode,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    const unique = new Map<string, GameAccountRecord>();
+    for (const record of [...normalized, ...records]) {
+      unique.set(formatGameAccountRecord(record).toLowerCase(), record);
+    }
+    return Array.from(unique.values()).slice(0, 10);
+  }
+
+  function exportGameAccountRecords() {
+    const payload = {
+      version: 'UI-6.2-game-account-records',
+      exportedAt: new Date().toISOString(),
+      records: records.map((record) => ({
+        gameId: record.gameId,
+        featureCode: record.featureCode,
+        label: formatGameAccountRecord(record),
+      })),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `game-account-records-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setMessage('已匯出遊戲id / 特徵碼紀錄。');
+  }
+
+  async function importGameAccountRecords(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    try {
+      const parsed = JSON.parse(await file.text()) as unknown;
+      const next = normalizeImportedGameAccountRecords(parsed);
+      onSaveRecords(next);
+      setMessage(`已匯入紀錄，目前共有 ${next.length} 筆。`);
+    } catch {
+      setMessage('匯入失敗，請確認檔案是匯出的 JSON 格式。');
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/40 p-4">
       <div className="w-full max-w-lg rounded-[2rem] border border-orange-100 bg-white p-5 shadow-2xl">
@@ -503,6 +578,11 @@ function GameAccountModal({ records, onClose, onSaveRecords }: { records: GameAc
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button onClick={addRecord}>新增紀錄</Button>
+          <Button variant="secondary" onClick={exportGameAccountRecords} disabled={records.length === 0}>匯出紀錄</Button>
+          <label className="inline-flex cursor-pointer items-center rounded-2xl border border-orange-100 bg-white px-4 py-2 text-sm font-black text-orange-700 shadow-sm transition hover:bg-orange-50">
+            匯入紀錄
+            <input type="file" accept="application/json,.json" className="hidden" onChange={importGameAccountRecords} />
+          </label>
           <span className="text-xs font-bold text-slate-400">遊戲id 最多 9 字，避免報名角色名稱超過 16 字限制。</span>
         </div>
 
@@ -1235,6 +1315,12 @@ type TrainingSample = {
   exp: number;
 };
 
+type TrainingStatsSnapshot = {
+  id: string;
+  timestamp: number;
+  rows: Array<{ title: string; value: string; sub?: string }>;
+};
+
 function formatTrainingNumber(value: number) {
   if (!Number.isFinite(value)) return '0';
   return Math.round(value).toLocaleString('en-US');
@@ -1667,6 +1753,8 @@ function TrainingEfficiencyPanel() {
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragBox, setDragBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
+  const [trainingStatSnapshots, setTrainingStatSnapshots] = useState<TrainingStatsSnapshot[]>([]);
+  const [selectedTrainingStatSnapshotId, setSelectedTrainingStatSnapshotId] = useState<string | null>(null);
 
   function loadSavedTrainingCrop() {
     try {
@@ -2381,6 +2469,22 @@ function TrainingEfficiencyPanel() {
     return minSize;
   }
 
+  function recordTrainingStatsSnapshot() {
+    const snapshot: TrainingStatsSnapshot = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      timestamp: Date.now(),
+      rows: getTrainingStatsShareRows().map((row) => ({
+        title: row.title,
+        value: row.value,
+        sub: row.sub || undefined,
+      })),
+    };
+
+    setTrainingStatSnapshots((prev) => [snapshot, ...prev].slice(0, 10));
+    setSelectedTrainingStatSnapshotId(snapshot.id);
+    setMessage('已紀錄當下統計資訊。');
+  }
+
   async function exportTrainingStatsImage() {
     if (shareBusy) return;
     setShareBusy(true);
@@ -2634,7 +2738,7 @@ function TrainingEfficiencyPanel() {
               <Input inputMode="numeric" value={expInput} placeholder="OCR 誤判時手動輸入" onChange={(event) => setExpInput(event.target.value.replace(/[^0-9]/g, ''))} />
             </Field>
             <Button onClick={addSample}>手動加入紀錄</Button>
-            <Button variant="secondary" onClick={() => setExpInput(String(currentExp + Math.max(0, Math.round(expPerMinute))))}>+1分鐘估算</Button>
+            <Button variant="secondary" onClick={recordTrainingStatsSnapshot}>紀錄統計資訊</Button>
           </div>
         </div>
 
@@ -2655,6 +2759,60 @@ function TrainingEfficiencyPanel() {
       </div>
 
       <TrainingChart samples={samples} />
+
+      {selectedTrainingStatSnapshotId ? (() => {
+        const selectedSnapshot = trainingStatSnapshots.find((snapshot) => snapshot.id === selectedTrainingStatSnapshotId) || trainingStatSnapshots[0];
+        return selectedSnapshot ? (
+          <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/40 p-4">
+            <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-[2rem] border border-orange-100 bg-white p-5 shadow-2xl">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">Training Stats Records</div>
+                  <h3 className="mt-1 text-2xl font-black text-slate-950">統計資訊紀錄</h3>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">最多保存最近 10 次按下「紀錄統計資訊」的內容；點擊時間可查看該時間點的統計區資訊。</p>
+                </div>
+                <Button variant="ghost" onClick={() => setSelectedTrainingStatSnapshotId(null)}>關閉</Button>
+              </div>
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+                <div className="rounded-3xl border border-orange-100 bg-orange-50/60 p-3">
+                  <div className="mb-2 text-xs font-black text-orange-700">紀錄時間</div>
+                  <div className="grid gap-2">
+                    {trainingStatSnapshots.map((snapshot) => (
+                      <button
+                        key={snapshot.id}
+                        type="button"
+                        onClick={() => setSelectedTrainingStatSnapshotId(snapshot.id)}
+                        className={classNames(
+                          'rounded-2xl border px-3 py-2 text-left text-xs font-black transition',
+                          snapshot.id === selectedSnapshot.id ? 'border-orange-300 bg-white text-orange-700 ring-2 ring-orange-100' : 'border-orange-100 bg-white/70 text-slate-500 hover:bg-white',
+                        )}
+                      >
+                        {new Date(snapshot.timestamp).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-orange-100 bg-white p-4">
+                  <div className="mb-3 text-sm font-black text-slate-950">
+                    {new Date(selectedSnapshot.timestamp).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} 的統計資訊
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {selectedSnapshot.rows.map((row) => (
+                      <div key={row.title} className="rounded-2xl border border-orange-100 bg-orange-50/60 p-3">
+                        <div className="text-xs font-black text-slate-400">{row.title}</div>
+                        <div className="mt-1 break-words text-lg font-black text-slate-950">{row.value}</div>
+                        {row.sub ? <div className="mt-1 break-words text-xs font-bold text-orange-700">{row.sub}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null;
+      })() : null}
 
       {debugEnabled ? (
         <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
@@ -2677,7 +2835,7 @@ function TrainingEfficiencyPanel() {
   );
 }
 
-function SettingsPanel({ groups, leaderCodes, signupCodes, onForgetLeaderCode, onForgetSignupCode }: { groups: RaidGroup[]; leaderCodes: Record<string, string>; signupCodes: Record<string, string>; onForgetLeaderCode: (groupId: string) => void; onForgetSignupCode: (groupId: string) => void }) {
+function SettingsPanel({ groups, leaderCodes, signupCodes, onForgetLeaderCode, onForgetSignupCode, onImportManagementRecords }: { groups: RaidGroup[]; leaderCodes: Record<string, string>; signupCodes: Record<string, string>; onForgetLeaderCode: (groupId: string) => void; onForgetSignupCode: (groupId: string) => void; onImportManagementRecords: (leaderCodes: Record<string, string>, signupCodes: Record<string, string>) => void }) {
   const [copied, setCopied] = useState<string | null>(null);
   const savedGroupIds = Array.from(new Set([...Object.keys(leaderCodes), ...Object.keys(signupCodes)]));
   const rows = savedGroupIds.map((groupId) => ({ groupId, group: groups.find((item) => item.id === groupId), leaderCode: leaderCodes[groupId] || '', signupCode: signupCodes[groupId] || '' }));
@@ -2688,6 +2846,87 @@ function SettingsPanel({ groups, leaderCodes, signupCodes, onForgetLeaderCode, o
     window.setTimeout(() => setCopied(null), 1600);
   }
 
+  function exportManagementRecords() {
+    const payload = {
+      version: 'UI-6.2-management-records',
+      exportedAt: new Date().toISOString(),
+      leaderCodes,
+      signupCodes,
+      links: rows.map(({ groupId, group, signupCode }) => ({
+        groupId,
+        title: group?.title || '',
+        boss: group?.boss || '',
+        cleanLink: buildGroupShareUrl(groupId),
+        inviteLink: signupCode ? buildGroupShareUrl(groupId, signupCode) : '',
+      })),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `raid-management-records-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setCopied('export-management');
+    window.setTimeout(() => setCopied(null), 1600);
+  }
+
+  async function importManagementRecords(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    try {
+      const parsed = JSON.parse(await file.text()) as {
+        leaderCodes?: Record<string, unknown>;
+        signupCodes?: Record<string, unknown>;
+        leader_codes?: Record<string, unknown>;
+        signup_codes?: Record<string, unknown>;
+        rows?: Array<{ groupId?: unknown; group_id?: unknown; leaderCode?: unknown; signupCode?: unknown; leader_code?: unknown; signup_code?: unknown }>;
+      };
+
+      const nextLeaderCodes: Record<string, string> = {};
+      const nextSignupCodes: Record<string, string> = {};
+
+      const rawLeaderCodes = parsed.leaderCodes || parsed.leader_codes || {};
+      const rawSignupCodes = parsed.signupCodes || parsed.signup_codes || {};
+
+      for (const [groupId, code] of Object.entries(rawLeaderCodes)) {
+        const cleanCode = String(code || '').trim();
+        if (groupId && cleanCode) nextLeaderCodes[groupId] = cleanCode;
+      }
+
+      for (const [groupId, code] of Object.entries(rawSignupCodes)) {
+        const cleanCode = String(code || '').trim();
+        if (groupId && cleanCode) nextSignupCodes[groupId] = cleanCode;
+      }
+
+      if (Array.isArray(parsed.rows)) {
+        for (const row of parsed.rows) {
+          const groupId = String(row.groupId || row.group_id || '').trim();
+          if (!groupId) continue;
+          const leaderCode = String(row.leaderCode || row.leader_code || '').trim();
+          const signupCode = String(row.signupCode || row.signup_code || '').trim();
+          if (leaderCode) nextLeaderCodes[groupId] = leaderCode;
+          if (signupCode) nextSignupCodes[groupId] = signupCode;
+        }
+      }
+
+      if (Object.keys(nextLeaderCodes).length === 0 && Object.keys(nextSignupCodes).length === 0) {
+        setCopied('import-empty');
+        window.setTimeout(() => setCopied(null), 1800);
+        return;
+      }
+
+      onImportManagementRecords(nextLeaderCodes, nextSignupCodes);
+      setCopied('import-management');
+      window.setTimeout(() => setCopied(null), 1800);
+    } catch {
+      setCopied('import-error');
+      window.setTimeout(() => setCopied(null), 2200);
+    }
+  }
+
   return (
     <section className="rounded-[2rem] border border-orange-100/80 bg-white/80 p-6 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -2696,7 +2935,14 @@ function SettingsPanel({ groups, leaderCodes, signupCodes, onForgetLeaderCode, o
           <h2 className="mt-2 text-2xl font-black text-slate-950">設定</h2>
           <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">這裡顯示「目前這台瀏覽器」保存的團長管理碼、團邀請碼與帶邀請碼的團連結。這些明碼不會從 Supabase 反查；換裝置或清除瀏覽器資料後需要重新輸入。</p>
         </div>
-        <Pill tone="orange">本機保存 {rows.length} 團</Pill>
+        <div className="flex flex-wrap items-center gap-2">
+          <Pill tone="orange">本機保存 {rows.length} 團</Pill>
+          <Button variant="secondary" onClick={exportManagementRecords} disabled={rows.length === 0}>{copied === 'export-management' ? '已匯出' : '匯出管理碼紀錄'}</Button>
+          <label className="inline-flex cursor-pointer items-center rounded-2xl border border-orange-100 bg-white px-4 py-2 text-sm font-black text-orange-700 shadow-sm transition hover:bg-orange-50">
+            {copied === 'import-management' ? '已匯入' : copied === 'import-error' ? '匯入失敗' : copied === 'import-empty' ? '無可匯入資料' : '匯入管理碼紀錄'}
+            <input type="file" accept="application/json,.json" className="hidden" onChange={importManagementRecords} />
+          </label>
+        </div>
       </div>
 
       {rows.length === 0 ? (
@@ -3018,6 +3264,22 @@ export default function App() {
     });
   }
 
+  function importManagementRecords(nextLeaderCodes: Record<string, string>, nextSignupCodes: Record<string, string>) {
+    setLeaderCodes((prev) => {
+      const next = { ...prev, ...nextLeaderCodes };
+      saveLeaderCodes(next);
+      return next;
+    });
+    setSignupCodes((prev) => {
+      const next = { ...prev, ...nextSignupCodes };
+      saveSignupCodes(next);
+      return next;
+    });
+    const count = new Set([...Object.keys(nextLeaderCodes), ...Object.keys(nextSignupCodes)]).size;
+    setRefreshNotice(`已匯入 ${count} 筆管理碼 / 邀請碼紀錄。`);
+    window.setTimeout(() => setRefreshNotice(null), 3200);
+  }
+
   async function unlockLeader(groupId: string, code: string) {
     const ok = await verifyLeaderCode(groupId, code);
     if (!ok) throw new Error('團長管理碼錯誤');
@@ -3156,7 +3418,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.1</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.2</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -3315,6 +3577,7 @@ export default function App() {
               signupCodes={signupCodes}
               onForgetLeaderCode={forgetLeaderCode}
               onForgetSignupCode={forgetSignupCode}
+              onImportManagementRecords={importManagementRecords}
             />
           )}
         </div>

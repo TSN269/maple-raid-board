@@ -1,2 +1,2 @@
-UI-6.1
-Create raid leader field now uses saved gameId#featureCode records as a dropdown when records exist.
+UI-6.2
+Added game account import/export, management code import/export, training stats snapshots, and dropdown hints.

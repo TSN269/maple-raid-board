@@ -189,7 +189,7 @@ export function CreateRaidModal({ onClose, onCreate, teamFavorites, gameAccountO
             ) : (
               <Input value={form.leader} placeholder="角色名或暱稱" onChange={(e) => set('leader', e.target.value)} />
             )}
-            {gameAccountOptions.length > 0 ? <div className="mt-2 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">已偵測到遊戲id#特徵碼紀錄，團長角色名改由下拉選單選擇。</div> : null}
+            {gameAccountOptions.length > 0 ? <div className="mt-2 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">若有紀錄「遊戲id / 特徵碼」可下拉選取；目前團長角色名已改由下拉選單選擇。</div> : null}
           </Field>
           <Field label="團長管理碼">
             <Input type="password" value={form.leaderCode} placeholder="至少 4 碼，用於管理此團" onChange={(e) => set('leaderCode', e.target.value.trim())} />

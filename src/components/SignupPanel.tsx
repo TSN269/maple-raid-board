@@ -153,7 +153,7 @@ export function SignupPanel({ group, onSignup, initialSignupCode = '', gameAccou
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300">{form.name.length}/16</span>
             </div>
           )}
-          {gameAccountOptions.length > 0 ? <div className="mt-2 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">已偵測到遊戲id#特徵碼紀錄，角色名稱改由下拉選單選擇。</div> : null}
+          {gameAccountOptions.length > 0 ? <div className="mt-2 rounded-2xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700">若有紀錄「遊戲id / 特徵碼」可下拉選取；目前角色名稱已改由下拉選單選擇。</div> : null}
         </Field>
 
         <Field label="職業" required>
