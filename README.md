@@ -1,4 +1,4 @@
-# Maple Raid Board — TSN UI-7.1 SQLFIX1
+# Maple Raid Board — TSN UI-7.1
 
 > 版本基準：UI-7.1  
 > GitHub 帳號：TSN269  
