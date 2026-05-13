@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-6.7 SQLFIX1
+# Maple Raid Board — TSN UI-6.8 SQLFIX1
 
-> 版本基準：UI-6.7  
+> 版本基準：UI-6.8  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具 + 練功效率偵測 + 隊伍收藏 + 遊戲ID紀錄  
 > 部署架構：GitHub + Supabase + Vercel
@@ -88,7 +88,7 @@ UI-5.8 是以 UI-5.7 為基礎，新增與調整：
    - F10：停止分析
 
 3. 頁首版本顯示
-   - TSN UI-6.7
+   - TSN UI-6.8
 ```
 
 UI-5.8 **沒有修改 Supabase schema / RPC**。  
@@ -96,36 +96,28 @@ UI-5.8 **沒有修改 Supabase schema / RPC**。
 
 ---
 
-## 3. 目前 UI-6.7 主要變更
+## 3. 目前 UI-6.8 主要變更
 
-UI-6.7 是以 UI-6.6 為基礎，新增與修正：
-
-```text
-1. 羅茱工具格子支援重複點擊選取 / 取消
-   - 點擊空格：選取該格
-   - 再次點擊同一格：取消該格選取
-   - 點擊同一層其他格：改選到新格
-
-2. 修正 102 格子顏色顯示
-   - 格子選取後改為整格填滿角色顏色
-   - 不再只呈現文字反白效果
-   - 101 / 102 / 103 / 104 都用一致的填滿色顯示
-
-3. 羅茱工具提示文字同步調整
-   - 使用方法補上再次點擊同一格可取消
-   - 快捷鍵提示補上點同一格可取消
-
-4. 頁首版本顯示
-   - TSN UI-6.7
-```
-
-UI-6.7 **需要執行一次 Supabase SQLFIX** 才能讓遠端房間支援清除單格：
+UI-6.8 是以 UI-6.7 為基礎，修正：
 
 ```text
-supabase/ui-6-7-sqlfix-rojhu-toggle-cell.sql
+1. 修正練功效率偵測的統計資訊紀錄重整後消失
+   - 原本只保存在 React state
+   - 重新整理頁面後會被清空
+   - 改為同步保存到 localStorage
+
+2. 統計資訊紀錄保存行為
+   - 按「紀錄統計資訊」後會保存到瀏覽器 localStorage
+   - 最多保留最近 10 筆
+   - 重新整理頁面後仍可按「檢視之前統計資訊」查看
+   - 清除單筆紀錄時也會同步更新 localStorage
+
+3. 頁首版本顯示
+   - TSN UI-6.8
 ```
 
-如果是全新資料庫，直接執行新版 `supabase/schema.sql` 即可。
+UI-6.8 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-6.7 SQLFIX，升級 UI-6.8 不需要再執行 SQL。
 
 ---
 
@@ -192,7 +184,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui 6.7"
+git commit -m "deploy ui 6.8"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -202,7 +194,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui 6.7"
+git commit -m "deploy ui 6.8"
 git push
 ```
 
@@ -960,7 +952,7 @@ Maple Raid Board 下方新增點擊右上蘑菇 Logo 的提示文字
 新增突襲場次與我要報名欄位提示可用遊戲id / 特徵碼紀錄下拉選取
 遊戲id / 特徵碼紀錄頁面新增匯入 / 匯出紀錄
 練功效率偵測將 +1分鐘估算 改為 紀錄統計資訊
-紀錄統計資訊可保存最近 10 次統計區內容；需按「檢視之前統計資訊」查看，也可清除單筆紀錄，並可針對單筆紀錄擷取統計資訊圖片
+紀錄統計資訊可保存最近 10 次統計區內容；資料會保存在瀏覽器 localStorage，重整頁面後仍可按「檢視之前統計資訊」查看，也可清除單筆紀錄，並可針對單筆紀錄擷取統計資訊圖片
 設定頁面新增匯入 / 匯出管理碼、邀請碼與帶邀請碼團連結紀錄
 ```
 
@@ -1005,6 +997,15 @@ Maple Raid Board 下方新增點擊右上蘑菇 Logo 的提示文字
 修正 102 格子顏色顯示為整格填滿角色顏色
 羅茱工具提示文字補上點同一格可取消
 新增 Supabase SQLFIX 讓遠端房間支援清除單格
+```
+
+### UI-6.8
+
+```text
+修正練功效率偵測的統計資訊紀錄重整頁面後消失
+統計資訊紀錄改為保存到瀏覽器 localStorage
+重新整理後仍可透過檢視之前統計資訊查看最近 10 筆紀錄
+清除單筆紀錄時同步更新 localStorage
 目前最新版本
 ```
 
@@ -1060,7 +1061,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 6.7"
+git commit -m "deploy ui 6.8"
 git push
 ```
 

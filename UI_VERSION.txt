@@ -1,2 +1,2 @@
-UI-6.7
-Rojhu cells can now be clicked again to clear selection; player cells use filled color style including 102. Requires SQLFIX for remote single-cell clearing.
+UI-6.8
+Training stats snapshots now persist to localStorage so records remain after page refresh.

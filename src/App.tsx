@@ -1736,6 +1736,7 @@ const ARTALE_EXP_BY_LEVEL: Record<number, number> = {
 
 function TrainingEfficiencyPanel() {
   const TRAINING_OCR_CROP_STORAGE_KEY = 'maple_raid_board_training_ocr_crop_v46';
+  const TRAINING_STATS_SNAPSHOTS_STORAGE_KEY = 'maple_raid_board_training_stats_snapshots_v68';
   const DEFAULT_OCR_CROP = { x: 50.4, y: 93.6, w: 13, h: 6.4 };
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -1768,7 +1769,7 @@ function TrainingEfficiencyPanel() {
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragBox, setDragBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
-  const [trainingStatSnapshots, setTrainingStatSnapshots] = useState<TrainingStatsSnapshot[]>([]);
+  const [trainingStatSnapshots, setTrainingStatSnapshots] = useState<TrainingStatsSnapshot[]>(() => loadTrainingStatsSnapshots());
   const [selectedTrainingStatSnapshotId, setSelectedTrainingStatSnapshotId] = useState<string | null>(null);
 
   function loadSavedTrainingCrop() {
@@ -1790,6 +1791,50 @@ function TrainingEfficiencyPanel() {
       // ignore invalid storage
     }
     return DEFAULT_OCR_CROP;
+  }
+
+  function loadTrainingStatsSnapshots(): TrainingStatsSnapshot[] {
+    try {
+      const raw = localStorage.getItem(TRAINING_STATS_SNAPSHOTS_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return [];
+
+      return parsed
+        .filter((item) => item && typeof item === 'object')
+        .map((item) => {
+          const source = item as {
+            id?: unknown;
+            timestamp?: unknown;
+            rows?: Array<{ title?: unknown; value?: unknown; sub?: unknown }>;
+          };
+          return {
+            id: String(source.id || `${source.timestamp || Date.now()}-${Math.random().toString(36).slice(2)}`),
+            timestamp: Number(source.timestamp || Date.now()),
+            rows: Array.isArray(source.rows)
+              ? source.rows
+                  .filter((row) => row && typeof row === 'object')
+                  .map((row) => ({
+                    title: String(row.title || ''),
+                    value: String(row.value || ''),
+                    sub: row.sub ? String(row.sub) : undefined,
+                  }))
+                  .filter((row) => row.title && row.value)
+              : [],
+          };
+        })
+        .filter((item) => Number.isFinite(item.timestamp) && item.rows.length > 0)
+        .slice(0, 10);
+    } catch {
+      return [];
+    }
+  }
+
+  function saveTrainingStatsSnapshots(items: TrainingStatsSnapshot[]) {
+    try {
+      localStorage.setItem(TRAINING_STATS_SNAPSHOTS_STORAGE_KEY, JSON.stringify(items.slice(0, 10)));
+    } catch {
+      // ignore localStorage quota / privacy-mode errors
+    }
   }
 
   useEffect(() => {
@@ -2495,7 +2540,11 @@ function TrainingEfficiencyPanel() {
       })),
     };
 
-    setTrainingStatSnapshots((prev) => [snapshot, ...prev].slice(0, 10));
+    setTrainingStatSnapshots((prev) => {
+      const next = [snapshot, ...prev].slice(0, 10);
+      saveTrainingStatsSnapshots(next);
+      return next;
+    });
     setMessage('已紀錄當下統計資訊。');
   }
 
@@ -2510,6 +2559,7 @@ function TrainingEfficiencyPanel() {
   function removeTrainingStatsSnapshot(id: string) {
     setTrainingStatSnapshots((prev) => {
       const next = prev.filter((snapshot) => snapshot.id !== id);
+      saveTrainingStatsSnapshots(next);
       setSelectedTrainingStatSnapshotId((current) => {
         if (current !== id) return current;
         return next[0]?.id || null;
@@ -3479,7 +3529,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.7</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.8</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
