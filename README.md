@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-6.9 SQLFIX1
+# Maple Raid Board — TSN UI-7.0 SQLFIX1
 
-> 版本基準：UI-6.9  
+> 版本基準：UI-7.0  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具 + 練功效率偵測 + 隊伍收藏 + 遊戲ID紀錄  
 > 部署架構：GitHub + Supabase + Vercel
@@ -88,7 +88,7 @@ UI-5.8 是以 UI-5.7 為基礎，新增與調整：
    - F10：停止分析
 
 3. 頁首版本顯示
-   - TSN UI-6.9
+   - TSN UI-7.0
 ```
 
 UI-5.8 **沒有修改 Supabase schema / RPC**。  
@@ -96,32 +96,29 @@ UI-5.8 **沒有修改 Supabase schema / RPC**。
 
 ---
 
-## 3. 目前 UI-6.9 主要變更
+## 3. 目前 UI-7.0 主要變更
 
-UI-6.9 是以 UI-6.8 為基礎，新增：
+UI-7.0 是以 UI-6.9 為基礎，調整：
 
 ```text
-1. 左上 Logo 下方新增線上人數
-   - 顯示目前正在使用網站的人數
-   - 顯示位置在左上楓葉 Logo 下方
-   - 顯示風格與 TSN UI-6.9 版本標籤一致
+1. 左上 Logo 下方線上人數顯示格式調整
+   - 改為深色底、綠色人像圖示、白色數字的顯示風格
+   - 風格參考提供的附圖
 
-2. 線上人數統計方式
-   - 使用 Supabase Realtime Presence
-   - 同一瀏覽器會使用固定 client id
-   - 使用者進入網站後會加入 presence
-   - 離開或關閉頁面後會從 presence 移除
+2. 顯示順序調整
+   - 改為：線上人數 + 人像圖示 + 數字
+   - 例如：線上人數 👥 3
 
-3. Supabase 未設定時
-   - 會顯示本機人數 1
-   - 不影響其他功能使用
+3. 線上人數統計邏輯維持不變
+   - 仍使用 Supabase Realtime Presence
+   - Supabase 未設定時仍顯示本機人數 1
 
 4. 頁首版本顯示
-   - TSN UI-6.9
+   - TSN UI-7.0
 ```
 
-UI-6.9 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-6.7 SQLFIX，升級 UI-6.9 不需要再執行 SQL。
+UI-7.0 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-6.7 SQLFIX，升級 UI-7.0 不需要再執行 SQL。
 
 ---
 
@@ -188,7 +185,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui 6.9"
+git commit -m "deploy ui 7.0"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -198,7 +195,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui 6.9"
+git commit -m "deploy ui 7.0"
 git push
 ```
 
@@ -1019,6 +1016,14 @@ Maple Raid Board 下方新增點擊右上蘑菇 Logo 的提示文字
 線上人數顯示風格與版本標籤一致
 線上人數使用 Supabase Realtime Presence 統計
 Supabase 未設定時顯示本機人數 1
+```
+
+### UI-7.0
+
+```text
+左上 Logo 下方線上人數顯示格式調整為深色底樣式
+線上人數顯示順序改為：線上人數 + 人像圖示 + 數字
+線上人數統計邏輯維持 Supabase Realtime Presence
 目前最新版本
 ```
 
@@ -1074,7 +1079,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 6.9"
+git commit -m "deploy ui 7.0"
 git push
 ```
 

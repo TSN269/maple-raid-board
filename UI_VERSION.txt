@@ -1,2 +1,2 @@
-UI-6.9
-Added online user count below the top-left logo using Supabase Realtime Presence.
+UI-7.0
+Adjusted online user count badge style and order to show label, people icon, then count.

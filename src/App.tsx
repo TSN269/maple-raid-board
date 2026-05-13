@@ -3600,14 +3600,18 @@ export default function App() {
           <div className="flex items-center gap-3">
             <div className="flex shrink-0 flex-col items-center gap-1">
               <MapleLeafLogo />
-              <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">
-                線上 {onlineUserCount ?? '--'}
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-teal-950 px-2 py-1 text-[11px] font-black shadow-sm ring-1 ring-teal-800/80">
+                <span className="text-emerald-300">線上人數</span>
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-emerald-300" aria-hidden="true">
+                  <path fill="currentColor" d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3Zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3Zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13Zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5Z" />
+                </svg>
+                <span className="font-mono text-white">{onlineUserCount ?? '--'}</span>
               </span>
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.9</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-7.0</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
