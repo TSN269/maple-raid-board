@@ -946,7 +946,7 @@ begin
     raise exception '樓層索引錯誤';
   end if;
 
-  if p_col_index < 0 or p_col_index > 3 then
+  if p_col_index is not null and (p_col_index < 0 or p_col_index > 3) then
     raise exception '平台索引錯誤';
   end if;
 
@@ -967,7 +967,7 @@ begin
   end if;
 
   update public.rojhu_rooms
-  set routes = jsonb_set(routes, array[p_player, p_row_index::text], to_jsonb(p_col_index), true)
+  set routes = jsonb_set(routes, array[p_player, p_row_index::text], coalesce(to_jsonb(p_col_index), 'null'::jsonb), true)
   where code = v_room.code
   returning * into v_room;
 

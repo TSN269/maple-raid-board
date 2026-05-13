@@ -1,2 +1,2 @@
-UI-6.6
-Added export/copy image button to the training stats record viewer for selected historical stats snapshots.
+UI-6.7
+Rojhu cells can now be clicked again to clear selection; player cells use filled color style including 102. Requires SQLFIX for remote single-cell clearing.

@@ -299,7 +299,7 @@ async function joinRemoteRojhuRoom(code: string, password: string): Promise<Rojh
   return normalizeRojhuRoom(data, password.trim());
 }
 
-async function updateRemoteRojhuRoute(code: string, password: string, player: RojhuPlayerId, row: number, col: number, clientId: string): Promise<RojhuRoom> {
+async function updateRemoteRojhuRoute(code: string, password: string, player: RojhuPlayerId, row: number, col: number | null, clientId: string): Promise<RojhuRoom> {
   const { data, error } = await (supabase as any).rpc('update_rojhu_route_cell', {
     p_code: code,
     p_password: password,
@@ -959,7 +959,9 @@ function RojhuToolsPanel() {
       return;
     }
     await runRojhuAction(async () => {
-      await updateRemoteRojhuRoute(currentRoom.code, currentRoom.password, selectedPlayer, rowIndex, columnIndex, rojhuClientId);
+      const currentValue = currentRoom.routes[selectedPlayer]?.[rowIndex];
+      const nextColumnIndex = currentValue === columnIndex ? null : columnIndex;
+      await updateRemoteRojhuRoute(currentRoom.code, currentRoom.password, selectedPlayer, rowIndex, nextColumnIndex, rojhuClientId);
       return saveRemoteRojhuLastRoutes(currentRoom.code, currentRoom.password);
     });
   }
@@ -1055,20 +1057,31 @@ function RojhuToolsPanel() {
   };
 
   function multiPlayerCellStyle(players: RojhuPlayerId[]) {
-    if (players.length <= 1) return undefined;
+    if (players.length === 0) return undefined;
     const colorMap: Record<RojhuPlayerId, string> = {
       '101': '#fb7185',
       '102': '#4ade80',
       '103': '#38bdf8',
       '104': '#c084fc',
     };
+
+    if (players.length === 1) {
+      return {
+        background: colorMap[players[0]],
+        borderColor: colorMap[players[0]],
+      };
+    }
+
     const step = 100 / players.length;
     const segments = players.map((player, index) => {
       const start = Math.round(index * step);
       const end = Math.round((index + 1) * step);
       return `${colorMap[player]} ${start}% ${end}%`;
     }).join(', ');
-    return { background: `linear-gradient(135deg, ${segments})` };
+    return {
+      background: `linear-gradient(135deg, ${segments})`,
+      borderColor: 'transparent',
+    };
   }
 
   function renderLastRoutesMiniGrid() {
@@ -1090,10 +1103,11 @@ function RojhuToolsPanel() {
                   return (
                     <span
                       key={`last-mini-${floor}-${columnIndex}`}
-                      style={selectedPlayers.length > 1 ? multiPlayerCellStyle(selectedPlayers) : undefined}
+                      style={selectedPlayers.length > 0 ? multiPlayerCellStyle(selectedPlayers) : undefined}
                       className={classNames(
                         'grid h-3 w-3 place-items-center rounded-[3px] border border-orange-100 bg-orange-50 text-[7px] font-black leading-none text-slate-300',
                         singlePlayer && playerCellClasses[singlePlayer],
+                        selectedPlayers.length > 0 && 'border-transparent text-white',
                       )}
                     />
                   );
@@ -1169,7 +1183,7 @@ function RojhuToolsPanel() {
               <li>一人建立房間，將分享連結或房碼密碼給隊友</li>
               <li>隊友從分享連結或輸入房碼密碼加入</li>
               <li>每人只能選擇一個角色（101-104）</li>
-              <li>找到正確平台後點擊對應方塊標記</li>
+              <li>找到正確平台後點擊對應方塊標記；再次點擊同一格可取消</li>
               <li>路徑會透過 Supabase 自動即時同步</li>
               <li>不同角色顏色會保留顯示，除非按重置全清除</li>
             </ol>
@@ -1195,7 +1209,7 @@ function RojhuToolsPanel() {
         <div className="border-b border-orange-100 px-4 py-4">
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div className="text-lg font-black text-slate-950">我的路徑 <span className="ml-2 text-slate-500">{currentPathLabel}</span></div>
-            <div className="rounded-full bg-orange-50 px-3 py-1 text-xs font-black text-orange-700 ring-1 ring-orange-100">快捷鍵：按 1 / 2 / 3 / 4 標記下一層；10 層填滿後停止</div>
+            <div className="rounded-full bg-orange-50 px-3 py-1 text-xs font-black text-orange-700 ring-1 ring-orange-100">快捷鍵：按 1 / 2 / 3 / 4 標記下一層；點同一格可取消；10 層填滿後停止</div>
           </div>
           <div className="mt-4 rounded-2xl border border-orange-100 bg-white/80 p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -1282,11 +1296,12 @@ function RojhuToolsPanel() {
                         type="button"
                         onClick={() => applyRoute(routeIndex, columnIndex)}
                         disabled={!currentRoom || rojhuBusy}
-                        style={selectedPlayers.length > 1 ? multiPlayerCellStyle(selectedPlayers) : undefined}
+                        style={selectedPlayers.length > 0 ? multiPlayerCellStyle(selectedPlayers) : undefined}
                         className={classNames(
                           'relative grid h-[50px] w-[60px] place-items-center rounded-xl border border-orange-100 bg-orange-50/65 p-0 text-2xl font-black text-slate-300 shadow-inner transition',
                           !currentRoom && 'cursor-not-allowed opacity-50',
                           singlePlayer && playerCellClasses[singlePlayer],
+                          selectedPlayers.length > 0 && 'border-transparent text-white',
                           activeSelected && 'ring-2 ring-orange-300 shadow-[0_16px_30px_-16px_rgba(249,115,22,0.45)]',
                           currentRoom && selectedPlayers.length === 0 && 'hover:bg-orange-100 hover:text-orange-700'
                         )}
@@ -3464,7 +3479,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.6</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.7</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
