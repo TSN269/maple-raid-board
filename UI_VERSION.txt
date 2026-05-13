@@ -1,2 +1,2 @@
-UI-7.0
-Adjusted online user count badge style and order to show label, people icon, then count.
+UI-7.1
+Changed online user count badge color style to match the site's orange theme and version badge style.
