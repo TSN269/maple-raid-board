@@ -1,2 +1,2 @@
-UI-6.8
-Training stats snapshots now persist to localStorage so records remain after page refresh.
+UI-6.9
+Added online user count below the top-left logo using Supabase Realtime Presence.

@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-6.8 SQLFIX1
+# Maple Raid Board — TSN UI-6.9 SQLFIX1
 
-> 版本基準：UI-6.8  
+> 版本基準：UI-6.9  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具 + 練功效率偵測 + 隊伍收藏 + 遊戲ID紀錄  
 > 部署架構：GitHub + Supabase + Vercel
@@ -88,7 +88,7 @@ UI-5.8 是以 UI-5.7 為基礎，新增與調整：
    - F10：停止分析
 
 3. 頁首版本顯示
-   - TSN UI-6.8
+   - TSN UI-6.9
 ```
 
 UI-5.8 **沒有修改 Supabase schema / RPC**。  
@@ -96,28 +96,32 @@ UI-5.8 **沒有修改 Supabase schema / RPC**。
 
 ---
 
-## 3. 目前 UI-6.8 主要變更
+## 3. 目前 UI-6.9 主要變更
 
-UI-6.8 是以 UI-6.7 為基礎，修正：
+UI-6.9 是以 UI-6.8 為基礎，新增：
 
 ```text
-1. 修正練功效率偵測的統計資訊紀錄重整後消失
-   - 原本只保存在 React state
-   - 重新整理頁面後會被清空
-   - 改為同步保存到 localStorage
+1. 左上 Logo 下方新增線上人數
+   - 顯示目前正在使用網站的人數
+   - 顯示位置在左上楓葉 Logo 下方
+   - 顯示風格與 TSN UI-6.9 版本標籤一致
 
-2. 統計資訊紀錄保存行為
-   - 按「紀錄統計資訊」後會保存到瀏覽器 localStorage
-   - 最多保留最近 10 筆
-   - 重新整理頁面後仍可按「檢視之前統計資訊」查看
-   - 清除單筆紀錄時也會同步更新 localStorage
+2. 線上人數統計方式
+   - 使用 Supabase Realtime Presence
+   - 同一瀏覽器會使用固定 client id
+   - 使用者進入網站後會加入 presence
+   - 離開或關閉頁面後會從 presence 移除
 
-3. 頁首版本顯示
-   - TSN UI-6.8
+3. Supabase 未設定時
+   - 會顯示本機人數 1
+   - 不影響其他功能使用
+
+4. 頁首版本顯示
+   - TSN UI-6.9
 ```
 
-UI-6.8 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-6.7 SQLFIX，升級 UI-6.8 不需要再執行 SQL。
+UI-6.9 **沒有修改 Supabase schema / RPC**。  
+如果已經執行過 UI-6.7 SQLFIX，升級 UI-6.9 不需要再執行 SQL。
 
 ---
 
@@ -184,7 +188,7 @@ Supabase
 ```bash
 git init
 git add .
-git commit -m "deploy ui 6.8"
+git commit -m "deploy ui 6.9"
 git branch -M main
 git remote add origin https://github.com/TSN269/maple-raid-board.git
 git push -u origin main --force
@@ -194,7 +198,7 @@ git push -u origin main --force
 
 ```bash
 git add .
-git commit -m "deploy ui 6.8"
+git commit -m "deploy ui 6.9"
 git push
 ```
 
@@ -1006,6 +1010,15 @@ Maple Raid Board 下方新增點擊右上蘑菇 Logo 的提示文字
 統計資訊紀錄改為保存到瀏覽器 localStorage
 重新整理後仍可透過檢視之前統計資訊查看最近 10 筆紀錄
 清除單筆紀錄時同步更新 localStorage
+```
+
+### UI-6.9
+
+```text
+左上 Logo 下方新增線上人數
+線上人數顯示風格與版本標籤一致
+線上人數使用 Supabase Realtime Presence 統計
+Supabase 未設定時顯示本機人數 1
 目前最新版本
 ```
 
@@ -1061,7 +1074,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 6.8"
+git commit -m "deploy ui 6.9"
 git push
 ```
 

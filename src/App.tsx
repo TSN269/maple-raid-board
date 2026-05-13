@@ -22,6 +22,28 @@ const NOTIFICATION_READ_STORAGE_KEY = 'maple_raid_board_notification_reads_v14';
 const NOTIFICATION_SNAPSHOT_STORAGE_KEY = 'maple_raid_board_notification_snapshot_v14';
 const TEAM_FAVORITES_STORAGE_KEY = 'maple_raid_board_team_favorites_v55';
 const GAME_ACCOUNT_RECORDS_STORAGE_KEY = 'maple_raid_board_game_account_records_v59';
+const SITE_PRESENCE_CLIENT_ID_STORAGE_KEY = 'maple_raid_board_site_presence_client_id_v69';
+
+function getSitePresenceClientId() {
+  try {
+    const saved = localStorage.getItem(SITE_PRESENCE_CLIENT_ID_STORAGE_KEY);
+    if (saved && /^[a-zA-Z0-9_-]{12,80}$/.test(saved)) return saved;
+  } catch {
+    // ignore storage errors
+  }
+
+  const randomPart = Math.random().toString(36).slice(2, 14);
+  const timePart = Date.now().toString(36);
+  const next = `site_${timePart}_${randomPart}`;
+
+  try {
+    localStorage.setItem(SITE_PRESENCE_CLIENT_ID_STORAGE_KEY, next);
+  } catch {
+    // ignore storage errors
+  }
+
+  return next;
+}
 
 type GameAccountRecord = {
   id: string;
@@ -3135,6 +3157,7 @@ export default function App() {
   const [teamFavorites, setTeamFavorites] = useState<TeamFavorite[]>(() => loadTeamFavorites());
   const [gameAccountRecords, setGameAccountRecords] = useState<GameAccountRecord[]>(() => loadGameAccountRecords());
   const [showGameAccountModal, setShowGameAccountModal] = useState(false);
+  const [onlineUserCount, setOnlineUserCount] = useState<number | null>(isSupabaseConfigured ? null : 1);
 
   const selectedGroup = useMemo(() => groups.find((g) => g.id === selectedId) || groups[0], [groups, selectedId]);
   const selectedDifficulty = useMemo(() => selectedGroup ? getBossDifficultyMeta(`${selectedGroup.title} ${selectedGroup.boss}`) : null, [selectedGroup]);
@@ -3175,6 +3198,56 @@ export default function App() {
   useEffect(() => {
     void loadGroups();
   }, [loadGroups]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setOnlineUserCount(1);
+      return;
+    }
+
+    const clientId = getSitePresenceClientId();
+    const channel = supabase.channel('maple-raid-board-site-presence', {
+      config: {
+        presence: {
+          key: clientId,
+        },
+      },
+    });
+
+    function updateCount() {
+      const state = channel.presenceState();
+      setOnlineUserCount(Math.max(1, Object.keys(state).length));
+    }
+
+    channel
+      .on('presence', { event: 'sync' }, updateCount)
+      .on('presence', { event: 'join' }, updateCount)
+      .on('presence', { event: 'leave' }, updateCount)
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          void channel.track({
+            clientId,
+            onlineAt: new Date().toISOString(),
+            page: window.location.pathname,
+          });
+          window.setTimeout(updateCount, 400);
+        }
+      });
+
+    const heartbeat = window.setInterval(() => {
+      void channel.track({
+        clientId,
+        onlineAt: new Date().toISOString(),
+        page: window.location.pathname,
+      });
+    }, 30000);
+
+    return () => {
+      window.clearInterval(heartbeat);
+      void channel.untrack();
+      void supabase.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -3525,11 +3598,16 @@ export default function App() {
       <header className="sticky top-0 z-30 border-b border-orange-100/80 bg-white/85 shadow-sm backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1560px] flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <MapleLeafLogo />
+            <div className="flex shrink-0 flex-col items-center gap-1">
+              <MapleLeafLogo />
+              <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">
+                線上 {onlineUserCount ?? '--'}
+              </span>
+            </div>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.8</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-6.9</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
