@@ -638,6 +638,266 @@ function GameAccountModal({ records, onClose, onSaveRecords }: { records: GameAc
 }
 
 
+type ArtaleMarketItem = {
+  id: string;
+  name: string;
+  category: string;
+  latest: number;
+  avg24h: number;
+  avg7d: number;
+  change: number;
+  volume: number;
+  trend: number[];
+};
+
+const artaleMarketItems: ArtaleMarketItem[] = [
+  { id: 'chaos-scroll', name: '混沌卷軸 60%', category: '卷軸', latest: 28500000, avg24h: 27600000, avg7d: 26300000, change: 8.4, volume: 42, trend: [22, 24, 25, 27, 26, 28, 29] },
+  { id: 'glove-atk', name: '手套攻擊卷軸 60%', category: '卷軸', latest: 16800000, avg24h: 16200000, avg7d: 15900000, change: 5.7, volume: 31, trend: [15, 16, 16, 15, 17, 16, 17] },
+  { id: 'cape-int', name: '披風智力卷軸 60%', category: '卷軸', latest: 7600000, avg24h: 7300000, avg7d: 7100000, change: 3.9, volume: 19, trend: [6.8, 7, 7.2, 7.1, 7.4, 7.5, 7.6] },
+  { id: 'helmet-acc', name: '頭盔命中卷軸 60%', category: '卷軸', latest: 4300000, avg24h: 4500000, avg7d: 4700000, change: -8.5, volume: 15, trend: [5.1, 4.9, 4.8, 4.7, 4.6, 4.4, 4.3] },
+  { id: 'brown-work-glove', name: '褐色工地手套', category: '防具', latest: 128000000, avg24h: 124000000, avg7d: 119000000, change: 7.6, volume: 8, trend: [110, 114, 118, 121, 123, 126, 128] },
+  { id: 'zakum-helmet', name: '殘暴炎魔頭盔', category: '防具', latest: 52000000, avg24h: 54500000, avg7d: 56000000, change: -7.1, volume: 12, trend: [58, 56, 55, 54, 53, 52, 52] },
+  { id: 'hwabi', name: '火焰飛鏢', category: '武器', latest: 91500000, avg24h: 90000000, avg7d: 87600000, change: 4.4, volume: 9, trend: [82, 84, 85, 88, 89, 91, 92] },
+  { id: 'black-crystal', name: '黑水晶', category: '其他', latest: 1450000, avg24h: 1510000, avg7d: 1580000, change: -8.2, volume: 88, trend: [1.8, 1.7, 1.62, 1.55, 1.5, 1.48, 1.45] },
+  { id: 'ap-reset', name: 'AP 重置券', category: '商城道具', latest: 41000000, avg24h: 39800000, avg7d: 39200000, change: 4.6, volume: 23, trend: [37, 38, 39, 40, 39.8, 40.5, 41] },
+  { id: 'horntail-necklace', name: '闇黑龍王項鍊', category: '闇黑龍王項鍊', latest: 330000000, avg24h: 318000000, avg7d: 301000000, change: 9.6, volume: 3, trend: [280, 292, 300, 305, 312, 322, 330] },
+];
+
+function formatMesos(value: number) {
+  if (value >= 100000000) return `${(value / 100000000).toFixed(value >= 1000000000 ? 1 : 2)}億`;
+  if (value >= 10000) return `${Math.round(value / 10000).toLocaleString('zh-TW')}萬`;
+  return Math.round(value).toLocaleString('zh-TW');
+}
+
+function MiniMarketTrend({ values, positive }: { values: number[]; positive: boolean }) {
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = Math.max(0.1, max - min);
+
+  return (
+    <div className="flex h-14 items-end gap-1 rounded-2xl bg-white/70 px-2 py-2">
+      {values.map((value, index) => {
+        const height = 18 + ((value - min) / range) * 32;
+        return <span key={`${value}-${index}`} className={classNames('w-full rounded-t-full', positive ? 'bg-orange-300' : 'bg-slate-300')} style={{ height }} />;
+      })}
+    </div>
+  );
+}
+
+function ArtalePriceModal({ onClose }: { onClose: () => void }) {
+  const [keyword, setKeyword] = useState('');
+  const [category, setCategory] = useState('全部');
+  const [range, setRange] = useState('1D');
+  const [ma, setMa] = useState('5MA');
+  const [activeItemId, setActiveItemId] = useState(artaleMarketItems[0]?.id || '');
+  const [compareItemId, setCompareItemId] = useState(artaleMarketItems[1]?.id || '');
+  const [watchList, setWatchList] = useState<string[]>(['chaos-scroll', 'ap-reset']);
+  const [calcPrice, setCalcPrice] = useState('10000000');
+  const [scrollCount, setScrollCount] = useState('7');
+  const [successRate, setSuccessRate] = useState('60');
+
+  const categories = ['全部', '商城道具', '卷軸', '其他', '防具', '武器', '闇黑龍王項鍊'];
+  const filteredItems = artaleMarketItems.filter((item) => {
+    const matchCategory = category === '全部' || item.category === category;
+    const matchKeyword = !keyword.trim() || item.name.toLowerCase().includes(keyword.trim().toLowerCase());
+    return matchCategory && matchKeyword;
+  });
+  const activeItem = artaleMarketItems.find((item) => item.id === activeItemId) || artaleMarketItems[0];
+  const compareItem = artaleMarketItems.find((item) => item.id === compareItemId) || artaleMarketItems[1] || activeItem;
+  const watchItems = watchList.map((id) => artaleMarketItems.find((item) => item.id === id)).filter(Boolean) as ArtaleMarketItem[];
+  const successRatio = Math.max(0.01, Math.min(100, Number(successRate || 1)) / 100);
+  const expectedCost = Math.max(0, Number(calcPrice || 0)) * Math.max(0, Number(scrollCount || 0)) / successRatio;
+  const spread = activeItem && compareItem ? activeItem.latest - compareItem.latest : 0;
+  const ratio = compareItem?.latest ? activeItem.latest / compareItem.latest : 0;
+  const topMovers = [...artaleMarketItems].sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 4);
+
+  function toggleWatch(id: string) {
+    setWatchList((prev) => prev.includes(id) ? prev.filter((item) => item !== id) : [id, ...prev].slice(0, 8));
+  }
+
+  return (
+    <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/40 p-4">
+      <div className="max-h-[92vh] w-full max-w-7xl overflow-auto rounded-[2rem] border border-orange-100 bg-white p-5 shadow-2xl">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">Artale Market</div>
+            <h2 className="mt-1 text-2xl font-black text-slate-950">Artale 物價查詢</h2>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-500">參考 Artale 楓之股的查詢介面：分類篩選、時間區間、均線、最後報價、日均、7 日均、溢價 / 折價分析、自選清單與衝卷期望造價。此頁目前為站內樣式查詢面板，實際價格資料後續可再串接資料源。</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" onClick={() => window.open('https://artalestock.netlify.app/', '_blank', 'noopener,noreferrer')}>開啟參考站</Button>
+            <Button variant="ghost" onClick={onClose}>關閉</Button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 rounded-[1.6rem] border border-orange-100 bg-orange-50/60 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-400">⌕</span>
+            <Input value={keyword} placeholder="搜尋商品、卷軸、裝備..." onChange={(event) => setKeyword(event.target.value)} className="pl-10" />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {categories.map((item) => (
+              <button key={item} type="button" onClick={() => setCategory(item)} className={classNames('rounded-full px-3 py-2 text-xs font-black transition', category === item ? 'bg-orange-500 text-white shadow-sm shadow-orange-500/20' : 'bg-white text-slate-500 ring-1 ring-orange-100 hover:bg-orange-50')}>{item}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
+          <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">列表模式</div>
+                <h3 className="mt-1 text-xl font-black text-slate-950">商品行情</h3>
+                <p className="mt-1 text-xs font-semibold text-slate-400">價格僅供參考，資料統計起始日：6/1</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {['1H', '3H', '6H', '1D'].map((item) => <button key={item} type="button" onClick={() => setRange(item)} className={classNames('rounded-xl px-3 py-1.5 text-xs font-black', range === item ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-500 ring-1 ring-slate-200')}>{item}</button>)}
+                {['3MA', '5MA', '20MA'].map((item) => <button key={item} type="button" onClick={() => setMa(item)} className={classNames('rounded-xl px-3 py-1.5 text-xs font-black', ma === item ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-700 ring-1 ring-orange-100')}>{item}</button>)}
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              {filteredItems.map((item) => {
+                const positive = item.change >= 0;
+                const active = item.id === activeItem.id;
+                return (
+                  <button key={item.id} type="button" onClick={() => setActiveItemId(item.id)} className={classNames('grid gap-3 rounded-3xl border p-4 text-left transition md:grid-cols-[minmax(0,1fr)_180px] md:items-center', active ? 'border-orange-300 bg-orange-50 ring-2 ring-orange-100' : 'border-orange-100 bg-white hover:bg-orange-50/50')}>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="truncate text-lg font-black text-slate-950">{item.name}</span>
+                        <Pill tone="orange">{item.category}</Pill>
+                        <span className={classNames('rounded-full px-2 py-0.5 text-[11px] font-black', positive ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700')}>{positive ? '+' : ''}{item.change.toFixed(1)}%</span>
+                      </div>
+                      <div className="mt-2 grid gap-2 text-sm font-bold text-slate-500 sm:grid-cols-4">
+                        <span>最後報價 <b className="text-slate-950">{formatMesos(item.latest)}</b></span>
+                        <span>日均 <b className="text-slate-950">{formatMesos(item.avg24h)}</b></span>
+                        <span>7日均 <b className="text-slate-950">{formatMesos(item.avg7d)}</b></span>
+                        <span>成交量 <b className="text-slate-950">{item.volume}</b></span>
+                      </div>
+                    </div>
+                    <MiniMarketTrend values={item.trend} positive={positive} />
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <aside className="grid gap-4">
+            <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">K線分析</div>
+                  <h3 className="mt-1 text-xl font-black text-slate-950">{activeItem.name}</h3>
+                </div>
+                <button type="button" onClick={() => toggleWatch(activeItem.id)} className="rounded-full bg-orange-50 px-3 py-1.5 text-xs font-black text-orange-700 ring-1 ring-orange-100">{watchList.includes(activeItem.id) ? '★ 已自選' : '☆ 加自選'}</button>
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="rounded-2xl bg-orange-50 p-3">
+                  <div className="text-[11px] font-black text-orange-500">歷史最後報價</div>
+                  <div className="mt-1 text-lg font-black text-slate-950">{formatMesos(activeItem.latest)}</div>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-3">
+                  <div className="text-[11px] font-black text-slate-400">日均(24H)</div>
+                  <div className="mt-1 text-lg font-black text-slate-950">{formatMesos(activeItem.avg24h)}</div>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-3">
+                  <div className="text-[11px] font-black text-slate-400">7日均</div>
+                  <div className="mt-1 text-lg font-black text-slate-950">{formatMesos(activeItem.avg7d)}</div>
+                </div>
+              </div>
+              <div className="mt-4 rounded-3xl border border-orange-100 bg-orange-50/50 p-3">
+                <MiniMarketTrend values={activeItem.trend} positive={activeItem.change >= 0} />
+                <div className="mt-2 flex justify-between text-xs font-black text-slate-400"><span>{range}</span><span>{ma}</span></div>
+              </div>
+            </section>
+
+            <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
+              <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">價差套利</div>
+              <h3 className="mt-1 text-xl font-black text-slate-950">交叉分析圖表</h3>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Select value={activeItem.id} onChange={(event) => setActiveItemId(event.target.value)}>
+                  {artaleMarketItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </Select>
+                <Select value={compareItem.id} onChange={(event) => setCompareItemId(event.target.value)}>
+                  {artaleMarketItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </Select>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="rounded-2xl bg-slate-50 p-3">
+                  <div className="text-[11px] font-black text-slate-400">實質價差</div>
+                  <div className={classNames('mt-1 text-lg font-black', spread >= 0 ? 'text-emerald-700' : 'text-rose-700')}>{formatMesos(Math.abs(spread))}</div>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-3">
+                  <div className="text-[11px] font-black text-slate-400">價差比值</div>
+                  <div className="mt-1 text-lg font-black text-slate-950">{ratio.toFixed(2)}x</div>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
+              <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">智能雷達</div>
+              <h3 className="mt-1 text-xl font-black text-slate-950">溢價 / 折價監控</h3>
+              <div className="mt-3 grid gap-2">
+                {topMovers.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between rounded-2xl bg-orange-50/70 px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-black text-slate-800">{item.name}</div>
+                      <div className="text-xs font-semibold text-slate-400">{item.category}</div>
+                    </div>
+                    <span className={classNames('rounded-full px-2 py-1 text-xs font-black', item.change >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700')}>{item.change >= 0 ? '+' : ''}{item.change.toFixed(1)}%</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </aside>
+        </div>
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+          <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">自選清單</div>
+                <h3 className="mt-1 text-xl font-black text-slate-950">我的自選清單</h3>
+              </div>
+              <Pill tone="orange">{watchItems.length} 項</Pill>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {watchItems.length > 0 ? watchItems.map((item) => (
+                <div key={item.id} className="flex items-center justify-between rounded-2xl border border-orange-100 bg-orange-50/50 px-3 py-2">
+                  <span className="text-sm font-black text-slate-800">{item.name}</span>
+                  <span className="text-sm font-black text-orange-700">{formatMesos(item.latest)}</span>
+                </div>
+              )) : <div className="rounded-2xl border border-dashed border-orange-100 bg-orange-50/50 p-4 text-center text-sm font-semibold text-slate-500">尚未加入自選商品。</div>}
+            </div>
+          </section>
+
+          <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
+            <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">衝捲計算</div>
+            <h3 className="mt-1 text-xl font-black text-slate-950">計算機率與期望造價</h3>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <Field label="卷軸單價">
+                <Input inputMode="numeric" value={calcPrice} onChange={(event) => setCalcPrice(event.target.value.replace(/[^0-9]/g, ''))} />
+              </Field>
+              <Field label="可用卷軸數">
+                <Input inputMode="numeric" value={scrollCount} onChange={(event) => setScrollCount(event.target.value.replace(/[^0-9]/g, ''))} />
+              </Field>
+              <Field label="成功率%">
+                <Input inputMode="numeric" value={successRate} onChange={(event) => setSuccessRate(event.target.value.replace(/[^0-9]/g, '').slice(0, 3))} />
+              </Field>
+            </div>
+            <div className="mt-4 rounded-3xl bg-gradient-to-br from-orange-100 to-amber-50 p-4">
+              <div className="text-xs font-black text-orange-700">期望造價</div>
+              <div className="mt-1 text-2xl font-black text-slate-950">{formatMesos(expectedCost)}</div>
+              <p className="mt-1 text-xs font-semibold text-slate-500">以目前輸入的卷軸價格、數量與成功率試算，僅供估算。</p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 type ActivePanel = 'home' | 'raid' | 'signup' | 'favorite' | 'teamFavorite' | 'notice' | 'rojhuTools' | 'trainingEfficiency' | 'settings';
 
 function NavigationRail({ activePanel, onChange, noticeCount }: { activePanel: ActivePanel; onChange: (panel: ActivePanel) => void; noticeCount: number }) {
@@ -3157,6 +3417,7 @@ export default function App() {
   const [teamFavorites, setTeamFavorites] = useState<TeamFavorite[]>(() => loadTeamFavorites());
   const [gameAccountRecords, setGameAccountRecords] = useState<GameAccountRecord[]>(() => loadGameAccountRecords());
   const [showGameAccountModal, setShowGameAccountModal] = useState(false);
+  const [showArtalePriceModal, setShowArtalePriceModal] = useState(false);
   const [onlineUserCount, setOnlineUserCount] = useState<number | null>(isSupabaseConfigured ? null : 1);
 
   const selectedGroup = useMemo(() => groups.find((g) => g.id === selectedId) || groups[0], [groups, selectedId]);
@@ -3611,7 +3872,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-7.1</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-7.2</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -3633,16 +3894,9 @@ export default function App() {
 
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Button variant="secondary" onClick={() => void refreshGroupsAndCheckNew()} disabled={busy || loading}>{busy ? '讀取中…' : '重新整理 / 檢查新場次'}</Button>
-            {selectedGroup ? (
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  void navigator.clipboard.writeText(buildGroupShareUrl(selectedGroup.id, selectedSignupCode));
-                }}
-              >
-                🔗 複製團連結
-              </Button>
-            ) : null}
+            <Button variant="secondary" onClick={() => setShowArtalePriceModal(true)}>
+              📈 Artale物價查詢
+            </Button>
             <Button className="shadow-lg shadow-orange-500/20" onClick={() => setShowCreate(true)} disabled={busy || !isSupabaseConfigured}>＋ 新增突襲</Button>
             <button
               type="button"
@@ -3776,6 +4030,7 @@ export default function App() {
         </div>
       )}
 
+      {showArtalePriceModal ? <ArtalePriceModal onClose={() => setShowArtalePriceModal(false)} /> : null}
       {showGameAccountModal ? <GameAccountModal records={gameAccountRecords} onClose={() => setShowGameAccountModal(false)} onSaveRecords={updateGameAccountRecords} /> : null}
       {showCreate ? <CreateRaidModal onClose={() => setShowCreate(false)} onCreate={createGroup} teamFavorites={teamFavorites} gameAccountOptions={gameAccountRecords.map(formatGameAccountRecord)} /> : null}
     </div>

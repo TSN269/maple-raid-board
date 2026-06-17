@@ -1,2 +1,2 @@
-UI-7.1
-Changed online user count badge color style to match the site's orange theme and version badge style.
+UI-7.2
+Replaced top-right copy group link button with Artale price query modal in site-style orange UI.
