@@ -10,5 +10,11 @@
       "source": "/((?!api/.*).*)",
       "destination": "/"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/artale-prices",
+      "schedule": "55 15 * * *"
+    }
   ]
 }

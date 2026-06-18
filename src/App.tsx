@@ -643,17 +643,21 @@ type ArtaleMarketItem = {
   name: string;
   category: string;
   latest: number;
-  avg24h: number;
   avg7d: number;
+  avg30d: number;
   change: number;
   trend: number[];
+  historyDates?: string[];
 };
 
 type ArtaleMarketPayload = {
   items?: ArtaleMarketItem[];
-  source?: string;
   updatedAt?: string;
   error?: string;
+  historySaved?: boolean;
+  historyMessage?: string;
+  historyRows?: number;
+  priceDate?: string;
 };
 
 function toSafeNumber(value: unknown, fallback = 0) {
@@ -685,8 +689,8 @@ function normalizeArtaleMarketPayload(payload: unknown): ArtaleMarketPayload {
       if (!name) return null;
 
       const latest = toSafeNumber(item.latest ?? item.lastPrice ?? item.last_price ?? item.price ?? item.currentPrice ?? item.current_price);
-      const avg24h = toSafeNumber(item.avg24h ?? item.avg_24h ?? item.dailyAvg ?? item.dayAvg ?? item.avg1d ?? item.avg_1d, latest);
-      const avg7d = toSafeNumber(item.avg7d ?? item.avg_7d ?? item.weekAvg ?? item.sevenDayAvg ?? item.avg7days, avg24h);
+      const avg7d = toSafeNumber(item.avg7d ?? item.avg_7d ?? item.weekAvg ?? item.sevenDayAvg ?? item.avg7days, latest);
+      const avg30d = toSafeNumber(item.avg30d ?? item.avg_30d ?? item.monthAvg ?? item.thirtyDayAvg ?? item.avg30days, avg7d);
       const rawTrend = Array.isArray(item.trend)
         ? item.trend
         : Array.isArray(item.history)
@@ -712,19 +716,23 @@ function normalizeArtaleMarketPayload(payload: unknown): ArtaleMarketPayload {
         name,
         category: String(item.category || item.type || item.kind || '其他'),
         latest,
-        avg24h,
         avg7d,
+        avg30d,
         change: toSafeNumber(item.change ?? item.changePercent ?? item.change_percent ?? item.rate, derivedChange),
-        trend: trend.length >= 2 ? trend : [avg7d || latest, avg24h || latest, latest].filter((value) => value > 0),
+        trend: trend.length >= 2 ? trend : [avg30d || latest, avg7d || latest, latest].filter((value) => value > 0),
+        historyDates: Array.isArray(item.historyDates) ? item.historyDates.map((value) => String(value)) : undefined,
       } satisfies ArtaleMarketItem;
     })
     .filter(Boolean) as ArtaleMarketItem[];
 
   return {
     items,
-    source: String(source.source || source.provider || 'ARTALE_PRICE_EXCEL_URL / ARTALE_PRICE_CSV_URL'),
     updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : typeof source.updated_at === 'string' ? source.updated_at : undefined,
     error: typeof source.error === 'string' ? source.error : undefined,
+    historySaved: Boolean(source.historySaved),
+    historyMessage: typeof source.historyMessage === 'string' ? source.historyMessage : undefined,
+    historyRows: toSafeNumber(source.historyRows, 0),
+    priceDate: typeof source.priceDate === 'string' ? source.priceDate : undefined,
   };
 }
 
@@ -752,12 +760,20 @@ function formatMesos(value: number) {
   return Math.round(value).toLocaleString('zh-TW');
 }
 
+function movingAverage(values: number[], windowSize: number) {
+  if (windowSize <= 1) return values;
+  return values.map((_, index) => {
+    const windowValues = values.slice(Math.max(0, index - windowSize + 1), index + 1);
+    return windowValues.reduce((sum, value) => sum + value, 0) / Math.max(1, windowValues.length);
+  });
+}
+
 function MarketTrendLine({ values, positive }: { values: number[]; positive: boolean }) {
   const safeValues = values.filter((value) => Number.isFinite(value) && value > 0);
   const series = safeValues.length >= 2 ? safeValues : [1, 1];
-  const width = 180;
-  const height = 58;
-  const pad = 8;
+  const width = 220;
+  const height = 72;
+  const pad = 10;
   const max = Math.max(...series);
   const min = Math.min(...series);
   const range = Math.max(1, max - min);
@@ -770,7 +786,7 @@ function MarketTrendLine({ values, positive }: { values: number[]; positive: boo
 
   return (
     <div className="rounded-2xl border border-orange-100 bg-white/80 px-2 py-2">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-14 w-full" role="img" aria-label="價格走勢折線圖">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-16 w-full" role="img" aria-label="價格走勢折線圖">
         <path d={`M ${pad} ${height - pad} H ${width - pad}`} fill="none" stroke="rgba(251,146,60,0.18)" strokeWidth="1" />
         <path d={path} fill="none" stroke={positive ? '#f97316' : '#64748b'} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />
         {points.map((point, index) => (
@@ -784,13 +800,11 @@ function MarketTrendLine({ values, positive }: { values: number[]; positive: boo
 function ArtalePriceModal({ onClose }: { onClose: () => void }) {
   const [keyword, setKeyword] = useState('');
   const [category, setCategory] = useState('全部');
-  const [range] = useState('1D');
-  const [ma, setMa] = useState('5MA');
+  const [chartMode, setChartMode] = useState('1D');
   const [items, setItems] = useState<ArtaleMarketItem[]>([]);
-  const [dataSource, setDataSource] = useState('');
-  const [updatedAt, setUpdatedAt] = useState('');
   const [loadingMarket, setLoadingMarket] = useState(true);
   const [marketError, setMarketError] = useState('');
+  const [historyMessage, setHistoryMessage] = useState('');
   const [activeItemId, setActiveItemId] = useState('');
   const [compareItemId, setCompareItemId] = useState('');
   const [watchList, setWatchList] = useState<string[]>([]);
@@ -804,13 +818,13 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
     async function loadMarket() {
       setLoadingMarket(true);
       setMarketError('');
+      setHistoryMessage('');
       try {
         const payload = await fetchArtaleMarketItems();
         if (cancelled) return;
         const nextItems = payload.items || [];
         setItems(nextItems);
-        setDataSource(payload.source || 'ARTALE_PRICE_EXCEL_URL / ARTALE_PRICE_CSV_URL');
-        setUpdatedAt(payload.updatedAt || '');
+        setHistoryMessage(payload.historySaved ? '' : payload.historyMessage || '');
         setActiveItemId((current) => current || nextItems[0]?.id || '');
         setCompareItemId((current) => current || nextItems[1]?.id || nextItems[0]?.id || '');
         setWatchList((current) => current.length > 0 ? current : nextItems.slice(0, 2).map((item) => item.id));
@@ -844,6 +858,8 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
   const spread = activeItem && compareItem ? activeItem.latest - compareItem.latest : 0;
   const ratio = activeItem && compareItem?.latest ? activeItem.latest / compareItem.latest : 0;
   const topMovers = [...items].sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 4);
+  const chartWindow = chartMode.endsWith('MA') ? Number(chartMode.replace('MA', '')) : 1;
+  const chartValues = activeItem ? movingAverage(activeItem.trend, chartWindow) : [];
 
   function toggleWatch(id: string) {
     setWatchList((prev) => prev.includes(id) ? prev.filter((item) => item !== id) : [id, ...prev].slice(0, 8));
@@ -856,11 +872,6 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
           <div>
             <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">Artale Market</div>
             <h2 className="mt-1 text-2xl font-black text-slate-950">Artale 物價查詢</h2>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-500">已改為讀取站長提供的 Excel / CSV 物價資料來源。請在部署環境設定 ARTALE_PRICE_EXCEL_URL 或 ARTALE_PRICE_CSV_URL，由 Serverless Function 轉接並解析資料；前端不再使用示範資料。</p>
-            <div className="mt-2 flex flex-wrap gap-2 text-xs font-black">
-              <span className="rounded-full bg-orange-50 px-3 py-1 text-orange-700 ring-1 ring-orange-100">資料源：{dataSource || '尚未連線'}</span>
-              <span className="rounded-full bg-slate-50 px-3 py-1 text-slate-500 ring-1 ring-slate-200">更新：{updatedAt ? new Date(updatedAt).toLocaleString('zh-TW', { hour12: false }) : '--'}</span>
-            </div>
           </div>
           <Button variant="ghost" onClick={onClose}>關閉</Button>
         </div>
@@ -878,27 +889,21 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {loadingMarket ? (
-          <div className="mt-5 rounded-[1.6rem] border border-orange-100 bg-orange-50/50 p-8 text-center text-sm font-black text-orange-700">正在讀取實際物價資料...</div>
+          <div className="mt-5 rounded-[1.6rem] border border-orange-100 bg-orange-50/50 p-8 text-center text-sm font-black text-orange-700">正在讀取物價資料...</div>
         ) : marketError ? (
           <div className="mt-5 rounded-[1.6rem] border border-rose-100 bg-rose-50 p-5 text-sm font-bold leading-7 text-rose-700">
             <div className="font-black">物價資料讀取失敗</div>
             <div className="mt-1">{marketError}</div>
-            <div className="mt-2 text-xs text-rose-600">請確認 Vercel / Netlify 環境變數 ARTALE_PRICE_EXCEL_URL 或 ARTALE_PRICE_CSV_URL 已設定為可直接下載的 Excel / CSV 檔案，且欄位包含商品名稱與價格。</div>
           </div>
+        ) : historyMessage ? (
+          <div className="mt-5 rounded-[1.6rem] border border-amber-100 bg-amber-50 p-4 text-xs font-bold leading-6 text-amber-700">{historyMessage}</div>
         ) : null}
 
         <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
           <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">列表模式</div>
-                <h3 className="mt-1 text-xl font-black text-slate-950">商品行情</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-400">價格來自已設定的資料源，僅保留 1D 區間。</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-black text-white">{range}</button>
-                {['3MA', '5MA', '20MA'].map((item) => <button key={item} type="button" onClick={() => setMa(item)} className={classNames('rounded-xl px-3 py-1.5 text-xs font-black', ma === item ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-700 ring-1 ring-orange-100')}>{item}</button>)}
-              </div>
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">列表模式</div>
+              <h3 className="mt-1 text-xl font-black text-slate-950">商品行情</h3>
             </div>
 
             <div className="mt-4 grid gap-3">
@@ -915,8 +920,8 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
                       </div>
                       <div className="mt-2 grid gap-2 text-sm font-bold text-slate-500 sm:grid-cols-3">
                         <span>最後報價 <b className="text-slate-950">{formatMesos(item.latest)}</b></span>
-                        <span>日均 <b className="text-slate-950">{formatMesos(item.avg24h)}</b></span>
                         <span>7日均 <b className="text-slate-950">{formatMesos(item.avg7d)}</b></span>
+                        <span>30日均 <b className="text-slate-950">{formatMesos(item.avg30d)}</b></span>
                       </div>
                     </div>
                     <MarketTrendLine values={item.trend} positive={positive} />
@@ -930,12 +935,17 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
 
           <aside className="grid gap-4">
             <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">K線分析</div>
-                  <h3 className="mt-1 truncate text-xl font-black text-slate-950">{activeItem?.name || '--'}</h3>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">K線分析</div>
+                    <h3 className="mt-1 truncate text-xl font-black text-slate-950">{activeItem?.name || '--'}</h3>
+                  </div>
+                  {activeItem ? <button type="button" onClick={() => toggleWatch(activeItem.id)} className="shrink-0 rounded-full bg-orange-50 px-3 py-1.5 text-xs font-black text-orange-700 ring-1 ring-orange-100">{watchList.includes(activeItem.id) ? '★ 已自選' : '☆ 加自選'}</button> : null}
                 </div>
-                {activeItem ? <button type="button" onClick={() => toggleWatch(activeItem.id)} className="shrink-0 rounded-full bg-orange-50 px-3 py-1.5 text-xs font-black text-orange-700 ring-1 ring-orange-100">{watchList.includes(activeItem.id) ? '★ 已自選' : '☆ 加自選'}</button> : null}
+                <div className="flex flex-wrap gap-2">
+                  {['1D', '3MA', '5MA', '20MA'].map((item) => <button key={item} type="button" onClick={() => setChartMode(item)} className={classNames('rounded-xl px-3 py-1.5 text-xs font-black', chartMode === item ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-700 ring-1 ring-orange-100')}>{item}</button>)}
+                </div>
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2">
                 <div className="rounded-2xl bg-orange-50 p-3">
@@ -943,17 +953,17 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
                   <div className="mt-1 text-lg font-black text-slate-950">{formatMesos(activeItem?.latest || 0)}</div>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-3">
-                  <div className="text-[11px] font-black text-slate-400">日均(24H)</div>
-                  <div className="mt-1 text-lg font-black text-slate-950">{formatMesos(activeItem?.avg24h || 0)}</div>
-                </div>
-                <div className="rounded-2xl bg-slate-50 p-3">
                   <div className="text-[11px] font-black text-slate-400">7日均</div>
                   <div className="mt-1 text-lg font-black text-slate-950">{formatMesos(activeItem?.avg7d || 0)}</div>
                 </div>
+                <div className="rounded-2xl bg-slate-50 p-3">
+                  <div className="text-[11px] font-black text-slate-400">30日均</div>
+                  <div className="mt-1 text-lg font-black text-slate-950">{formatMesos(activeItem?.avg30d || 0)}</div>
+                </div>
               </div>
               <div className="mt-4 rounded-3xl border border-orange-100 bg-orange-50/50 p-3">
-                <MarketTrendLine values={activeItem?.trend || []} positive={(activeItem?.change || 0) >= 0} />
-                <div className="mt-2 flex justify-between text-xs font-black text-slate-400"><span>{range}</span><span>{ma}</span></div>
+                <MarketTrendLine values={chartValues} positive={(activeItem?.change || 0) >= 0} />
+                <div className="mt-2 flex justify-between text-xs font-black text-slate-400"><span>每日最後報價</span><span>{chartMode}</span></div>
               </div>
             </section>
 
@@ -4018,7 +4028,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-7.4 CSVFIX1</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-7.5</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>

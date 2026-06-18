@@ -1,15 +1,16 @@
 import XLSX from 'xlsx';
+import { createClient } from '@supabase/supabase-js';
 
 function toNumber(value, fallback = 0) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
-    const cleaned = value
-      .replace(/[,\s]/g, '')
-      .replace(/[萬万]/g, '0000')
-      .replace(/億/g, '00000000')
-      .replace(/%/g, '');
+    const raw = value.trim();
+    let multiplier = 1;
+    if (raw.includes('億')) multiplier = 100000000;
+    else if (raw.includes('萬') || raw.includes('万')) multiplier = 10000;
+    const cleaned = raw.replace(/[,\s]/g, '').replace(/[萬万億%％]/g, '');
     const parsed = Number(cleaned);
-    if (Number.isFinite(parsed)) return parsed;
+    if (Number.isFinite(parsed)) return parsed * multiplier;
   }
   return fallback;
 }
@@ -26,8 +27,8 @@ function normalizeKey(value) {
 const NAME_KEYS = ['name', 'itemName', 'item_name', 'title', 'item', '商品名稱', '名稱', '商品', '道具名稱', '物品名稱', '品名', '物品', '道具', '裝備名稱', '卷軸名稱'];
 const CATEGORY_KEYS = ['category', 'type', 'kind', '分類', '類別', '種類', '物品分類', '商品分類'];
 const LATEST_KEYS = ['latest', 'lastPrice', 'last_price', 'price', 'currentPrice', 'current_price', '最後報價', '最新價格', '價格', '現價', '成交價', '目前價格', '最新成交', '最新成交價', '即時價格', '市場價格', '均價'];
-const AVG24H_KEYS = ['avg24h', 'avg_24h', 'dailyAvg', 'dayAvg', 'avg1d', 'avg_1d', '日均', '24H均價', '24h均價', '24小時均價', '一天均價', '日平均', '1日均', '1天均價'];
 const AVG7D_KEYS = ['avg7d', 'avg_7d', 'weekAvg', 'sevenDayAvg', 'avg7days', '7日均', '七日均', '7天均價', '週均價', '周均價', '7日平均', '一週均價'];
+const AVG30D_KEYS = ['avg30d', 'avg_30d', 'monthAvg', 'thirtyDayAvg', 'avg30days', '30日均', '三十日均', '30天均價', '月均價', '30日平均'];
 const CHANGE_KEYS = ['change', 'changePercent', 'change_percent', 'rate', '漲跌幅', '漲跌', '變化率', '漲跌%', '漲跌％', '漲幅', '跌幅'];
 
 function valueFrom(row, keys, fallback = '') {
@@ -93,7 +94,7 @@ function headerScore(row) {
   const hasName = NAME_KEYS.some((key) => normalized.includes(normalizeKey(key)));
   const hasLatest = LATEST_KEYS.some((key) => normalized.includes(normalizeKey(key)));
   const hasCategory = CATEGORY_KEYS.some((key) => normalized.includes(normalizeKey(key)));
-  const hasAvg = AVG24H_KEYS.some((key) => normalized.includes(normalizeKey(key))) || AVG7D_KEYS.some((key) => normalized.includes(normalizeKey(key)));
+  const hasAvg = AVG7D_KEYS.some((key) => normalized.includes(normalizeKey(key))) || AVG30D_KEYS.some((key) => normalized.includes(normalizeKey(key)));
   return Number(hasName) * 4 + Number(hasLatest) * 4 + Number(hasCategory) + Number(hasAvg);
 }
 
@@ -130,35 +131,10 @@ function workbookRows(buffer, sheetName) {
   return { rows, headers, sheetName: selectedSheetName || '' };
 }
 
-function trendFromRow(row) {
-  const values = [];
-  for (let index = 1; index <= 30; index += 1) {
-    const value = valueFrom(row, [
-      `trend${index}`,
-      `Trend${index}`,
-      `price${index}`,
-      `price_${index}`,
-      `走勢${index}`,
-      `價格${index}`,
-      `第${index}筆`,
-      `歷史${index}`,
-    ], '');
-    const parsed = toNumber(value, 0);
-    if (parsed > 0) values.push(parsed);
-  }
-
-  if (values.length >= 2) return values;
-
-  const history = valueFrom(row, ['trend', 'history', 'prices', '走勢', '歷史價格', '價格走勢'], '');
-  if (typeof history === 'string' && history.trim()) {
-    const parsed = history
-      .split(/[|,，\s]+/)
-      .map((item) => toNumber(item, 0))
-      .filter((value) => value > 0);
-    if (parsed.length >= 2) return parsed;
-  }
-
-  return [];
+function average(values) {
+  const safe = values.filter((value) => Number.isFinite(value) && value > 0);
+  if (!safe.length) return 0;
+  return safe.reduce((sum, value) => sum + value, 0) / safe.length;
 }
 
 function normalizeRows(rows, source, sheetName, meta = {}) {
@@ -171,22 +147,20 @@ function normalizeRows(rows, source, sheetName, meta = {}) {
       const latest = toNumber(valueFrom(row, LATEST_KEYS, 0));
       if (!latest) return null;
 
-      const avg24h = toNumber(valueFrom(row, AVG24H_KEYS, latest), latest);
-      const avg7d = toNumber(valueFrom(row, AVG7D_KEYS, avg24h), avg24h);
+      const avg7d = toNumber(valueFrom(row, AVG7D_KEYS, latest), latest);
+      const avg30d = toNumber(valueFrom(row, AVG30D_KEYS, avg7d), avg7d);
       const derivedChange = avg7d > 0 ? ((latest - avg7d) / avg7d) * 100 : 0;
       const change = toNumber(valueFrom(row, CHANGE_KEYS, derivedChange), derivedChange);
-      const trend = trendFromRow(row);
-      const fallbackTrend = [avg7d || latest, avg24h || latest, latest].filter((value) => value > 0);
 
       return {
         id: String(valueFrom(row, ['id', 'key', 'item_id', '商品ID', '編號'], `${name}-${index}`)),
         name,
         category,
         latest,
-        avg24h,
         avg7d,
+        avg30d,
         change,
-        trend: trend.length >= 2 ? trend : fallbackTrend,
+        trend: [avg30d || avg7d || latest, avg7d || latest, latest].filter((value) => value > 0),
       };
     })
     .filter(Boolean);
@@ -235,6 +209,133 @@ function resolveGoogleSheetUrl(sourceUrl) {
   return sourceUrl;
 }
 
+function todayInTimezone(timeZone = 'Asia/Taipei') {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+
+  const get = (type) => parts.find((part) => part.type === type)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+function dateDaysAgo(days, timeZone = 'Asia/Taipei') {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - days);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const get = (type) => parts.find((part) => part.type === type)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+function getServerSupabase() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.ARTALE_PRICE_SUPABASE_SERVICE_ROLE_KEY || '';
+
+  if (!url || !serviceKey) return null;
+
+  return createClient(url, serviceKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+}
+
+async function persistDailyPricesAndApplyHistory(items, source) {
+  const supabase = getServerSupabase();
+  if (!supabase || !items.length) {
+    return {
+      items,
+      historySaved: false,
+      historyMessage: 'SUPABASE_SERVICE_ROLE_KEY 未設定，未寫入每日最後報價。',
+    };
+  }
+
+  const today = todayInTimezone();
+  const since = dateDaysAgo(45);
+  const upsertRows = items.map((item) => ({
+    item_key: item.id,
+    price_date: today,
+    item_name: item.name,
+    category: item.category,
+    last_price: item.latest,
+    source: source || '',
+  }));
+
+  const { error: upsertError } = await supabase
+    .from('artale_price_daily_records')
+    .upsert(upsertRows, { onConflict: 'item_key,price_date' });
+
+  if (upsertError) {
+    return {
+      items,
+      historySaved: false,
+      historyMessage: upsertError.message,
+    };
+  }
+
+  const itemKeys = items.map((item) => item.id);
+  const { data: records, error: selectError } = await supabase
+    .from('artale_price_daily_records')
+    .select('item_key, price_date, last_price')
+    .in('item_key', itemKeys)
+    .gte('price_date', since)
+    .order('price_date', { ascending: true });
+
+  if (selectError) {
+    return {
+      items,
+      historySaved: true,
+      historyMessage: selectError.message,
+    };
+  }
+
+  const historyMap = new Map();
+  for (const record of records || []) {
+    const key = String(record.item_key || '');
+    if (!historyMap.has(key)) historyMap.set(key, []);
+    historyMap.get(key).push({
+      date: String(record.price_date || ''),
+      price: toNumber(record.last_price, 0),
+    });
+  }
+
+  const nextItems = items.map((item) => {
+    const history = (historyMap.get(item.id) || [])
+      .filter((record) => record.price > 0)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const prices = history.map((record) => record.price);
+    const latest = prices.length ? prices[prices.length - 1] : item.latest;
+    const avg7d = average(prices.slice(-7)) || item.avg7d || latest;
+    const avg30d = average(prices.slice(-30)) || item.avg30d || avg7d;
+    const change = avg7d > 0 ? ((latest - avg7d) / avg7d) * 100 : item.change;
+
+    return {
+      ...item,
+      latest,
+      avg7d,
+      avg30d,
+      change,
+      trend: prices.length >= 2 ? prices.slice(-30) : item.trend,
+      historyDates: history.map((record) => record.date).slice(-30),
+    };
+  });
+
+  return {
+    items: nextItems,
+    historySaved: true,
+    historyRows: records?.length || 0,
+    priceDate: today,
+  };
+}
+
 async function loadRowsFromSource() {
   const excelUrl = process.env.ARTALE_PRICE_EXCEL_URL || '';
   const csvUrl = process.env.ARTALE_PRICE_CSV_URL || '';
@@ -248,7 +349,6 @@ async function loadRowsFromSource() {
     return {
       status: 503,
       payload: {
-        source: 'not-configured',
         error: 'ARTALE_PRICE_EXCEL_URL or ARTALE_PRICE_CSV_URL is not configured.',
         items: [],
       },
@@ -269,7 +369,6 @@ async function loadRowsFromSource() {
     return {
       status: response.status,
       payload: {
-        source: sourceUrl,
         originalSource: originalSourceUrl,
         error: `Upstream returned HTTP ${response.status}`,
         items: [],
@@ -281,7 +380,6 @@ async function loadRowsFromSource() {
     return {
       status: 422,
       payload: {
-        source: sourceUrl,
         originalSource: originalSourceUrl,
         error: '資料來源回傳 HTML，不是 CSV / Excel。Google Sheet 請使用「發布到網路」的 CSV 連結，或可公開讀取的 export?format=csv 連結。',
         items: [],
@@ -293,28 +391,43 @@ async function loadRowsFromSource() {
   const isCsv = Boolean(csvUrl) || lowerUrl.endsWith('.csv') || lowerUrl.includes('output=csv') || lowerUrl.includes('format=csv') || contentType.includes('csv') || contentType.startsWith('text/');
   const isJson = Boolean(legacyJsonUrl && !excelUrl && !csvUrl) || lowerUrl.endsWith('.json') || contentType.includes('json');
 
+  let normalized;
   if (isJson) {
     const text = buffer.toString('utf8');
     const payload = JSON.parse(text);
     const rawRows = Array.isArray(payload)
       ? payload
       : payload.items || payload.data || payload.prices || payload.market || payload.rows || [];
-    const normalized = normalizeRows(rawRows, sourceUrl, '', { headers: rawRows[0] && typeof rawRows[0] === 'object' ? Object.keys(rawRows[0]) : [] });
+    normalized = normalizeRows(rawRows, sourceUrl, '', { headers: rawRows[0] && typeof rawRows[0] === 'object' ? Object.keys(rawRows[0]) : [] });
+  } else {
+    const parsed = isCsv
+      ? parseCsv(buffer.toString('utf8').replace(/^\uFEFF/, ''))
+      : workbookRows(buffer, sheetName);
+    normalized = normalizeRows(parsed.rows, sourceUrl, parsed.sheetName || sheetName, { headers: parsed.headers || [] });
+    normalized.headerIndex = parsed.headerIndex;
+  }
+
+  if (!normalized.items.length) {
     return {
-      status: normalized.items.length ? 200 : 422,
+      status: 422,
       payload: { ...normalized, originalSource: originalSourceUrl },
     };
   }
 
-  const parsed = isCsv
-    ? parseCsv(buffer.toString('utf8').replace(/^\uFEFF/, ''))
-    : workbookRows(buffer, sheetName);
-
-  const normalized = normalizeRows(parsed.rows, sourceUrl, parsed.sheetName || sheetName, { headers: parsed.headers || [] });
+  const historyResult = await persistDailyPricesAndApplyHistory(normalized.items, sourceUrl);
 
   return {
-    status: normalized.items.length ? 200 : 422,
-    payload: { ...normalized, originalSource: originalSourceUrl, headerIndex: parsed.headerIndex },
+    status: 200,
+    payload: {
+      ...normalized,
+      originalSource: originalSourceUrl,
+      source: undefined,
+      items: historyResult.items,
+      historySaved: historyResult.historySaved,
+      historyMessage: historyResult.historyMessage,
+      historyRows: historyResult.historyRows || 0,
+      priceDate: historyResult.priceDate,
+    },
   };
 }
 
@@ -328,7 +441,6 @@ export default async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
     res.status(502).send(JSON.stringify({
-      source: process.env.ARTALE_PRICE_EXCEL_URL || process.env.ARTALE_PRICE_CSV_URL || process.env.ARTALE_PRICE_DATA_URL || 'unknown',
       error: error instanceof Error ? error.message : 'Failed to load Artale price file.',
       items: [],
     }));

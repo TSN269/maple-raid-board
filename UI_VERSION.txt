@@ -1,2 +1,2 @@
-UI-7.4 CSVFIX1
-Fix Google Sheet CSV parsing: auto convert Google Sheet URLs, detect header row, support more Chinese column names, and report parsed headers on failure.
+UI-7.5
+Artale price query hides data source text, moves chart controls to K-line panel, stores daily last prices in Supabase, and calculates trend/7d/30d averages from database history.
