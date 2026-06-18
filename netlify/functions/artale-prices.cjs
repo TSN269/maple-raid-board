@@ -1,4 +1,4 @@
-import XLSX from 'xlsx';
+const XLSX = require('xlsx');
 
 function toNumber(value, fallback = 0) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -272,19 +272,26 @@ async function loadRowsFromSource() {
   };
 }
 
-export default async function handler(req, res) {
+exports.handler = async function handler() {
   try {
     const result = await loadRowsFromSource();
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Cache-Control', result.status === 200 ? 'public, max-age=300, stale-while-revalidate=600' : 'no-store');
-    res.status(result.status).send(JSON.stringify(result.payload));
+    return {
+      statusCode: result.status,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': result.status === 200 ? 'public, max-age=300, stale-while-revalidate=600' : 'no-store',
+      },
+      body: JSON.stringify(result.payload),
+    };
   } catch (error) {
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store');
-    res.status(502).send(JSON.stringify({
-      source: process.env.ARTALE_PRICE_EXCEL_URL || process.env.ARTALE_PRICE_CSV_URL || process.env.ARTALE_PRICE_DATA_URL || 'unknown',
-      error: error instanceof Error ? error.message : 'Failed to load Artale price file.',
-      items: [],
-    }));
+    return {
+      statusCode: 502,
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+      body: JSON.stringify({
+        source: process.env.ARTALE_PRICE_EXCEL_URL || process.env.ARTALE_PRICE_CSV_URL || process.env.ARTALE_PRICE_DATA_URL || 'unknown',
+        error: error instanceof Error ? error.message : 'Failed to load Artale price file.',
+        items: [],
+      }),
+    };
   }
 };

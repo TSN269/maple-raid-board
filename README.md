@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-7.4
+# Maple Raid Board — TSN UI-7.4 VERCELFIX1
 
-> 版本基準：UI-7.4  
+> 版本基準：UI-7.4 VERCELFIX1  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具 + 練功效率偵測 + 隊伍收藏 + 遊戲id / 特徵碼紀錄 + Artale 物價查詢  
 > 部署架構：GitHub + Supabase + Vercel
@@ -69,7 +69,7 @@ UI-7.4 是以 UI-7.3 為基礎，新增與調整：
    - 只保留 1D，不顯示 1H / 3H / 6H
 
 5. 頁首版本顯示
-   - TSN UI-7.4
+   - TSN UI-7.4 VERCELFIX1
 ```
 
 UI-7.4 **沒有修改 Supabase schema / RPC**。  
@@ -139,7 +139,7 @@ UI-7.2 本身不需要新增 SQL。
 
 ```bash
 git add .
-git commit -m "deploy ui 7.4"
+git commit -m "deploy ui 7.4 vercelfix1"
 git push
 ```
 
@@ -364,7 +364,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 7.4"
+git commit -m "deploy ui 7.4 vercelfix1"
 git push
 ```
 
@@ -595,5 +595,53 @@ Artale 物價查詢移除參考網站按鈕
 保留 Netlify Function /.netlify/functions/artale-prices
 Serverless Function 自動解析 xlsx / csv / json 並轉成前端物價資料格式
 前端預設 endpoint 改為 /api/artale-prices
+目前最新版本
+```
+
+---
+
+## VERCELFIX1：Vercel npm install 修正
+
+這版針對 Vercel 部署時出現下列錯誤修正：
+
+```text
+npm error Exit handler never called!
+Error: Command "npm install" exited with 1
+```
+
+修正內容：
+
+```text
+1. 移除 package-lock.json
+   - 避免 Vercel 讀到打包環境產生的非 public registry resolved URL
+   - 讓 Vercel 重新使用 public npm registry 安裝依賴
+
+2. 新增 .npmrc
+   - registry=https://registry.npmjs.org/
+   - audit=false
+   - fund=false
+
+3. vercel.json installCommand 改為
+   - npm install --no-package-lock
+
+4. 修正 Vercel API function
+   - api/artale-prices.js 改為 ESM export default
+   - 符合 package.json 的 type=module
+
+5. 修正 Vercel rewrite
+   - 避免 /api/artale-prices 被 SPA fallback rewrite 到首頁
+```
+
+Vercel 重新部署前建議先清掉 Build Cache 再 Redeploy。
+
+### UI-7.4 VERCELFIX1
+
+```text
+修正 Vercel npm install Exit handler never called
+移除 package-lock.json
+新增 .npmrc 指定 public npm registry
+vercel.json installCommand 改為 npm install --no-package-lock
+api/artale-prices.js 改為 ESM export default
+Vercel rewrite 排除 /api/artale-prices
 目前最新版本
 ```

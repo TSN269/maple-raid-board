@@ -1,2 +1,2 @@
-UI-7.4
-Artale price source now supports owner-provided Excel/CSV URLs through Vercel API or Netlify Function.
+UI-7.4 VERCELFIX1
+Fix Vercel npm install failure by removing package-lock, forcing public npm registry, and converting Vercel API to ESM.
