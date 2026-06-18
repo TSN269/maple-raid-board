@@ -1,2 +1,2 @@
-UI-7.5 VERCELFIX1
-Remove xlsx/adler-32 dependency and clean node_modules before npm install to fix Vercel ENOTEMPTY rename error.
+UI-7.5 VERCELFIX2
+Fix Node.js 20 WebSocket support error by replacing serverless Supabase client usage with Supabase REST API calls.

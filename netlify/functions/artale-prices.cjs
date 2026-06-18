@@ -1,4 +1,3 @@
-const { createClient } = require('@supabase/supabase-js');
 
 function toNumber(value, fallback = 0) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -211,27 +210,49 @@ function dateDaysAgo(days, timeZone = 'Asia/Taipei') {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
-function getServerSupabase() {
+function getSupabaseRestConfig() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.ARTALE_PRICE_SUPABASE_SERVICE_ROLE_KEY || '';
 
   if (!url || !serviceKey) return null;
 
-  return createClient(url, serviceKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
+  return {
+    restUrl: `${url.replace(/\/$/, '')}/rest/v1`,
+    serviceKey,
+  };
+}
+
+async function supabaseRestRequest(path, options = {}) {
+  const config = getSupabaseRestConfig();
+  if (!config) throw new Error('SUPABASE_SERVICE_ROLE_KEY 未設定，未寫入每日最後報價。');
+
+  const response = await fetch(`${config.restUrl}${path}`, {
+    ...options,
+    headers: {
+      apikey: config.serviceKey,
+      Authorization: `Bearer ${config.serviceKey}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
     },
   });
+
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : null;
+
+  if (!response.ok) {
+    const message = payload?.message || payload?.hint || payload?.details || text || `Supabase REST HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return payload;
 }
 
 async function persistDailyPricesAndApplyHistory(items, source) {
-  const supabase = getServerSupabase();
-  if (!supabase || !items.length) {
+  if (!items.length) {
     return {
       items,
       historySaved: false,
-      historyMessage: 'SUPABASE_SERVICE_ROLE_KEY 未設定，未寫入每日最後報價。',
+      historyMessage: '沒有可寫入的物價資料。',
     };
   }
 
@@ -246,71 +267,64 @@ async function persistDailyPricesAndApplyHistory(items, source) {
     source: source || '',
   }));
 
-  const { error: upsertError } = await supabase
-    .from('artale_price_daily_records')
-    .upsert(upsertRows, { onConflict: 'item_key,price_date' });
+  try {
+    await supabaseRestRequest('/artale_price_daily_records?on_conflict=item_key,price_date', {
+      method: 'POST',
+      headers: {
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify(upsertRows),
+    });
 
-  if (upsertError) {
+    const itemFilter = items.map((item) => `"${String(item.id).replace(/"/g, '\\"')}"`).join(',');
+    const records = await supabaseRestRequest(`/artale_price_daily_records?select=item_key,price_date,last_price&item_key=in.(${encodeURIComponent(itemFilter)})&price_date=gte.${since}&order=price_date.asc`, {
+      method: 'GET',
+    });
+
+    const historyMap = new Map();
+    for (const record of records || []) {
+      const key = String(record.item_key || '');
+      if (!historyMap.has(key)) historyMap.set(key, []);
+      historyMap.get(key).push({
+        date: String(record.price_date || ''),
+        price: toNumber(record.last_price, 0),
+      });
+    }
+
+    const nextItems = items.map((item) => {
+      const history = (historyMap.get(item.id) || [])
+        .filter((record) => record.price > 0)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const prices = history.map((record) => record.price);
+      const latest = prices.length ? prices[prices.length - 1] : item.latest;
+      const avg7d = average(prices.slice(-7)) || item.avg7d || latest;
+      const avg30d = average(prices.slice(-30)) || item.avg30d || avg7d;
+      const change = avg7d > 0 ? ((latest - avg7d) / avg7d) * 100 : item.change;
+
+      return {
+        ...item,
+        latest,
+        avg7d,
+        avg30d,
+        change,
+        trend: prices.length >= 2 ? prices.slice(-30) : item.trend,
+        historyDates: history.map((record) => record.date).slice(-30),
+      };
+    });
+
+    return {
+      items: nextItems,
+      historySaved: true,
+      historyRows: records?.length || 0,
+      priceDate: today,
+    };
+  } catch (error) {
     return {
       items,
       historySaved: false,
-      historyMessage: upsertError.message,
+      historyMessage: error instanceof Error ? error.message : '每日最後報價寫入失敗。',
     };
   }
-
-  const itemKeys = items.map((item) => item.id);
-  const { data: records, error: selectError } = await supabase
-    .from('artale_price_daily_records')
-    .select('item_key, price_date, last_price')
-    .in('item_key', itemKeys)
-    .gte('price_date', since)
-    .order('price_date', { ascending: true });
-
-  if (selectError) {
-    return {
-      items,
-      historySaved: true,
-      historyMessage: selectError.message,
-    };
-  }
-
-  const historyMap = new Map();
-  for (const record of records || []) {
-    const key = String(record.item_key || '');
-    if (!historyMap.has(key)) historyMap.set(key, []);
-    historyMap.get(key).push({
-      date: String(record.price_date || ''),
-      price: toNumber(record.last_price, 0),
-    });
-  }
-
-  const nextItems = items.map((item) => {
-    const history = (historyMap.get(item.id) || [])
-      .filter((record) => record.price > 0)
-      .sort((a, b) => a.date.localeCompare(b.date));
-    const prices = history.map((record) => record.price);
-    const latest = prices.length ? prices[prices.length - 1] : item.latest;
-    const avg7d = average(prices.slice(-7)) || item.avg7d || latest;
-    const avg30d = average(prices.slice(-30)) || item.avg30d || avg7d;
-    const change = avg7d > 0 ? ((latest - avg7d) / avg7d) * 100 : item.change;
-
-    return {
-      ...item,
-      latest,
-      avg7d,
-      avg30d,
-      change,
-      trend: prices.length >= 2 ? prices.slice(-30) : item.trend,
-      historyDates: history.map((record) => record.date).slice(-30),
-    };
-  });
-
-  return {
-    items: nextItems,
-    historySaved: true,
-    historyRows: records?.length || 0,
-    priceDate: today,
-  };
 }
 
 async function loadRowsFromSource() {

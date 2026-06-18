@@ -1,4 +1,4 @@
-# Maple Raid Board — TSN UI-7.5 VERCELFIX1
+# Maple Raid Board — TSN UI-7.5 VERCELFIX2
 
 > GitHub 帳號：TSN269  
 > 部署架構：GitHub + Supabase + Vercel  
@@ -147,7 +147,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 7.5 vercelfix1"
+git commit -m "deploy ui 7.5 vercelfix2"
 git push
 ```
 
@@ -190,6 +190,18 @@ Build Command: node -v && npm -v && npm run build
 
 3. 物價來源改為 CSV / Google Sheet CSV 優先
    - ARTALE_PRICE_CSV_URL
+```
+
+---
+
+## VERCELFIX2
+
+```text
+1. 修正 /api/artale-prices 在 Node.js 20 出現 WebSocket support 錯誤
+2. Serverless API 不再 import @supabase/supabase-js
+3. 改用 Supabase REST API 寫入 / 查詢 artale_price_daily_records
+4. 不需要安裝 ws 套件
+5. 前端既有 Supabase 功能不變
 ```
 
 ---
@@ -269,5 +281,15 @@ Artale 物價查詢移除參考網站按鈕
 移除 xlsx / adler-32 dependency
 Install Command 先清除 node_modules 與 package-lock.json
 CSV / Google Sheet CSV 功能保留
+目前最新版本
+```
+
+### UI-7.5 VERCELFIX2
+
+```text
+修正 Node.js 20 without native WebSocket support
+Serverless API 改用 Supabase REST API
+移除 API 端 @supabase/supabase-js import
+不需要 ws 套件
 目前最新版本
 ```
