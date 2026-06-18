@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-7.4 VERCELFIX1
+# Maple Raid Board — TSN UI-7.4 VERCELFIX2 VERCELFIX2
 
-> 版本基準：UI-7.4 VERCELFIX1  
+> 版本基準：UI-7.4 VERCELFIX2 VERCELFIX2  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具 + 練功效率偵測 + 隊伍收藏 + 遊戲id / 特徵碼紀錄 + Artale 物價查詢  
 > 部署架構：GitHub + Supabase + Vercel
@@ -69,7 +69,7 @@ UI-7.4 是以 UI-7.3 為基礎，新增與調整：
    - 只保留 1D，不顯示 1H / 3H / 6H
 
 5. 頁首版本顯示
-   - TSN UI-7.4 VERCELFIX1
+   - TSN UI-7.4 VERCELFIX2 VERCELFIX2
 ```
 
 UI-7.4 **沒有修改 Supabase schema / RPC**。  
@@ -139,7 +139,7 @@ UI-7.2 本身不需要新增 SQL。
 
 ```bash
 git add .
-git commit -m "deploy ui 7.4 vercelfix1"
+git commit -m "deploy ui 7.4 vercelfix2 vercelfix2"
 git push
 ```
 
@@ -364,7 +364,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 7.4 vercelfix1"
+git commit -m "deploy ui 7.4 vercelfix2 vercelfix2"
 git push
 ```
 
@@ -643,5 +643,50 @@ Vercel 重新部署前建議先清掉 Build Cache 再 Redeploy。
 vercel.json installCommand 改為 npm install --no-package-lock
 api/artale-prices.js 改為 ESM export default
 Vercel rewrite 排除 /api/artale-prices
+目前最新版本
+```
+
+---
+
+## VERCELFIX2：Vercel npm install 再修正
+
+若 Vercel 仍顯示：
+
+```text
+Running "install" command: `npm install`
+npm error Exit handler never called!
+```
+
+代表部署環境仍在使用 Vercel 預設 Node / npm 或專案設定覆蓋了 repo 內的 installCommand。
+
+VERCELFIX2 修正：
+
+```text
+1. package.json 新增 engines
+   - node: 20.x
+
+2. 新增 .nvmrc / .node-version
+   - 20
+
+3. vercel.json buildCommand 顯示 node -v 與 npm -v
+   - 可在 Build Log 確認實際版本
+
+4. vercel.json installCommand 改為
+   - npm install --no-package-lock --prefer-online --no-audit --no-fund
+
+5. .npmrc 固定 public npm registry
+```
+
+Vercel 官方目前可用 Node.js 版本包含 24.x、22.x、20.x，且可在 package.json 的 engines.node 指定 major version。  
+npm 的「Exit handler never called」曾與特定 Node 22 / npm 版本組合有關，因此這版固定到 Node 20.x。
+
+### UI-7.4 VERCELFIX2
+
+```text
+修正 Vercel 仍用 npm install 導致 Exit handler never called
+package.json engines.node 固定 20.x
+新增 .nvmrc 與 .node-version
+vercel.json buildCommand 印出 node / npm 版本
+vercel.json installCommand 使用 npm install --no-package-lock --prefer-online --no-audit --no-fund
 目前最新版本
 ```
