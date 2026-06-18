@@ -883,7 +883,7 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
           <div className="mt-5 rounded-[1.6rem] border border-rose-100 bg-rose-50 p-5 text-sm font-bold leading-7 text-rose-700">
             <div className="font-black">物價資料讀取失敗</div>
             <div className="mt-1">{marketError}</div>
-            <div className="mt-2 text-xs text-rose-600">請確認 Vercel / Netlify 環境變數 ARTALE_PRICE_EXCEL_URL 或 ARTALE_PRICE_CSV_URL 已設定為可直接下載的 Excel / CSV 檔案。</div>
+            <div className="mt-2 text-xs text-rose-600">請確認 Vercel / Netlify 環境變數 ARTALE_PRICE_EXCEL_URL 或 ARTALE_PRICE_CSV_URL 已設定為可直接下載的 Excel / CSV 檔案，且欄位包含商品名稱與價格。</div>
           </div>
         ) : null}
 
@@ -4018,7 +4018,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-7.4</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-7.4 CSVFIX1</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>

@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-7.4 VERCELFIX2 VERCELFIX2
+# Maple Raid Board — TSN UI-7.4 CSVFIX1 CSVFIX1 VERCELFIX2
 
-> 版本基準：UI-7.4 VERCELFIX2 VERCELFIX2  
+> 版本基準：UI-7.4 CSVFIX1 CSVFIX1 VERCELFIX2  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具 + 練功效率偵測 + 隊伍收藏 + 遊戲id / 特徵碼紀錄 + Artale 物價查詢  
 > 部署架構：GitHub + Supabase + Vercel
@@ -69,7 +69,7 @@ UI-7.4 是以 UI-7.3 為基礎，新增與調整：
    - 只保留 1D，不顯示 1H / 3H / 6H
 
 5. 頁首版本顯示
-   - TSN UI-7.4 VERCELFIX2 VERCELFIX2
+   - TSN UI-7.4 CSVFIX1 CSVFIX1 VERCELFIX2
 ```
 
 UI-7.4 **沒有修改 Supabase schema / RPC**。  
@@ -90,6 +90,7 @@ ARTALE_PRICE_EXCEL_URL=https://example.com/artale-price.xlsx
 ARTALE_PRICE_EXCEL_SHEET=prices
 ARTALE_PRICE_CSV_URL=
 ARTALE_PRICE_DATA_AUTH_HEADER=
+ARTALE_PRICE_GOOGLE_SHEET_GID=
 
 # Vercel 預設使用 /api/artale-prices
 # Netlify 可改為 /.netlify/functions/artale-prices
@@ -139,7 +140,7 @@ UI-7.2 本身不需要新增 SQL。
 
 ```bash
 git add .
-git commit -m "deploy ui 7.4 vercelfix2 vercelfix2"
+git commit -m "deploy ui 7.4 csvfix1 csvfix1 vercelfix2"
 git push
 ```
 
@@ -364,7 +365,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 7.4 vercelfix2 vercelfix2"
+git commit -m "deploy ui 7.4 csvfix1 csvfix1 vercelfix2"
 git push
 ```
 
@@ -688,5 +689,54 @@ package.json engines.node 固定 20.x
 新增 .nvmrc 與 .node-version
 vercel.json buildCommand 印出 node / npm 版本
 vercel.json installCommand 使用 npm install --no-package-lock --prefer-online --no-audit --no-fund
+目前最新版本
+```
+
+---
+
+## CSVFIX1：Google Sheet CSV 讀取修正
+
+如果 Artale 物價查詢顯示：
+
+```text
+物價資料來源沒有回傳可用商品資料。
+```
+
+通常原因是：
+
+```text
+1. Google Sheet URL 是分享頁或 pubhtml，不是真正 CSV
+2. CSV 第一列不是欄位列
+3. 欄位名稱不是 name / category / latest
+4. 商品名稱或價格欄位空白
+```
+
+CSVFIX1 修正：
+
+```text
+1. 支援 Google Sheet 一般分享連結自動轉 export?format=csv
+2. 支援 Google Sheet pubhtml 自動轉 output=csv
+3. CSV / Excel 會自動尋找真正欄位列
+4. 支援更多中文欄位名稱
+   - 品名
+   - 物品
+   - 道具
+   - 最新成交
+   - 最新成交價
+   - 目前價格
+   - 市場價格
+   - 24小時均價
+   - 7天均價
+5. 無法解析時會回傳已讀到的欄位名稱，方便比對
+```
+
+### UI-7.4 CSVFIX1
+
+```text
+修正 Google Sheet CSV 讀取後沒有可用商品資料
+支援 Google Sheet 分享連結 / pubhtml 自動轉 CSV
+CSV / Excel 自動尋找欄位列
+支援更多中文欄位名稱
+解析失敗時顯示已讀到欄位，方便修正表格
 目前最新版本
 ```

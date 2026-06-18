@@ -1,2 +1,2 @@
-UI-7.4 VERCELFIX2
-Pin Node.js to 20.x for Vercel and print node/npm versions in build logs to avoid npm Exit handler bug.
+UI-7.4 CSVFIX1
+Fix Google Sheet CSV parsing: auto convert Google Sheet URLs, detect header row, support more Chinese column names, and report parsed headers on failure.
