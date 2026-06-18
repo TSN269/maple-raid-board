@@ -1,2 +1,2 @@
-UI-7.2
-Replaced top-right copy group link button with Artale price query modal in site-style orange UI.
+UI-7.3
+Artale price query now fetches actual JSON data through Netlify Function, removes reference button, volume, 1H/3H/6H, and uses line charts.

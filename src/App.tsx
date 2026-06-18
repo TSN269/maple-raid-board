@@ -646,40 +646,137 @@ type ArtaleMarketItem = {
   avg24h: number;
   avg7d: number;
   change: number;
-  volume: number;
   trend: number[];
 };
 
-const artaleMarketItems: ArtaleMarketItem[] = [
-  { id: 'chaos-scroll', name: '混沌卷軸 60%', category: '卷軸', latest: 28500000, avg24h: 27600000, avg7d: 26300000, change: 8.4, volume: 42, trend: [22, 24, 25, 27, 26, 28, 29] },
-  { id: 'glove-atk', name: '手套攻擊卷軸 60%', category: '卷軸', latest: 16800000, avg24h: 16200000, avg7d: 15900000, change: 5.7, volume: 31, trend: [15, 16, 16, 15, 17, 16, 17] },
-  { id: 'cape-int', name: '披風智力卷軸 60%', category: '卷軸', latest: 7600000, avg24h: 7300000, avg7d: 7100000, change: 3.9, volume: 19, trend: [6.8, 7, 7.2, 7.1, 7.4, 7.5, 7.6] },
-  { id: 'helmet-acc', name: '頭盔命中卷軸 60%', category: '卷軸', latest: 4300000, avg24h: 4500000, avg7d: 4700000, change: -8.5, volume: 15, trend: [5.1, 4.9, 4.8, 4.7, 4.6, 4.4, 4.3] },
-  { id: 'brown-work-glove', name: '褐色工地手套', category: '防具', latest: 128000000, avg24h: 124000000, avg7d: 119000000, change: 7.6, volume: 8, trend: [110, 114, 118, 121, 123, 126, 128] },
-  { id: 'zakum-helmet', name: '殘暴炎魔頭盔', category: '防具', latest: 52000000, avg24h: 54500000, avg7d: 56000000, change: -7.1, volume: 12, trend: [58, 56, 55, 54, 53, 52, 52] },
-  { id: 'hwabi', name: '火焰飛鏢', category: '武器', latest: 91500000, avg24h: 90000000, avg7d: 87600000, change: 4.4, volume: 9, trend: [82, 84, 85, 88, 89, 91, 92] },
-  { id: 'black-crystal', name: '黑水晶', category: '其他', latest: 1450000, avg24h: 1510000, avg7d: 1580000, change: -8.2, volume: 88, trend: [1.8, 1.7, 1.62, 1.55, 1.5, 1.48, 1.45] },
-  { id: 'ap-reset', name: 'AP 重置券', category: '商城道具', latest: 41000000, avg24h: 39800000, avg7d: 39200000, change: 4.6, volume: 23, trend: [37, 38, 39, 40, 39.8, 40.5, 41] },
-  { id: 'horntail-necklace', name: '闇黑龍王項鍊', category: '闇黑龍王項鍊', latest: 330000000, avg24h: 318000000, avg7d: 301000000, change: 9.6, volume: 3, trend: [280, 292, 300, 305, 312, 322, 330] },
-];
+type ArtaleMarketPayload = {
+  items?: ArtaleMarketItem[];
+  source?: string;
+  updatedAt?: string;
+  error?: string;
+};
+
+function toSafeNumber(value: unknown, fallback = 0) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/[,\s]/g, '');
+    const parsed = Number(cleaned);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function normalizeArtaleMarketPayload(payload: unknown): ArtaleMarketPayload {
+  const source = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
+  const rawItems = Array.isArray(source.items)
+    ? source.items
+    : Array.isArray(source.data)
+      ? source.data
+      : Array.isArray(source.prices)
+        ? source.prices
+        : Array.isArray(payload)
+          ? payload
+          : [];
+
+  const items = rawItems
+    .map((raw, index) => {
+      const item = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+      const name = String(item.name || item.itemName || item.item_name || item.title || item.item || '').trim();
+      if (!name) return null;
+
+      const latest = toSafeNumber(item.latest ?? item.lastPrice ?? item.last_price ?? item.price ?? item.currentPrice ?? item.current_price);
+      const avg24h = toSafeNumber(item.avg24h ?? item.avg_24h ?? item.dailyAvg ?? item.dayAvg ?? item.avg1d ?? item.avg_1d, latest);
+      const avg7d = toSafeNumber(item.avg7d ?? item.avg_7d ?? item.weekAvg ?? item.sevenDayAvg ?? item.avg7days, avg24h);
+      const rawTrend = Array.isArray(item.trend)
+        ? item.trend
+        : Array.isArray(item.history)
+          ? item.history
+          : Array.isArray(item.prices)
+            ? item.prices
+            : [];
+      const trend = rawTrend
+        .map((point) => {
+          if (typeof point === 'number' || typeof point === 'string') return toSafeNumber(point);
+          if (point && typeof point === 'object') {
+            const sourcePoint = point as Record<string, unknown>;
+            return toSafeNumber(sourcePoint.price ?? sourcePoint.value ?? sourcePoint.close ?? sourcePoint.avg);
+          }
+          return 0;
+        })
+        .filter((value) => Number.isFinite(value) && value > 0);
+
+      const derivedChange = avg7d > 0 ? ((latest - avg7d) / avg7d) * 100 : 0;
+
+      return {
+        id: String(item.id || item.key || item.item_id || `${name}-${index}`),
+        name,
+        category: String(item.category || item.type || item.kind || '其他'),
+        latest,
+        avg24h,
+        avg7d,
+        change: toSafeNumber(item.change ?? item.changePercent ?? item.change_percent ?? item.rate, derivedChange),
+        trend: trend.length >= 2 ? trend : [avg7d || latest, avg24h || latest, latest].filter((value) => value > 0),
+      } satisfies ArtaleMarketItem;
+    })
+    .filter(Boolean) as ArtaleMarketItem[];
+
+  return {
+    items,
+    source: String(source.source || source.provider || 'ARTALE_PRICE_DATA_URL'),
+    updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : typeof source.updated_at === 'string' ? source.updated_at : undefined,
+    error: typeof source.error === 'string' ? source.error : undefined,
+  };
+}
+
+async function fetchArtaleMarketItems(): Promise<ArtaleMarketPayload> {
+  const endpoint = import.meta.env.VITE_ARTALE_PRICE_ENDPOINT || '/.netlify/functions/artale-prices';
+  const response = await fetch(endpoint, { headers: { Accept: 'application/json' } });
+  const payload = await response.json().catch(() => null);
+  const normalized = normalizeArtaleMarketPayload(payload);
+
+  if (!response.ok) {
+    throw new Error(normalized.error || `物價資料來源回應錯誤：HTTP ${response.status}`);
+  }
+
+  if (!normalized.items?.length) {
+    throw new Error(normalized.error || '物價資料來源沒有回傳可用商品資料。');
+  }
+
+  return normalized;
+}
 
 function formatMesos(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '--';
   if (value >= 100000000) return `${(value / 100000000).toFixed(value >= 1000000000 ? 1 : 2)}億`;
   if (value >= 10000) return `${Math.round(value / 10000).toLocaleString('zh-TW')}萬`;
   return Math.round(value).toLocaleString('zh-TW');
 }
 
-function MiniMarketTrend({ values, positive }: { values: number[]; positive: boolean }) {
-  const max = Math.max(...values, 1);
-  const min = Math.min(...values, 0);
-  const range = Math.max(0.1, max - min);
+function MarketTrendLine({ values, positive }: { values: number[]; positive: boolean }) {
+  const safeValues = values.filter((value) => Number.isFinite(value) && value > 0);
+  const series = safeValues.length >= 2 ? safeValues : [1, 1];
+  const width = 180;
+  const height = 58;
+  const pad = 8;
+  const max = Math.max(...series);
+  const min = Math.min(...series);
+  const range = Math.max(1, max - min);
+  const points = series.map((value, index) => {
+    const x = pad + (index / Math.max(1, series.length - 1)) * (width - pad * 2);
+    const y = height - pad - ((value - min) / range) * (height - pad * 2);
+    return { x, y };
+  });
+  const path = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ');
 
   return (
-    <div className="flex h-14 items-end gap-1 rounded-2xl bg-white/70 px-2 py-2">
-      {values.map((value, index) => {
-        const height = 18 + ((value - min) / range) * 32;
-        return <span key={`${value}-${index}`} className={classNames('w-full rounded-t-full', positive ? 'bg-orange-300' : 'bg-slate-300')} style={{ height }} />;
-      })}
+    <div className="rounded-2xl border border-orange-100 bg-white/80 px-2 py-2">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-14 w-full" role="img" aria-label="價格走勢折線圖">
+        <path d={`M ${pad} ${height - pad} H ${width - pad}`} fill="none" stroke="rgba(251,146,60,0.18)" strokeWidth="1" />
+        <path d={path} fill="none" stroke={positive ? '#f97316' : '#64748b'} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />
+        {points.map((point, index) => (
+          <circle key={index} cx={point.x} cy={point.y} r="2.8" fill={positive ? '#f97316' : '#64748b'} />
+        ))}
+      </svg>
     </div>
   );
 }
@@ -687,29 +784,66 @@ function MiniMarketTrend({ values, positive }: { values: number[]; positive: boo
 function ArtalePriceModal({ onClose }: { onClose: () => void }) {
   const [keyword, setKeyword] = useState('');
   const [category, setCategory] = useState('全部');
-  const [range, setRange] = useState('1D');
+  const [range] = useState('1D');
   const [ma, setMa] = useState('5MA');
-  const [activeItemId, setActiveItemId] = useState(artaleMarketItems[0]?.id || '');
-  const [compareItemId, setCompareItemId] = useState(artaleMarketItems[1]?.id || '');
-  const [watchList, setWatchList] = useState<string[]>(['chaos-scroll', 'ap-reset']);
-  const [calcPrice, setCalcPrice] = useState('10000000');
+  const [items, setItems] = useState<ArtaleMarketItem[]>([]);
+  const [dataSource, setDataSource] = useState('');
+  const [updatedAt, setUpdatedAt] = useState('');
+  const [loadingMarket, setLoadingMarket] = useState(true);
+  const [marketError, setMarketError] = useState('');
+  const [activeItemId, setActiveItemId] = useState('');
+  const [compareItemId, setCompareItemId] = useState('');
+  const [watchList, setWatchList] = useState<string[]>([]);
+  const [calcPrice, setCalcPrice] = useState('');
   const [scrollCount, setScrollCount] = useState('7');
   const [successRate, setSuccessRate] = useState('60');
 
-  const categories = ['全部', '商城道具', '卷軸', '其他', '防具', '武器', '闇黑龍王項鍊'];
-  const filteredItems = artaleMarketItems.filter((item) => {
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMarket() {
+      setLoadingMarket(true);
+      setMarketError('');
+      try {
+        const payload = await fetchArtaleMarketItems();
+        if (cancelled) return;
+        const nextItems = payload.items || [];
+        setItems(nextItems);
+        setDataSource(payload.source || 'ARTALE_PRICE_DATA_URL');
+        setUpdatedAt(payload.updatedAt || '');
+        setActiveItemId((current) => current || nextItems[0]?.id || '');
+        setCompareItemId((current) => current || nextItems[1]?.id || nextItems[0]?.id || '');
+        setWatchList((current) => current.length > 0 ? current : nextItems.slice(0, 2).map((item) => item.id));
+        setCalcPrice((current) => current || String(nextItems[0]?.latest || ''));
+      } catch (error) {
+        if (cancelled) return;
+        setMarketError(error instanceof Error ? error.message : '物價資料讀取失敗。');
+        setItems([]);
+      } finally {
+        if (!cancelled) setLoadingMarket(false);
+      }
+    }
+
+    void loadMarket();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const categories = ['全部', ...Array.from(new Set(items.map((item) => item.category).filter(Boolean)))];
+  const filteredItems = items.filter((item) => {
     const matchCategory = category === '全部' || item.category === category;
     const matchKeyword = !keyword.trim() || item.name.toLowerCase().includes(keyword.trim().toLowerCase());
     return matchCategory && matchKeyword;
   });
-  const activeItem = artaleMarketItems.find((item) => item.id === activeItemId) || artaleMarketItems[0];
-  const compareItem = artaleMarketItems.find((item) => item.id === compareItemId) || artaleMarketItems[1] || activeItem;
-  const watchItems = watchList.map((id) => artaleMarketItems.find((item) => item.id === id)).filter(Boolean) as ArtaleMarketItem[];
+  const activeItem = items.find((item) => item.id === activeItemId) || items[0] || null;
+  const compareItem = items.find((item) => item.id === compareItemId) || items.find((item) => item.id !== activeItem?.id) || activeItem;
+  const watchItems = watchList.map((id) => items.find((item) => item.id === id)).filter(Boolean) as ArtaleMarketItem[];
   const successRatio = Math.max(0.01, Math.min(100, Number(successRate || 1)) / 100);
   const expectedCost = Math.max(0, Number(calcPrice || 0)) * Math.max(0, Number(scrollCount || 0)) / successRatio;
   const spread = activeItem && compareItem ? activeItem.latest - compareItem.latest : 0;
-  const ratio = compareItem?.latest ? activeItem.latest / compareItem.latest : 0;
-  const topMovers = [...artaleMarketItems].sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 4);
+  const ratio = activeItem && compareItem?.latest ? activeItem.latest / compareItem.latest : 0;
+  const topMovers = [...items].sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 4);
 
   function toggleWatch(id: string) {
     setWatchList((prev) => prev.includes(id) ? prev.filter((item) => item !== id) : [id, ...prev].slice(0, 8));
@@ -722,12 +856,13 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
           <div>
             <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">Artale Market</div>
             <h2 className="mt-1 text-2xl font-black text-slate-950">Artale 物價查詢</h2>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-500">參考 Artale 楓之股的查詢介面：分類篩選、時間區間、均線、最後報價、日均、7 日均、溢價 / 折價分析、自選清單與衝卷期望造價。此頁目前為站內樣式查詢面板，實際價格資料後續可再串接資料源。</p>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-500">已改為讀取實際物價資料來源。請在部署環境設定 ARTALE_PRICE_DATA_URL，由 Netlify Function 轉接資料；前端不再使用示範資料。</p>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs font-black">
+              <span className="rounded-full bg-orange-50 px-3 py-1 text-orange-700 ring-1 ring-orange-100">資料源：{dataSource || '尚未連線'}</span>
+              <span className="rounded-full bg-slate-50 px-3 py-1 text-slate-500 ring-1 ring-slate-200">更新：{updatedAt ? new Date(updatedAt).toLocaleString('zh-TW', { hour12: false }) : '--'}</span>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" onClick={() => window.open('https://artalestock.netlify.app/', '_blank', 'noopener,noreferrer')}>開啟參考站</Button>
-            <Button variant="ghost" onClick={onClose}>關閉</Button>
-          </div>
+          <Button variant="ghost" onClick={onClose}>關閉</Button>
         </div>
 
         <div className="mt-5 grid gap-3 rounded-[1.6rem] border border-orange-100 bg-orange-50/60 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
@@ -742,71 +877,82 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
+        {loadingMarket ? (
+          <div className="mt-5 rounded-[1.6rem] border border-orange-100 bg-orange-50/50 p-8 text-center text-sm font-black text-orange-700">正在讀取實際物價資料...</div>
+        ) : marketError ? (
+          <div className="mt-5 rounded-[1.6rem] border border-rose-100 bg-rose-50 p-5 text-sm font-bold leading-7 text-rose-700">
+            <div className="font-black">物價資料讀取失敗</div>
+            <div className="mt-1">{marketError}</div>
+            <div className="mt-2 text-xs text-rose-600">請確認 Netlify / Vercel 環境變數 ARTALE_PRICE_DATA_URL 已設定為可回傳 JSON 的物價資料來源。</div>
+          </div>
+        ) : null}
+
         <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
           <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">列表模式</div>
                 <h3 className="mt-1 text-xl font-black text-slate-950">商品行情</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-400">價格僅供參考，資料統計起始日：6/1</p>
+                <p className="mt-1 text-xs font-semibold text-slate-400">價格來自已設定的資料源，僅保留 1D 區間。</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                {['1H', '3H', '6H', '1D'].map((item) => <button key={item} type="button" onClick={() => setRange(item)} className={classNames('rounded-xl px-3 py-1.5 text-xs font-black', range === item ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-500 ring-1 ring-slate-200')}>{item}</button>)}
+                <button type="button" className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-black text-white">{range}</button>
                 {['3MA', '5MA', '20MA'].map((item) => <button key={item} type="button" onClick={() => setMa(item)} className={classNames('rounded-xl px-3 py-1.5 text-xs font-black', ma === item ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-700 ring-1 ring-orange-100')}>{item}</button>)}
               </div>
             </div>
 
             <div className="mt-4 grid gap-3">
-              {filteredItems.map((item) => {
+              {filteredItems.length > 0 ? filteredItems.map((item) => {
                 const positive = item.change >= 0;
-                const active = item.id === activeItem.id;
+                const active = activeItem?.id === item.id;
                 return (
-                  <button key={item.id} type="button" onClick={() => setActiveItemId(item.id)} className={classNames('grid gap-3 rounded-3xl border p-4 text-left transition md:grid-cols-[minmax(0,1fr)_180px] md:items-center', active ? 'border-orange-300 bg-orange-50 ring-2 ring-orange-100' : 'border-orange-100 bg-white hover:bg-orange-50/50')}>
+                  <button key={item.id} type="button" onClick={() => setActiveItemId(item.id)} className={classNames('grid gap-3 rounded-3xl border p-4 text-left transition md:grid-cols-[minmax(0,1fr)_220px] md:items-center', active ? 'border-orange-300 bg-orange-50 ring-2 ring-orange-100' : 'border-orange-100 bg-white hover:bg-orange-50/50')}>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="truncate text-lg font-black text-slate-950">{item.name}</span>
                         <Pill tone="orange">{item.category}</Pill>
                         <span className={classNames('rounded-full px-2 py-0.5 text-[11px] font-black', positive ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700')}>{positive ? '+' : ''}{item.change.toFixed(1)}%</span>
                       </div>
-                      <div className="mt-2 grid gap-2 text-sm font-bold text-slate-500 sm:grid-cols-4">
+                      <div className="mt-2 grid gap-2 text-sm font-bold text-slate-500 sm:grid-cols-3">
                         <span>最後報價 <b className="text-slate-950">{formatMesos(item.latest)}</b></span>
                         <span>日均 <b className="text-slate-950">{formatMesos(item.avg24h)}</b></span>
                         <span>7日均 <b className="text-slate-950">{formatMesos(item.avg7d)}</b></span>
-                        <span>成交量 <b className="text-slate-950">{item.volume}</b></span>
                       </div>
                     </div>
-                    <MiniMarketTrend values={item.trend} positive={positive} />
+                    <MarketTrendLine values={item.trend} positive={positive} />
                   </button>
                 );
-              })}
+              }) : (
+                <div className="rounded-3xl border border-dashed border-orange-100 bg-orange-50/50 p-8 text-center text-sm font-bold text-slate-500">尚無商品資料。</div>
+              )}
             </div>
           </section>
 
           <aside className="grid gap-4">
             <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
                   <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">K線分析</div>
-                  <h3 className="mt-1 text-xl font-black text-slate-950">{activeItem.name}</h3>
+                  <h3 className="mt-1 truncate text-xl font-black text-slate-950">{activeItem?.name || '--'}</h3>
                 </div>
-                <button type="button" onClick={() => toggleWatch(activeItem.id)} className="rounded-full bg-orange-50 px-3 py-1.5 text-xs font-black text-orange-700 ring-1 ring-orange-100">{watchList.includes(activeItem.id) ? '★ 已自選' : '☆ 加自選'}</button>
+                {activeItem ? <button type="button" onClick={() => toggleWatch(activeItem.id)} className="shrink-0 rounded-full bg-orange-50 px-3 py-1.5 text-xs font-black text-orange-700 ring-1 ring-orange-100">{watchList.includes(activeItem.id) ? '★ 已自選' : '☆ 加自選'}</button> : null}
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2">
                 <div className="rounded-2xl bg-orange-50 p-3">
                   <div className="text-[11px] font-black text-orange-500">歷史最後報價</div>
-                  <div className="mt-1 text-lg font-black text-slate-950">{formatMesos(activeItem.latest)}</div>
+                  <div className="mt-1 text-lg font-black text-slate-950">{formatMesos(activeItem?.latest || 0)}</div>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-3">
                   <div className="text-[11px] font-black text-slate-400">日均(24H)</div>
-                  <div className="mt-1 text-lg font-black text-slate-950">{formatMesos(activeItem.avg24h)}</div>
+                  <div className="mt-1 text-lg font-black text-slate-950">{formatMesos(activeItem?.avg24h || 0)}</div>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-3">
                   <div className="text-[11px] font-black text-slate-400">7日均</div>
-                  <div className="mt-1 text-lg font-black text-slate-950">{formatMesos(activeItem.avg7d)}</div>
+                  <div className="mt-1 text-lg font-black text-slate-950">{formatMesos(activeItem?.avg7d || 0)}</div>
                 </div>
               </div>
               <div className="mt-4 rounded-3xl border border-orange-100 bg-orange-50/50 p-3">
-                <MiniMarketTrend values={activeItem.trend} positive={activeItem.change >= 0} />
+                <MarketTrendLine values={activeItem?.trend || []} positive={(activeItem?.change || 0) >= 0} />
                 <div className="mt-2 flex justify-between text-xs font-black text-slate-400"><span>{range}</span><span>{ma}</span></div>
               </div>
             </section>
@@ -815,11 +961,11 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
               <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">價差套利</div>
               <h3 className="mt-1 text-xl font-black text-slate-950">交叉分析圖表</h3>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <Select value={activeItem.id} onChange={(event) => setActiveItemId(event.target.value)}>
-                  {artaleMarketItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                <Select value={activeItem?.id || ''} onChange={(event) => setActiveItemId(event.target.value)}>
+                  {items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </Select>
-                <Select value={compareItem.id} onChange={(event) => setCompareItemId(event.target.value)}>
-                  {artaleMarketItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                <Select value={compareItem?.id || ''} onChange={(event) => setCompareItemId(event.target.value)}>
+                  {items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </Select>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -829,7 +975,7 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-3">
                   <div className="text-[11px] font-black text-slate-400">價差比值</div>
-                  <div className="mt-1 text-lg font-black text-slate-950">{ratio.toFixed(2)}x</div>
+                  <div className="mt-1 text-lg font-black text-slate-950">{ratio ? `${ratio.toFixed(2)}x` : '--'}</div>
                 </div>
               </div>
             </section>
@@ -838,7 +984,7 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
               <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">智能雷達</div>
               <h3 className="mt-1 text-xl font-black text-slate-950">溢價 / 折價監控</h3>
               <div className="mt-3 grid gap-2">
-                {topMovers.map((item) => (
+                {topMovers.length > 0 ? topMovers.map((item) => (
                   <div key={item.id} className="flex items-center justify-between rounded-2xl bg-orange-50/70 px-3 py-2">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-black text-slate-800">{item.name}</div>
@@ -846,7 +992,7 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
                     </div>
                     <span className={classNames('rounded-full px-2 py-1 text-xs font-black', item.change >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700')}>{item.change >= 0 ? '+' : ''}{item.change.toFixed(1)}%</span>
                   </div>
-                ))}
+                )) : <div className="rounded-2xl border border-dashed border-orange-100 bg-orange-50/50 p-4 text-center text-sm font-semibold text-slate-500">尚無雷達資料。</div>}
               </div>
             </section>
           </aside>
@@ -3872,7 +4018,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-7.2</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-7.3</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>

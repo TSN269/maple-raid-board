@@ -1,10 +1,6 @@
-<<<<<<< HEAD
-# Maple Raid Board — TSN UI-7.1
-=======
-# Maple Raid Board — TSN UI-7.2
->>>>>>> 84f73af7ee10fb41442e0a3a2600fa75751320f6
+# Maple Raid Board — TSN UI-7.3
 
-> 版本基準：UI-7.2  
+> 版本基準：UI-7.3  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具 + 練功效率偵測 + 隊伍收藏 + 遊戲id / 特徵碼紀錄 + Artale 物價查詢  
 > 部署架構：GitHub + Supabase + Vercel
@@ -45,44 +41,41 @@
 
 ---
 
-## 3. 目前 UI-7.2 主要變更
+## 3. 目前 UI-7.3 主要變更
 
-UI-7.2 是以 UI-7.1 為基礎，新增與調整：
+UI-7.3 是以 UI-7.2 為基礎，新增與調整：
 
 ```text
-1. 右上按鈕調整
-   - 原本「🔗 複製團連結」
-   - 改為「📈 Artale物價查詢」
+1. Artale 物價查詢移除參考網站按鈕
+   - 小頁面右上只保留關閉
+   - 不再提供外開參考網站按鈕
 
-2. 新增 Artale 物價查詢小頁面
-   - 點擊右上「Artale物價查詢」後彈出
-   - UI 顏色風格維持本站白底 / 橘色系
-   - 介面參考 Artale 楓之股的資訊架構
+2. 改為實際資料來源串接
+   - 新增 netlify/functions/artale-prices.js
+   - 前端預設查詢 /.netlify/functions/artale-prices
+   - 後端 Function 透過 ARTALE_PRICE_DATA_URL 讀取實際 JSON 物價資料
+   - 前端不再使用示範資料
+   - 若資料來源未設定或讀取失敗，頁面會顯示錯誤訊息
 
-3. Artale 物價查詢小頁面功能區塊
-   - 商品搜尋
-   - 商品分類篩選
-   - 時間區間 1H / 3H / 6H / 1D
-   - 均線 3MA / 5MA / 20MA
-   - 歷史最後報價
-   - 日均(24H)
-   - 7日均
-   - 迷你趨勢圖
-   - 溢價 / 折價監控
-   - 價差套利交叉分析
-   - 我的自選清單
-   - 衝捲期望造價試算
+3. 商品行情調整
+   - 移除成交量欄位
+   - 價格走勢由柱狀迷你圖改為折線圖
+   - 商品行情列表只保留最後報價、日均、7日均
 
-4. 資料說明
-   - 目前為站內樣式查詢面板與示範資料
-   - 後續可再串接實際物價資料來源
+4. 時間區間調整
+   - 移除 1H / 3H / 6H
+   - 保留 1D
 
 5. 頁首版本顯示
-   - TSN UI-7.2
+   - TSN UI-7.3
 ```
 
-UI-7.2 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-6.7 SQLFIX，升級 UI-7.2 不需要再執行 SQL。
+UI-7.3 **沒有修改 Supabase schema / RPC**。  
+但需要設定物價資料來源環境變數：
+
+```text
+ARTALE_PRICE_DATA_URL
+```
 
 ---
 
@@ -138,7 +131,7 @@ UI-7.2 本身不需要新增 SQL。
 
 ```bash
 git add .
-git commit -m "deploy ui 7.2"
+git commit -m "deploy ui 7.3"
 git push
 ```
 
@@ -172,7 +165,7 @@ Vercel 連接 GitHub repo 後會自動部署。
 3. 隊伍收藏保存於目前瀏覽器 localStorage。
 4. 遊戲id / 特徵碼紀錄保存於目前瀏覽器 localStorage。
 5. 練功效率統計資訊紀錄保存於目前瀏覽器 localStorage。
-6. Artale 物價查詢目前為站內示範資料，尚未串接實際物價資料來源。
+6. Artale 物價查詢透過 Netlify Function 讀取 ARTALE_PRICE_DATA_URL，避免前端直接暴露授權資訊。
 ```
 
 ---
@@ -265,7 +258,7 @@ Vercel 連接 GitHub repo 後會自動部署。
 注意：
 
 ```text
-目前是站內樣式查詢面板與示範資料，尚未串接實際物價資料來源。
+目前已改為透過 `ARTALE_PRICE_DATA_URL` 串接實際 JSON 物價資料來源；若未設定資料來源，頁面會顯示讀取失敗提示。
 ```
 
 ---
@@ -275,7 +268,12 @@ Vercel 連接 GitHub repo 後會自動部署。
 ```text
 1. 右上 Artale物價查詢是否可開啟小頁面
 2. Artale 物價查詢是否可搜尋、切換分類、切換區間與均線
-3. Artale 物價查詢自選清單與衝捲計算是否可操作
+3. Artale 物價查詢是否能從 ARTALE_PRICE_DATA_URL 讀取實際資料
+4. Artale 物價查詢是否已移除參考網站按鈕
+5. Artale 物價查詢商品行情是否移除成交量
+6. Artale 物價查詢價格走勢是否顯示折線圖
+7. Artale 物價查詢是否只保留 1D，不顯示 1H / 3H / 6H
+8. Artale 物價查詢自選清單與衝捲計算是否可操作
 4. 羅茱工具是否可點同一格取消
 5. 102 格子是否為整格填滿色
 6. 練功效率統計資訊紀錄重整後是否仍存在
@@ -322,7 +320,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 7.2"
+git commit -m "deploy ui 7.3"
 git push
 ```
 
@@ -534,4 +532,15 @@ Supabase 未設定時顯示本機人數 1。
 小頁面參考 Artale 楓之股的列表模式、K線分析、價差套利、衝捲計算與自選清單。
 Artale 物價查詢 UI 改成符合本站白底 / 橘色系風格。
 目前最新版本。
+```
+
+### UI-7.3
+
+```text
+Artale 物價查詢移除參考網站按鈕
+新增 Netlify Function 串接實際 JSON 物價資料來源
+商品行情移除成交量欄位
+商品行情價格走勢改為折線圖
+時間區間移除 1H / 3H / 6H，只保留 1D
+目前最新版本
 ```
