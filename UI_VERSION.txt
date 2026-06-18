@@ -1,2 +1,2 @@
-UI-7.5
-Artale price query hides data source text, moves chart controls to K-line panel, stores daily last prices in Supabase, and calculates trend/7d/30d averages from database history.
+UI-7.5 VERCELFIX1
+Remove xlsx/adler-32 dependency and clean node_modules before npm install to fix Vercel ENOTEMPTY rename error.

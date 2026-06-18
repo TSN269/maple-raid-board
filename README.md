@@ -1,4 +1,4 @@
-# Maple Raid Board — TSN UI-7.5
+# Maple Raid Board — TSN UI-7.5 VERCELFIX1
 
 > GitHub 帳號：TSN269  
 > 部署架構：GitHub + Supabase + Vercel  
@@ -45,8 +45,6 @@ VITE_SUPABASE_ANON_KEY=你的-anon-public-key
 
 SUPABASE_SERVICE_ROLE_KEY=你的-service-role-key
 
-ARTALE_PRICE_EXCEL_URL=
-ARTALE_PRICE_EXCEL_SHEET=prices
 ARTALE_PRICE_CSV_URL=https://docs.google.com/spreadsheets/d/e/xxxx/pub?gid=0&single=true&output=csv
 ARTALE_PRICE_GOOGLE_SHEET_GID=
 ARTALE_PRICE_DATA_AUTH_HEADER=
@@ -60,7 +58,7 @@ VITE_ARTALE_PRICE_ENDPOINT=/api/artale-prices
 
 ## 3. Supabase SQL
 
-部署 UI-7.5 前，請先到 Supabase SQL Editor 執行：
+部署 UI-7.5 VERCELFIX1 前，請先到 Supabase SQL Editor 執行：
 
 ```text
 supabase/ui-7-5-artale-price-history.sql
@@ -149,7 +147,7 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 7.5"
+git commit -m "deploy ui 7.5 vercelfix1"
 git push
 ```
 
@@ -175,6 +173,23 @@ Build Command: node -v && npm -v && npm run build
 7. 確認 1D / 3MA / 5MA / 20MA 已移到 K線分析
 8. 確認商品行情顯示最後報價、7日均、30日均
 9. Supabase artale_price_daily_records 有新增當日資料
+```
+
+---
+
+## VERCELFIX1
+
+```text
+1. 移除 xlsx dependency
+   - 避免 npm 安裝 xlsx 的 transitive dependency adler-32 時發生 ENOTEMPTY rename
+   - Google Sheet 使用 CSV 發布連結，不需要 xlsx
+
+2. vercel.json installCommand 先刪除舊 node_modules
+   - rm -rf node_modules package-lock.json
+   - 再 npm install
+
+3. 物價來源改為 CSV / Google Sheet CSV 優先
+   - ARTALE_PRICE_CSV_URL
 ```
 
 ---
@@ -245,4 +260,14 @@ Artale 物價查詢移除參考網站按鈕
 
 ```text
 新增左上 Logo 下方線上人數
+```
+
+### UI-7.5 VERCELFIX1
+
+```text
+修正 Vercel npm ENOTEMPTY rename node_modules/adler-32
+移除 xlsx / adler-32 dependency
+Install Command 先清除 node_modules 與 package-lock.json
+CSV / Google Sheet CSV 功能保留
+目前最新版本
 ```

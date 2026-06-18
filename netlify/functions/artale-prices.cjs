@@ -1,4 +1,3 @@
-const XLSX = require('xlsx');
 const { createClient } = require('@supabase/supabase-js');
 
 function toNumber(value, fallback = 0) {
@@ -66,9 +65,8 @@ function parseCsvRows(text) {
       continue;
     }
 
-    if (char === '"') {
-      quoted = true;
-    } else if (char === ',') {
+    if (char === '"') quoted = true;
+    else if (char === ',') {
       row.push(field);
       field = '';
     } else if (char === '\n') {
@@ -76,9 +74,7 @@ function parseCsvRows(text) {
       rows.push(row);
       row = [];
       field = '';
-    } else if (char !== '\r') {
-      field += char;
-    }
+    } else if (char !== '\r') field += char;
   }
 
   row.push(field);
@@ -113,31 +109,13 @@ function parseCsv(text) {
   return { rows: dataRows, headers, headerIndex };
 }
 
-function workbookRows(buffer, sheetName) {
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
-  const selectedSheetName = sheetName && workbook.Sheets[sheetName] ? sheetName : workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[selectedSheetName];
-
-  if (!worksheet) return { rows: [], headers: [], sheetName: selectedSheetName || '' };
-
-  const matrix = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false });
-  const headerIndex = matrix.findIndex((row) => Array.isArray(row) && headerScore(row) >= 5);
-  const selectedHeaderIndex = headerIndex >= 0 ? headerIndex : 0;
-  const headers = (matrix[selectedHeaderIndex] || []).map((item, index) => String(item || `column${index + 1}`).trim());
-  const rows = matrix.slice(selectedHeaderIndex + 1)
-    .filter((items) => Array.isArray(items) && items.some((item) => String(item || '').trim()))
-    .map((items) => Object.fromEntries(headers.map((key, index) => [key, items[index] ?? ''])));
-
-  return { rows, headers, sheetName: selectedSheetName || '' };
-}
-
 function average(values) {
   const safe = values.filter((value) => Number.isFinite(value) && value > 0);
   if (!safe.length) return 0;
   return safe.reduce((sum, value) => sum + value, 0) / safe.length;
 }
 
-function normalizeRows(rows, source, sheetName, meta = {}) {
+function normalizeRows(rows, source, meta = {}) {
   const items = rows
     .map((row, index) => {
       const name = String(valueFrom(row, NAME_KEYS, '')).trim();
@@ -167,8 +145,6 @@ function normalizeRows(rows, source, sheetName, meta = {}) {
 
   const headers = meta.headers || [];
   return {
-    source,
-    sheet: sheetName || '',
     updatedAt: new Date().toISOString(),
     rowsRead: rows.length,
     headers,
@@ -230,6 +206,7 @@ function dateDaysAgo(days, timeZone = 'Asia/Taipei') {
     month: '2-digit',
     day: '2-digit',
   }).formatToParts(date);
+
   const get = (type) => parts.find((part) => part.type === type)?.value || '';
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
@@ -337,39 +314,32 @@ async function persistDailyPricesAndApplyHistory(items, source) {
 }
 
 async function loadRowsFromSource() {
-  const excelUrl = process.env.ARTALE_PRICE_EXCEL_URL || '';
-  const csvUrl = process.env.ARTALE_PRICE_CSV_URL || '';
-  const legacyJsonUrl = process.env.ARTALE_PRICE_DATA_URL || '';
-  const sheetName = process.env.ARTALE_PRICE_EXCEL_SHEET || '';
+  const csvUrl = process.env.ARTALE_PRICE_CSV_URL || process.env.ARTALE_PRICE_EXCEL_URL || process.env.ARTALE_PRICE_DATA_URL || '';
   const authHeader = process.env.ARTALE_PRICE_DATA_AUTH_HEADER || '';
 
-  const originalSourceUrl = excelUrl || csvUrl || legacyJsonUrl;
-
-  if (!originalSourceUrl) {
+  if (!csvUrl) {
     return {
       status: 503,
       payload: {
-        error: 'ARTALE_PRICE_EXCEL_URL or ARTALE_PRICE_CSV_URL is not configured.',
+        error: 'ARTALE_PRICE_CSV_URL is not configured.',
         items: [],
       },
     };
   }
 
-  const sourceUrl = resolveGoogleSheetUrl(originalSourceUrl);
+  const sourceUrl = resolveGoogleSheetUrl(csvUrl);
   const headers = { Accept: '*/*' };
   if (authHeader) headers.Authorization = authHeader;
 
   const response = await fetch(sourceUrl, { headers });
   const contentType = response.headers.get('content-type') || '';
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  const head = buffer.toString('utf8', 0, Math.min(buffer.length, 200)).trim().toLowerCase();
+  const text = await response.text();
+  const head = text.trim().slice(0, 200).toLowerCase();
 
   if (!response.ok) {
     return {
       status: response.status,
       payload: {
-        originalSource: originalSourceUrl,
         error: `Upstream returned HTTP ${response.status}`,
         items: [],
       },
@@ -380,37 +350,32 @@ async function loadRowsFromSource() {
     return {
       status: 422,
       payload: {
-        originalSource: originalSourceUrl,
-        error: '資料來源回傳 HTML，不是 CSV / Excel。Google Sheet 請使用「發布到網路」的 CSV 連結，或可公開讀取的 export?format=csv 連結。',
+        error: '資料來源回傳 HTML，不是 CSV。Google Sheet 請使用「發布到網路」的 CSV 連結，或可公開讀取的 export?format=csv 連結。',
         items: [],
       },
     };
   }
 
   const lowerUrl = sourceUrl.toLowerCase();
-  const isCsv = Boolean(csvUrl) || lowerUrl.endsWith('.csv') || lowerUrl.includes('output=csv') || lowerUrl.includes('format=csv') || contentType.includes('csv') || contentType.startsWith('text/');
-  const isJson = Boolean(legacyJsonUrl && !excelUrl && !csvUrl) || lowerUrl.endsWith('.json') || contentType.includes('json');
+  const isJson = lowerUrl.endsWith('.json') || contentType.includes('json');
 
   let normalized;
   if (isJson) {
-    const text = buffer.toString('utf8');
     const payload = JSON.parse(text);
     const rawRows = Array.isArray(payload)
       ? payload
       : payload.items || payload.data || payload.prices || payload.market || payload.rows || [];
-    normalized = normalizeRows(rawRows, sourceUrl, '', { headers: rawRows[0] && typeof rawRows[0] === 'object' ? Object.keys(rawRows[0]) : [] });
+    normalized = normalizeRows(rawRows, sourceUrl, { headers: rawRows[0] && typeof rawRows[0] === 'object' ? Object.keys(rawRows[0]) : [] });
   } else {
-    const parsed = isCsv
-      ? parseCsv(buffer.toString('utf8').replace(/^\uFEFF/, ''))
-      : workbookRows(buffer, sheetName);
-    normalized = normalizeRows(parsed.rows, sourceUrl, parsed.sheetName || sheetName, { headers: parsed.headers || [] });
+    const parsed = parseCsv(text.replace(/^\uFEFF/, ''));
+    normalized = normalizeRows(parsed.rows, sourceUrl, { headers: parsed.headers || [] });
     normalized.headerIndex = parsed.headerIndex;
   }
 
   if (!normalized.items.length) {
     return {
       status: 422,
-      payload: { ...normalized, originalSource: originalSourceUrl },
+      payload: normalized,
     };
   }
 
@@ -420,7 +385,6 @@ async function loadRowsFromSource() {
     status: 200,
     payload: {
       ...normalized,
-      originalSource: originalSourceUrl,
       source: undefined,
       items: historyResult.items,
       historySaved: historyResult.historySaved,
@@ -447,7 +411,7 @@ exports.handler = async function handler() {
       statusCode: 502,
       headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
       body: JSON.stringify({
-        error: error instanceof Error ? error.message : 'Failed to load Artale price file.',
+        error: error instanceof Error ? error.message : 'Failed to load Artale price CSV.',
         items: [],
       }),
     };
