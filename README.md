@@ -1,6 +1,6 @@
-# Maple Raid Board — TSN UI-7.2
+# Maple Raid Board — TSN UI-7.4
 
-> 版本基準：UI-7.2  
+> 版本基準：UI-7.4  
 > GitHub 帳號：TSN269  
 > 專案用途：楓之谷 / Artale 類型突襲報名看板 + 羅茱跳台協作工具 + 練功效率偵測 + 隊伍收藏 + 遊戲id / 特徵碼紀錄 + Artale 物價查詢  
 > 部署架構：GitHub + Supabase + Vercel
@@ -41,44 +41,39 @@
 
 ---
 
-## 3. 目前 UI-7.2 主要變更
+## 3. 目前 UI-7.4 主要變更
 
-UI-7.2 是以 UI-7.1 為基礎，新增與調整：
+UI-7.4 是以 UI-7.3 為基礎，新增與調整：
 
 ```text
-1. 右上按鈕調整
-   - 原本「🔗 複製團連結」
-   - 改為「📈 Artale物價查詢」
+1. 物價資料來源改為站長提供 Excel / CSV 檔案位置
+   - 支援 ARTALE_PRICE_EXCEL_URL
+   - 支援 ARTALE_PRICE_CSV_URL
+   - 支援指定 Excel 工作表 ARTALE_PRICE_EXCEL_SHEET
+   - 保留舊 ARTALE_PRICE_DATA_URL JSON 相容模式
 
-2. 新增 Artale 物價查詢小頁面
-   - 點擊右上「Artale物價查詢」後彈出
-   - UI 顏色風格維持本站白底 / 橘色系
-   - 介面參考 Artale 楓之股的資訊架構
+2. 新增 Vercel API 與 Netlify Function
+   - Vercel：/api/artale-prices
+   - Netlify：/.netlify/functions/artale-prices
+   - 預設前端 endpoint 改為 /api/artale-prices
 
-3. Artale 物價查詢小頁面功能區塊
-   - 商品搜尋
-   - 商品分類篩選
-   - 時間區間 1H / 3H / 6H / 1D
-   - 均線 3MA / 5MA / 20MA
-   - 歷史最後報價
-   - 日均(24H)
-   - 7日均
-   - 迷你趨勢圖
-   - 溢價 / 折價監控
-   - 價差套利交叉分析
-   - 我的自選清單
-   - 衝捲期望造價試算
+3. Serverless Function 會自動解析與正規化資料
+   - Excel：讀取 xlsx 檔案
+   - CSV：讀取 csv 檔案
+   - JSON：相容舊資料來源
+   - 輸出統一 items JSON 給前端使用
 
-4. 資料說明
-   - 目前為站內樣式查詢面板與示範資料
-   - 後續可再串接實際物價資料來源
+4. 商品行情維持 UI-7.3 調整
+   - 無成交量欄位
+   - 價格走勢使用折線圖
+   - 只保留 1D，不顯示 1H / 3H / 6H
 
 5. 頁首版本顯示
-   - TSN UI-7.2
+   - TSN UI-7.4
 ```
 
-UI-7.2 **沒有修改 Supabase schema / RPC**。  
-如果已經執行過 UI-6.7 SQLFIX，升級 UI-7.2 不需要再執行 SQL。
+UI-7.4 **沒有修改 Supabase schema / RPC**。  
+但需要設定 Excel / CSV 物價檔案來源環境變數。
 
 ---
 
@@ -89,6 +84,16 @@ UI-7.2 **沒有修改 Supabase schema / RPC**。
 ```env
 VITE_SUPABASE_URL=https://你的-project-ref.supabase.co
 VITE_SUPABASE_ANON_KEY=你的-anon-public-key
+
+# Artale 物價資料來源：站長提供 Excel / CSV 直接下載 URL
+ARTALE_PRICE_EXCEL_URL=https://example.com/artale-price.xlsx
+ARTALE_PRICE_EXCEL_SHEET=prices
+ARTALE_PRICE_CSV_URL=
+ARTALE_PRICE_DATA_AUTH_HEADER=
+
+# Vercel 預設使用 /api/artale-prices
+# Netlify 可改為 /.netlify/functions/artale-prices
+VITE_ARTALE_PRICE_ENDPOINT=/api/artale-prices
 ```
 
 Vite 專案必須使用 `VITE_` 前綴，否則前端讀不到環境變數。
@@ -134,7 +139,7 @@ UI-7.2 本身不需要新增 SQL。
 
 ```bash
 git add .
-git commit -m "deploy ui 7.2"
+git commit -m "deploy ui 7.4"
 git push
 ```
 
@@ -168,7 +173,7 @@ Vercel 連接 GitHub repo 後會自動部署。
 3. 隊伍收藏保存於目前瀏覽器 localStorage。
 4. 遊戲id / 特徵碼紀錄保存於目前瀏覽器 localStorage。
 5. 練功效率統計資訊紀錄保存於目前瀏覽器 localStorage。
-6. Artale 物價查詢目前為站內示範資料，尚未串接實際物價資料來源。
+6. Artale 物價查詢透過 Netlify Function 讀取 ARTALE_PRICE_DATA_URL，避免前端直接暴露授權資訊。
 ```
 
 ---
@@ -261,17 +266,58 @@ Vercel 連接 GitHub repo 後會自動部署。
 注意：
 
 ```text
-目前是站內樣式查詢面板與示範資料，尚未串接實際物價資料來源。
+目前已改為透過 `ARTALE_PRICE_DATA_URL` 串接實際 JSON 物價資料來源；若未設定資料來源，頁面會顯示讀取失敗提示。
 ```
 
 ---
 
-## 14. 常用測試項目
+
+## 14. Artale 物價 Excel / CSV 欄位格式
+
+站長提供的 Excel / CSV 建議欄位：
+
+```text
+name        商品名稱，必填
+category    分類，必填
+latest      最後報價，必填
+avg24h      日均，選填
+avg7d       7日均，選填
+change      漲跌幅，選填
+trend1      走勢點1，選填
+trend2      走勢點2，選填
+trend3      走勢點3，選填
+trend4      走勢點4，選填
+trend5      走勢點5，選填
+trend6      走勢點6，選填
+trend7      走勢點7，選填
+```
+
+也支援常見中文欄位：
+
+```text
+商品名稱 / 名稱 / 商品
+分類 / 類別 / 種類
+最後報價 / 最新價格 / 價格 / 現價 / 成交價
+日均 / 24H均價 / 24小時均價
+7日均 / 七日均 / 7天均價 / 週均價
+漲跌幅 / 漲跌 / 變化率
+走勢1 ～ 走勢30
+```
+
+---
+
+
+## 15. 常用測試項目
 
 ```text
 1. 右上 Artale物價查詢是否可開啟小頁面
 2. Artale 物價查詢是否可搜尋、切換分類、切換區間與均線
-3. Artale 物價查詢自選清單與衝捲計算是否可操作
+3. Artale 物價查詢是否能從 ARTALE_PRICE_DATA_URL 讀取實際資料
+4. Artale 物價查詢是否已移除參考網站按鈕
+5. Artale 物價查詢商品行情是否移除成交量
+6. Artale 物價查詢價格走勢是否顯示折線圖
+7. Artale 物價查詢是否只保留 1D，不顯示 1H / 3H / 6H
+8. Artale 物價查詢自選清單與衝捲計算是否可操作
 4. 羅茱工具是否可點同一格取消
 5. 102 格子是否為整格填滿色
 6. 練功效率統計資訊紀錄重整後是否仍存在
@@ -283,7 +329,7 @@ Vercel 連接 GitHub repo 後會自動部署。
 
 ---
 
-## 15. README conflict 處理
+## 16. README conflict 處理
 
 若 `git pull` 顯示 README conflict，可直接使用本 README 覆蓋 `README.md` 後提交：
 
@@ -306,7 +352,7 @@ git push
 
 ---
 
-## 16. 常用指令
+## 17. 常用指令
 
 ```bash
 npm install
@@ -318,13 +364,13 @@ npm run build
 
 ```bash
 git add .
-git commit -m "deploy ui 7.2"
+git commit -m "deploy ui 7.4"
 git push
 ```
 
 ---
 
-## 17. 歷代改版紀錄
+## 18. 歷代改版紀錄
 
 ### UI-4.7
 
@@ -529,5 +575,25 @@ Supabase 未設定時顯示本機人數 1。
 新增 Artale 物價查詢小頁面。
 小頁面參考 Artale 楓之股的列表模式、K線分析、價差套利、衝捲計算與自選清單。
 Artale 物價查詢 UI 改成符合本站白底 / 橘色系風格。
-目前最新版本。
+```
+
+### UI-7.3
+
+```text
+Artale 物價查詢移除參考網站按鈕
+新增 Netlify Function 串接實際 JSON 物價資料來源
+商品行情移除成交量欄位
+商品行情價格走勢改為折線圖
+時間區間移除 1H / 3H / 6H，只保留 1D
+```
+
+### UI-7.4
+
+```text
+物價資料來源改由站長提供 Excel / CSV 檔案位置
+新增 Vercel API /api/artale-prices
+保留 Netlify Function /.netlify/functions/artale-prices
+Serverless Function 自動解析 xlsx / csv / json 並轉成前端物價資料格式
+前端預設 endpoint 改為 /api/artale-prices
+目前最新版本
 ```

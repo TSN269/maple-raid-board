@@ -1,2 +1,2 @@
-UI-7.2
-Replaced top-right copy group link button with Artale price query modal in site-style orange UI.
+UI-7.4
+Artale price source now supports owner-provided Excel/CSV URLs through Vercel API or Netlify Function.
