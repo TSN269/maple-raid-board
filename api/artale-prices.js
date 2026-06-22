@@ -57,6 +57,14 @@ function stableItemKey(rawId, name) {
   return `name:${normalizedName || encodeURIComponent(String(name || 'unknown'))}`;
 }
 
+function normalizeHistoryName(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '');
+}
+
 function parseCsvRows(text) {
   const rows = [];
   let row = [];
@@ -262,14 +270,19 @@ async function supabaseRestRequest(path, options = {}) {
   return payload;
 }
 
-async function mergeLegacyPriceKeys() {
+async function mergeLegacyPriceKeys(items = []) {
   try {
-    const result = await supabaseRestRequest('/rpc/merge_artale_price_key_aliases', {
+    const payload = items.map((item) => ({
+      id: item.id,
+      name: item.name,
+    }));
+
+    const result = await supabaseRestRequest('/rpc/merge_artale_price_key_aliases_for_items', {
       method: 'POST',
       headers: {
         Prefer: 'return=representation',
       },
-      body: '{}',
+      body: JSON.stringify({ p_items: payload }),
     });
 
     return {
@@ -277,10 +290,26 @@ async function mergeLegacyPriceKeys() {
       result: Array.isArray(result) ? result : [],
     };
   } catch (error) {
-    return {
-      ok: false,
-      message: error instanceof Error ? error.message : 'Legacy key merge skipped.',
-    };
+    try {
+      const fallback = await supabaseRestRequest('/rpc/merge_artale_price_key_aliases', {
+        method: 'POST',
+        headers: {
+          Prefer: 'return=representation',
+        },
+        body: '{}',
+      });
+
+      return {
+        ok: true,
+        result: Array.isArray(fallback) ? fallback : [],
+        fallback: true,
+      };
+    } catch (fallbackError) {
+      return {
+        ok: false,
+        message: fallbackError instanceof Error ? fallbackError.message : error instanceof Error ? error.message : 'Legacy key merge skipped.',
+      };
+    }
   }
 }
 
@@ -294,7 +323,7 @@ async function persistDailyPricesAndApplyHistory(items, source) {
   }
 
   const today = todayInTimezone();
-  const since = dateDaysAgo(45);
+  const since = dateDaysAgo(365);
   const upsertRows = items.map((item) => ({
     item_key: item.id,
     price_date: today,
@@ -313,25 +342,52 @@ async function persistDailyPricesAndApplyHistory(items, source) {
       body: JSON.stringify(upsertRows),
     });
 
-    const keyMergeResult = await mergeLegacyPriceKeys();
+    const keyMergeResult = await mergeLegacyPriceKeys(items);
 
-    const itemFilter = items.map((item) => `"${String(item.id).replace(/"/g, '\\"')}"`).join(',');
-    const records = await supabaseRestRequest(`/artale_price_daily_records?select=item_key,price_date,last_price,updated_at&item_key=in.(${encodeURIComponent(itemFilter)})&price_date=gte.${since}&order=price_date.asc`, {
+    const records = await supabaseRestRequest(`/artale_price_daily_records?select=item_key,item_name,price_date,last_price,updated_at&price_date=gte.${since}&order=price_date.asc`, {
       method: 'GET',
     });
 
+    const itemById = new Map(items.map((item) => [String(item.id), item]));
+    const itemIdByName = new Map(items.map((item) => [normalizeHistoryName(item.name), String(item.id)]));
     const historyMap = new Map();
+
     for (const record of records || []) {
-      const key = String(record.item_key || '');
-      if (!historyMap.has(key)) historyMap.set(key, []);
-      historyMap.get(key).push({
-        date: String(record.price_date || ''),
-        price: toNumber(record.last_price, 0),
-      });
+      const recordKey = String(record.item_key || '');
+      const recordNameKey = normalizeHistoryName(record.item_name);
+      const targetId = itemById.has(recordKey) ? recordKey : itemIdByName.get(recordNameKey);
+
+      if (!targetId) continue;
+      if (!historyMap.has(targetId)) historyMap.set(targetId, new Map());
+
+      const dateKey = String(record.price_date || '');
+      const price = toNumber(record.last_price, 0);
+      if (!dateKey || price <= 0) continue;
+
+      const previous = historyMap.get(targetId).get(dateKey);
+      const updatedAt = String(record.updated_at || '');
+      if (!previous || updatedAt >= previous.updatedAt) {
+        historyMap.get(targetId).set(dateKey, {
+          date: dateKey,
+          price,
+          updatedAt,
+        });
+      }
     }
 
+    const allMatchedRecords = [];
+    for (const dayMap of historyMap.values()) {
+      for (const record of dayMap.values()) allMatchedRecords.push(record);
+    }
+
+    const historyUpdatedAt = allMatchedRecords
+      .map((record) => record.updatedAt)
+      .filter(Boolean)
+      .sort()
+      .at(-1) || '';
+
     const nextItems = items.map((item) => {
-      const history = (historyMap.get(item.id) || [])
+      const history = Array.from(historyMap.get(item.id)?.values() || [])
         .filter((record) => record.price > 0)
         .sort((a, b) => a.date.localeCompare(b.date));
       const prices = history.map((record) => record.price);
@@ -354,7 +410,7 @@ async function persistDailyPricesAndApplyHistory(items, source) {
     return {
       items: nextItems,
       historySaved: true,
-      historyRows: records?.length || 0,
+      historyRows: allMatchedRecords.length,
       priceDate: today,
       historyUpdatedAt,
       keyMerge: keyMergeResult,
