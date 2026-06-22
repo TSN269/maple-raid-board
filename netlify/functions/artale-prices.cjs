@@ -277,7 +277,7 @@ async function persistDailyPricesAndApplyHistory(items, source) {
     });
 
     const itemFilter = items.map((item) => `"${String(item.id).replace(/"/g, '\\"')}"`).join(',');
-    const records = await supabaseRestRequest(`/artale_price_daily_records?select=item_key,price_date,last_price&item_key=in.(${encodeURIComponent(itemFilter)})&price_date=gte.${since}&order=price_date.asc`, {
+    const records = await supabaseRestRequest(`/artale_price_daily_records?select=item_key,price_date,last_price,updated_at&item_key=in.(${encodeURIComponent(itemFilter)})&price_date=gte.${since}&order=price_date.asc`, {
       method: 'GET',
     });
 
@@ -317,6 +317,7 @@ async function persistDailyPricesAndApplyHistory(items, source) {
       historySaved: true,
       historyRows: records?.length || 0,
       priceDate: today,
+      historyUpdatedAt,
     };
   } catch (error) {
     return {
@@ -405,6 +406,7 @@ async function loadRowsFromSource() {
       historyMessage: historyResult.historyMessage,
       historyRows: historyResult.historyRows || 0,
       priceDate: historyResult.priceDate,
+      historyUpdatedAt: historyResult.historyUpdatedAt || '',
     },
   };
 }

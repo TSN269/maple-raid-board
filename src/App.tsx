@@ -586,7 +586,10 @@ function GameAccountModal({ records, onClose, onSaveRecords }: { records: GameAc
             <h2 className="mt-1 text-2xl font-black text-slate-950">遊戲id / 特徵碼紀錄</h2>
             <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">紀錄格式為「遊戲id#特徵碼」，最多 10 個。特徵碼限制為最多 6 位英數字元。</p>
           </div>
-          <Button variant="ghost" onClick={onClose}>關閉</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => void loadMarket()} disabled={loadingMarket}>重新讀取報價</Button>
+            <Button variant="ghost" onClick={onClose}>關閉</Button>
+          </div>
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">
@@ -658,6 +661,7 @@ type ArtaleMarketPayload = {
   historyMessage?: string;
   historyRows?: number;
   priceDate?: string;
+  historyUpdatedAt?: string;
 };
 
 function toSafeNumber(value: unknown, fallback = 0) {
@@ -733,6 +737,7 @@ function normalizeArtaleMarketPayload(payload: unknown): ArtaleMarketPayload {
     historyMessage: typeof source.historyMessage === 'string' ? source.historyMessage : undefined,
     historyRows: toSafeNumber(source.historyRows, 0),
     priceDate: typeof source.priceDate === 'string' ? source.priceDate : undefined,
+    historyUpdatedAt: typeof source.historyUpdatedAt === 'string' ? source.historyUpdatedAt : undefined,
   };
 }
 
@@ -768,30 +773,41 @@ function movingAverage(values: number[], windowSize: number) {
   });
 }
 
-function MarketTrendLine({ values, positive }: { values: number[]; positive: boolean }) {
+function MarketTrendLine({ values, positive, showLastValue = false }: { values: number[]; positive: boolean; showLastValue?: boolean }) {
   const safeValues = values.filter((value) => Number.isFinite(value) && value > 0);
   const series = safeValues.length >= 2 ? safeValues : [1, 1];
-  const width = 220;
+  const width = showLastValue ? 292 : 220;
   const height = 72;
   const pad = 10;
+  const labelWidth = showLastValue ? 66 : 0;
+  const chartWidth = width - labelWidth;
+  const lineColor = positive ? '#dc2626' : '#16a34a';
   const max = Math.max(...series);
   const min = Math.min(...series);
   const range = Math.max(1, max - min);
   const points = series.map((value, index) => {
-    const x = pad + (index / Math.max(1, series.length - 1)) * (width - pad * 2);
+    const x = pad + (index / Math.max(1, series.length - 1)) * (chartWidth - pad * 2);
     const y = height - pad - ((value - min) / range) * (height - pad * 2);
     return { x, y };
   });
   const path = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ');
+  const lastPoint = points[points.length - 1];
+  const lastValue = series[series.length - 1];
 
   return (
     <div className="rounded-2xl border border-orange-100 bg-white/80 px-2 py-2">
       <svg viewBox={`0 0 ${width} ${height}`} className="h-16 w-full" role="img" aria-label="價格走勢折線圖">
-        <path d={`M ${pad} ${height - pad} H ${width - pad}`} fill="none" stroke="rgba(251,146,60,0.18)" strokeWidth="1" />
-        <path d={path} fill="none" stroke={positive ? '#f97316' : '#64748b'} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />
+        <path d={`M ${pad} ${height - pad} H ${chartWidth - pad}`} fill="none" stroke="rgba(251,146,60,0.18)" strokeWidth="1" />
+        <path d={path} fill="none" stroke={lineColor} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />
         {points.map((point, index) => (
-          <circle key={index} cx={point.x} cy={point.y} r="2.8" fill={positive ? '#f97316' : '#64748b'} />
+          <circle key={index} cx={point.x} cy={point.y} r="2.8" fill={lineColor} />
         ))}
+        {showLastValue ? (
+          <>
+            <path d={`M ${lastPoint.x + 5} ${lastPoint.y} H ${chartWidth + 4}`} fill="none" stroke={lineColor} strokeDasharray="3 3" strokeWidth="1.5" />
+            <text x={width - 4} y={Math.max(13, Math.min(height - 5, lastPoint.y + 4))} textAnchor="end" className="fill-slate-700 text-[10px] font-black">{formatMesos(lastValue)}</text>
+          </>
+        ) : null}
       </svg>
     </div>
   );
@@ -805,6 +821,7 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
   const [loadingMarket, setLoadingMarket] = useState(true);
   const [marketError, setMarketError] = useState('');
   const [historyMessage, setHistoryMessage] = useState('');
+  const [databaseUpdatedAt, setDatabaseUpdatedAt] = useState('');
   const [activeItemId, setActiveItemId] = useState('');
   const [compareItemId, setCompareItemId] = useState('');
   const [watchList, setWatchList] = useState<string[]>([]);
@@ -812,37 +829,31 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
   const [scrollCount, setScrollCount] = useState('7');
   const [successRate, setSuccessRate] = useState('60');
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadMarket() {
-      setLoadingMarket(true);
-      setMarketError('');
-      setHistoryMessage('');
-      try {
-        const payload = await fetchArtaleMarketItems();
-        if (cancelled) return;
-        const nextItems = payload.items || [];
-        setItems(nextItems);
-        setHistoryMessage(payload.historySaved ? '' : payload.historyMessage || '');
-        setActiveItemId((current) => current || nextItems[0]?.id || '');
-        setCompareItemId((current) => current || nextItems[1]?.id || nextItems[0]?.id || '');
-        setWatchList((current) => current.length > 0 ? current : nextItems.slice(0, 2).map((item) => item.id));
-        setCalcPrice((current) => current || String(nextItems[0]?.latest || ''));
-      } catch (error) {
-        if (cancelled) return;
-        setMarketError(error instanceof Error ? error.message : '物價資料讀取失敗。');
-        setItems([]);
-      } finally {
-        if (!cancelled) setLoadingMarket(false);
-      }
+  const loadMarket = useCallback(async () => {
+    setLoadingMarket(true);
+    setMarketError('');
+    setHistoryMessage('');
+    try {
+      const payload = await fetchArtaleMarketItems();
+      const nextItems = payload.items || [];
+      setItems(nextItems);
+      setDatabaseUpdatedAt(payload.historyUpdatedAt || payload.updatedAt || payload.priceDate || '');
+      setHistoryMessage(payload.historySaved ? '' : payload.historyMessage || '');
+      setActiveItemId((current) => current || nextItems[0]?.id || '');
+      setCompareItemId((current) => current || nextItems[1]?.id || nextItems[0]?.id || '');
+      setWatchList((current) => current.length > 0 ? current : nextItems.slice(0, 2).map((item) => item.id));
+      setCalcPrice((current) => current || String(nextItems[0]?.latest || ''));
+    } catch (error) {
+      setMarketError(error instanceof Error ? error.message : '物價資料讀取失敗。');
+      setItems([]);
+    } finally {
+      setLoadingMarket(false);
     }
-
-    void loadMarket();
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  useEffect(() => {
+    void loadMarket();
+  }, [loadMarket]);
 
   const categories = ['全部', ...Array.from(new Set(items.map((item) => item.category).filter(Boolean)))];
   const filteredItems = items.filter((item) => {
@@ -860,6 +871,7 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
   const topMovers = [...items].sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 4);
   const chartWindow = chartMode.endsWith('MA') ? Number(chartMode.replace('MA', '')) : 1;
   const chartValues = activeItem ? movingAverage(activeItem.trend, chartWindow) : [];
+  const databaseStatusText = databaseUpdatedAt ? new Date(databaseUpdatedAt).toLocaleString('zh-TW', { hour12: false }) : '--';
 
   function toggleWatch(id: string) {
     setWatchList((prev) => prev.includes(id) ? prev.filter((item) => item !== id) : [id, ...prev].slice(0, 8));
@@ -873,7 +885,10 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
             <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">Artale Market</div>
             <h2 className="mt-1 text-2xl font-black text-slate-950">Artale 物價查詢</h2>
           </div>
-          <Button variant="ghost" onClick={onClose}>關閉</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => void loadMarket()} disabled={loadingMarket}>重新讀取報價</Button>
+            <Button variant="ghost" onClick={onClose}>關閉</Button>
+          </div>
         </div>
 
         <div className="mt-5 grid gap-3 rounded-[1.6rem] border border-orange-100 bg-orange-50/60 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
@@ -903,10 +918,13 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
           <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
             <div>
               <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">列表模式</div>
-              <h3 className="mt-1 text-xl font-black text-slate-950">商品行情</h3>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <h3 className="text-xl font-black text-slate-950">商品行情</h3>
+                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black text-slate-600 ring-1 ring-slate-200">狀態：資料庫更新 {databaseStatusText}</span>
+              </div>
             </div>
 
-            <div className="mt-4 grid gap-3">
+            <div className="mt-4 grid max-h-[38rem] gap-3 overflow-y-auto pr-2">
               {filteredItems.length > 0 ? filteredItems.map((item) => {
                 const positive = item.change >= 0;
                 const active = activeItem?.id === item.id;
@@ -962,7 +980,7 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
               <div className="mt-4 rounded-3xl border border-orange-100 bg-orange-50/50 p-3">
-                <MarketTrendLine values={chartValues} positive={(activeItem?.change || 0) >= 0} />
+                <MarketTrendLine values={chartValues} positive={(activeItem?.change || 0) >= 0} showLastValue />
                 <div className="mt-2 flex justify-between text-xs font-black text-slate-400"><span>每日最後報價</span><span>{chartMode}</span></div>
               </div>
             </section>
@@ -4028,7 +4046,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-7.5</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-7.6</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
