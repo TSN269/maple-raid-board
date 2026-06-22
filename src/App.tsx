@@ -23,6 +23,7 @@ const NOTIFICATION_SNAPSHOT_STORAGE_KEY = 'maple_raid_board_notification_snapsho
 const TEAM_FAVORITES_STORAGE_KEY = 'maple_raid_board_team_favorites_v55';
 const GAME_ACCOUNT_RECORDS_STORAGE_KEY = 'maple_raid_board_game_account_records_v59';
 const SITE_PRESENCE_CLIENT_ID_STORAGE_KEY = 'maple_raid_board_site_presence_client_id_v69';
+const ARTALE_PRICE_WATCHLIST_STORAGE_KEY = 'maple_raid_board_artale_price_watchlist_v81';
 
 function getSitePresenceClientId() {
   try {
@@ -168,6 +169,17 @@ function loadNotificationReadIds(): string[] {
 
 function saveNotificationReadIds(ids: string[]) {
   localStorage.setItem(NOTIFICATION_READ_STORAGE_KEY, JSON.stringify(Array.from(new Set(ids)).slice(0, 240)));
+}
+
+function loadArtalePriceWatchList(): string[] {
+  const parsed = loadJsonObject<string[]>(ARTALE_PRICE_WATCHLIST_STORAGE_KEY, []);
+  return Array.isArray(parsed)
+    ? parsed.filter((item) => typeof item === 'string' && item.trim()).slice(0, 8)
+    : [];
+}
+
+function saveArtalePriceWatchList(ids: string[]) {
+  localStorage.setItem(ARTALE_PRICE_WATCHLIST_STORAGE_KEY, JSON.stringify(Array.from(new Set(ids)).slice(0, 8)));
 }
 
 type NotificationSnapshot = {
@@ -829,7 +841,7 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
   const [databaseUpdatedAt, setDatabaseUpdatedAt] = useState('');
   const [activeItemId, setActiveItemId] = useState('');
   const [compareItemId, setCompareItemId] = useState('');
-  const [watchList, setWatchList] = useState<string[]>([]);
+  const [watchList, setWatchList] = useState<string[]>(() => loadArtalePriceWatchList());
   const [calcPrice, setCalcPrice] = useState('');
   const [scrollCount, setScrollCount] = useState('7');
   const [successRate, setSuccessRate] = useState('60');
@@ -846,7 +858,11 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
       setHistoryMessage(payload.historySaved ? '' : payload.historyMessage || '');
       setActiveItemId((current) => current || nextItems[0]?.id || '');
       setCompareItemId((current) => current || nextItems[1]?.id || nextItems[0]?.id || '');
-      setWatchList((current) => current.length > 0 ? current : nextItems.slice(0, 2).map((item) => item.id));
+      setWatchList((current) => {
+        const validIds = new Set(nextItems.map((item) => item.id));
+        const kept = current.filter((id) => validIds.has(id));
+        return kept.length > 0 ? kept : nextItems.slice(0, 2).map((item) => item.id);
+      });
       setCalcPrice((current) => current || String(nextItems[0]?.latest || ''));
     } catch (error) {
       setMarketError(error instanceof Error ? error.message : '物價資料讀取失敗。');
@@ -859,6 +875,10 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     void loadMarket();
   }, [loadMarket]);
+
+  useEffect(() => {
+    saveArtalePriceWatchList(watchList);
+  }, [watchList]);
 
   const categories = ['全部', ...Array.from(new Set(items.map((item) => item.category).filter(Boolean)))];
   const filteredItems = items.filter((item) => {
@@ -4053,7 +4073,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.0</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.1</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -4215,11 +4235,11 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.0 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.1 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">商品行情列表模式預設高度調整為約顯示前 8 項。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">其餘商品仍可透過列表卷軸往下查看。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">我的自選清單會保存到瀏覽器本機，關閉 Artale 物價查詢後再開啟不會回到預設。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">商品行情列表模式維持約顯示前 8 項，其餘商品仍可透過卷軸查看。</div>
               <div className="rounded-2xl bg-orange-50 px-4 py-3">延續 UI-7.9：自選清單位於列表模式上方，漲跌幅顏色同步折線圖。</div>
               <div className="rounded-2xl bg-orange-50 px-4 py-3">延續 UI-7.8：物價歷史讀取支援固定 id 與舊資料讀取。</div>
             </div>
