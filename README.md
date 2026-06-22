@@ -1,8 +1,8 @@
-# Maple Raid Board — TSN UI-7.8
+# Maple Raid Board — TSN UI-7.8 SQLFIX2
 
 > React + TypeScript + Vite + Supabase + Vercel  
 > GitHub：TSN269 / maple-raid-board  
-> 最新版本：UI-7.8  
+> 最新版本：UI-7.8 SQLFIX2  
 > 主要用途：楓之谷 / Artale 突襲報名、羅茱跳台協作、練功效率偵測、隊伍收藏、遊戲 ID 紀錄、Artale 物價查詢。
 
 ---
@@ -245,7 +245,7 @@ supabase/ui-7-5-artale-price-history.sql
 Google Sheet 已新增固定 id 欄位後，請再執行一次舊 key 合併 SQL：
 
 ```text
-supabase/ui-7-8-artale-history-read-sqlfix1.sql
+supabase/ui-7-8-sqlfix2-artale-history-read.sql
 ```
 
 或執行獨立 SQL 檔：
@@ -569,7 +569,7 @@ glove_att_60,手套攻擊卷軸 60%,卷軸,16800000
 1. 部署 UI-7.8
 2. 開啟 Artale 物價查詢
 3. 按「重新讀取報價」
-4. 到 Supabase SQL Editor 執行 supabase/ui-7-8-artale-history-read-sqlfix1.sql
+4. 到 Supabase SQL Editor 執行 supabase/ui-7-8-sqlfix2-artale-history-read.sql
 5. 再按一次「重新讀取報價」
 ```
 
@@ -607,8 +607,35 @@ UI-7.8 修正「合併成功但前端讀不到舊資料最後報價」問題。
 1. 部署 UI-7.8
 2. 按一次「重新讀取報價」
 3. 到 Supabase SQL Editor 執行：
-   supabase/ui-7-8-artale-history-read-sqlfix1.sql
+   supabase/ui-7-8-sqlfix2-artale-history-read.sql
 4. 再按一次「重新讀取報價」
+```
+
+
+---
+
+## UI-7.8 SQLFIX2
+
+修正 Supabase SQL Editor 執行 `ui-7-8-artale-history-read-sqlfix1.sql` 時出現：
+
+```text
+ERROR: 42702: column reference "item_name" is ambiguous
+```
+
+原因是 PL/pgSQL `returns table` 裡有輸出欄位 `item_name`，function 內部又直接寫 `item_name`，PostgreSQL 無法判斷要用輸出變數還是資料表欄位。
+
+SQLFIX2 已把相關欄位全部改成 table alias，例如：
+
+```text
+r.item_name
+q.item_name
+f.item_name
+```
+
+執行檔案：
+
+```text
+supabase/ui-7-8-sqlfix2-artale-history-read.sql
 ```
 
 
@@ -1370,13 +1397,22 @@ Serverless API 改用 Supabase REST API
 前端既有 Supabase 功能不變
 ```
 
+### UI-7.8 SQLFIX2
+
+```text
+修正 Supabase SQL Editor 執行 SQLFIX1 時 item_name ambiguous
+重新建立 merge_artale_price_key_aliases_from_table()
+欄位全數改用 table alias，避免 PL/pgSQL output column 衝突
+目前最新版本
+```
+
 ### UI-7.8
 
 ```text
 修正合併成功但 API 讀不到舊資料最後報價
 歷史查詢改為 item_key 與正規化 item_name 雙重比對
 修正 historyUpdatedAt 未定義導致歷史計算回退
-新增 supabase/ui-7-8-artale-history-read-sqlfix1.sql
+新增 supabase/ui-7-8-sqlfix2-artale-history-read.sql
 新增 merge_artale_price_key_aliases_for_items(p_items jsonb)
 目前最新版本
 ```
@@ -1387,7 +1423,7 @@ Serverless API 改用 Supabase REST API
 修正 Artale 物價歷史 item_key 不穩定問題
 支援 Google Sheet 固定 id 欄位作為 item_key
 沒有 id 時改用商品名稱正規化 key，不再使用列順序 index
-新增 supabase/ui-7-8-artale-history-read-sqlfix1.sql
+新增 supabase/ui-7-8-sqlfix2-artale-history-read.sql
 新增 public.merge_artale_price_key_aliases() 舊 key 合併函式
 Serverless API 每次更新報價後會嘗試呼叫 key 合併函式
 可把舊的 商品名稱-index 歷史紀錄合併到新的固定 id

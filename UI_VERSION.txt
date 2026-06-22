@@ -1,2 +1,2 @@
-UI-7.8
-Fix Artale history reading after key merge: match old records by item_key or normalized item_name, fix historyUpdatedAt fallback, and add SQLFIX1 current fixed-id merge RPC.
+UI-7.8 SQLFIX2
+Fix PostgreSQL ambiguous item_name in Artale history key merge SQL function.
