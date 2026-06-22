@@ -776,10 +776,10 @@ function movingAverage(values: number[], windowSize: number) {
 function MarketTrendLine({ values, positive, showLastValue = false }: { values: number[]; positive: boolean; showLastValue?: boolean }) {
   const safeValues = values.filter((value) => Number.isFinite(value) && value > 0);
   const series = safeValues.length >= 2 ? safeValues : [1, 1];
-  const width = showLastValue ? 292 : 220;
-  const height = 72;
+  const width = showLastValue ? 348 : 220;
+  const height = showLastValue ? 156 : 72;
   const pad = 10;
-  const labelWidth = showLastValue ? 66 : 0;
+  const labelWidth = showLastValue ? 104 : 0;
   const chartWidth = width - labelWidth;
   const lineColor = positive ? '#dc2626' : '#16a34a';
   const max = Math.max(...series);
@@ -788,26 +788,31 @@ function MarketTrendLine({ values, positive, showLastValue = false }: { values: 
   const points = series.map((value, index) => {
     const x = pad + (index / Math.max(1, series.length - 1)) * (chartWidth - pad * 2);
     const y = height - pad - ((value - min) / range) * (height - pad * 2);
-    return { x, y };
+    return { x, y, value, index };
   });
   const path = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ');
-  const lastPoint = points[points.length - 1];
-  const lastValue = series[series.length - 1];
+  const labelStep = Math.max(1, Math.ceil(points.length / 12));
+  const labelPoints = showLastValue
+    ? points.filter((point) => point.index % labelStep === 0 || point.index === points.length - 1)
+    : [];
 
   return (
     <div className="rounded-2xl border border-orange-100 bg-white/80 px-2 py-2">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-16 w-full" role="img" aria-label="價格走勢折線圖">
+      <svg viewBox={`0 0 ${width} ${height}`} className={classNames(showLastValue ? 'h-40' : 'h-16', 'w-full')} role="img" aria-label="價格走勢折線圖">
         <path d={`M ${pad} ${height - pad} H ${chartWidth - pad}`} fill="none" stroke="rgba(251,146,60,0.18)" strokeWidth="1" />
         <path d={path} fill="none" stroke={lineColor} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />
-        {points.map((point, index) => (
-          <circle key={index} cx={point.x} cy={point.y} r="2.8" fill={lineColor} />
+        {points.map((point) => (
+          <circle key={point.index} cx={point.x} cy={point.y} r={showLastValue ? '2.4' : '2.8'} fill={lineColor} />
         ))}
-        {showLastValue ? (
-          <>
-            <path d={`M ${lastPoint.x + 5} ${lastPoint.y} H ${chartWidth + 4}`} fill="none" stroke={lineColor} strokeDasharray="3 3" strokeWidth="1.5" />
-            <text x={width - 4} y={Math.max(13, Math.min(height - 5, lastPoint.y + 4))} textAnchor="end" className="fill-slate-700 text-[10px] font-black">{formatMesos(lastValue)}</text>
-          </>
-        ) : null}
+        {labelPoints.map((point) => {
+          const labelY = Math.max(11, Math.min(height - 5, point.y + 3));
+          return (
+            <g key={`label-${point.index}`}>
+              <path d={`M ${point.x + 4} ${point.y} H ${chartWidth + 4}`} fill="none" stroke={lineColor} strokeDasharray="3 3" strokeWidth="1.2" opacity="0.45" />
+              <text x={width - 4} y={labelY} textAnchor="end" className="fill-slate-700 text-[9px] font-black">{formatMesos(point.value)}</text>
+            </g>
+          );
+        })}
       </svg>
     </div>
   );
@@ -914,6 +919,25 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
           <div className="mt-5 rounded-[1.6rem] border border-amber-100 bg-amber-50 p-4 text-xs font-bold leading-6 text-amber-700">{historyMessage}</div>
         ) : null}
 
+
+        <section className="mt-5 rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">自選清單</div>
+              <h3 className="mt-1 text-xl font-black text-slate-950">我的自選清單</h3>
+            </div>
+            <Pill tone="orange">{watchItems.length} 項</Pill>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {watchItems.length > 0 ? watchItems.map((item) => (
+              <button key={item.id} type="button" onClick={() => setActiveItemId(item.id)} className="flex items-center justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50/50 px-3 py-2 text-left transition hover:bg-orange-100/70">
+                <span className="min-w-0 truncate text-sm font-black text-slate-800">{item.name}</span>
+                <span className="shrink-0 text-sm font-black text-orange-700">{formatMesos(item.latest)}</span>
+              </button>
+            )) : <div className="rounded-2xl border border-dashed border-orange-100 bg-orange-50/50 p-4 text-center text-sm font-semibold text-slate-500 sm:col-span-2 xl:col-span-4">尚未加入自選商品。</div>}
+          </div>
+        </section>
+
         <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
           <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
             <div>
@@ -934,7 +958,7 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="truncate text-lg font-black text-slate-950">{item.name}</span>
                         <Pill tone="orange">{item.category}</Pill>
-                        <span className={classNames('rounded-full px-2 py-0.5 text-[11px] font-black', positive ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700')}>{positive ? '+' : ''}{item.change.toFixed(1)}%</span>
+                        <span className={classNames('rounded-full px-2 py-0.5 text-[11px] font-black', positive ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700')}>{positive ? '+' : ''}{item.change.toFixed(1)}%</span>
                       </div>
                       <div className="mt-2 grid gap-2 text-sm font-bold text-slate-500 sm:grid-cols-3">
                         <span>最後報價 <b className="text-slate-950">{formatMesos(item.latest)}</b></span>
@@ -1018,7 +1042,7 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
                       <div className="truncate text-sm font-black text-slate-800">{item.name}</div>
                       <div className="text-xs font-semibold text-slate-400">{item.category}</div>
                     </div>
-                    <span className={classNames('rounded-full px-2 py-1 text-xs font-black', item.change >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700')}>{item.change >= 0 ? '+' : ''}{item.change.toFixed(1)}%</span>
+                    <span className={classNames('rounded-full px-2 py-1 text-xs font-black', item.change >= 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700')}>{item.change >= 0 ? '+' : ''}{item.change.toFixed(1)}%</span>
                   </div>
                 )) : <div className="rounded-2xl border border-dashed border-orange-100 bg-orange-50/50 p-4 text-center text-sm font-semibold text-slate-500">尚無雷達資料。</div>}
               </div>
@@ -1026,25 +1050,7 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
           </aside>
         </div>
 
-        <div className="mt-5 grid gap-4 xl:grid-cols-2">
-          <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">自選清單</div>
-                <h3 className="mt-1 text-xl font-black text-slate-950">我的自選清單</h3>
-              </div>
-              <Pill tone="orange">{watchItems.length} 項</Pill>
-            </div>
-            <div className="mt-3 grid gap-2">
-              {watchItems.length > 0 ? watchItems.map((item) => (
-                <div key={item.id} className="flex items-center justify-between rounded-2xl border border-orange-100 bg-orange-50/50 px-3 py-2">
-                  <span className="text-sm font-black text-slate-800">{item.name}</span>
-                  <span className="text-sm font-black text-orange-700">{formatMesos(item.latest)}</span>
-                </div>
-              )) : <div className="rounded-2xl border border-dashed border-orange-100 bg-orange-50/50 p-4 text-center text-sm font-semibold text-slate-500">尚未加入自選商品。</div>}
-            </div>
-          </section>
-
+        <div className="mt-5 grid gap-4">
           <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
             <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">衝捲計算</div>
             <h3 className="mt-1 text-xl font-black text-slate-950">計算機率與期望造價</h3>
@@ -3592,6 +3598,7 @@ export default function App() {
   const [gameAccountRecords, setGameAccountRecords] = useState<GameAccountRecord[]>(() => loadGameAccountRecords());
   const [showGameAccountModal, setShowGameAccountModal] = useState(false);
   const [showArtalePriceModal, setShowArtalePriceModal] = useState(false);
+  const [showVersionAnnouncement, setShowVersionAnnouncement] = useState(true);
   const [onlineUserCount, setOnlineUserCount] = useState<number | null>(isSupabaseConfigured ? null : 1);
 
   const selectedGroup = useMemo(() => groups.find((g) => g.id === selectedId) || groups[0], [groups, selectedId]);
@@ -4046,7 +4053,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-7.8</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-7.9</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -4203,6 +4210,26 @@ export default function App() {
           )}
         </div>
       )}
+
+
+      {showVersionAnnouncement && activePanel === 'home' ? (
+        <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-7.9 更新公告</div>
+            <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
+            <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">自選清單移到列表模式上方，開啟物價查詢後更快查看追蹤商品。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">商品漲跌幅顏色同步折線圖：上漲紅色、下跌綠色。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">K線分析右側新增多個每日最後報價數字，盡量對應每個價格點。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">延續 UI-7.8 物價歷史讀取修正，支援固定 id 與舊資料讀取。</div>
+            </div>
+            <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
+            <div className="mt-5 flex justify-end">
+              <Button onClick={() => setShowVersionAnnouncement(false)}>我知道了</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showArtalePriceModal ? <ArtalePriceModal onClose={() => setShowArtalePriceModal(false)} /> : null}
       {showGameAccountModal ? <GameAccountModal records={gameAccountRecords} onClose={() => setShowGameAccountModal(false)} onSaveRecords={updateGameAccountRecords} /> : null}

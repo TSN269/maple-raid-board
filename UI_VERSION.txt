@@ -1,2 +1,2 @@
-UI-7.8 SQLFIX2
-Fix PostgreSQL ambiguous item_name in Artale history key merge SQL function.
+UI-7.9
+Move watchlist above list mode, sync percent colors with trend line, show multiple K-line right-side price labels, and add home update announcement.
