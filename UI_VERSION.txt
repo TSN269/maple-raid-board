@@ -1,2 +1,2 @@
-UI-7.6
-Add market status database updated time, scrollable five-item market list, red/green trend lines, last-price label on K-line chart, and reload quote button.
+UI-7.7
+Fix Artale price history item_key stability. Use fixed Google Sheet id, fallback to normalized item name, and add SQLFIX to merge legacy name-index keys into fixed id keys.

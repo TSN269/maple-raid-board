@@ -42,6 +42,21 @@ function valueFrom(row, keys, fallback = '') {
   return fallback;
 }
 
+function stableItemKey(rawId, name) {
+  const explicitId = String(rawId || '').trim();
+  if (explicitId) return explicitId;
+
+  const normalizedName = String(name || '')
+    .normalize('NFKC')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^\p{L}\p{N}_-]+/gu, '_')
+    .replace(/^_+|_+$/g, '');
+
+  return `name:${normalizedName || encodeURIComponent(String(name || 'unknown'))}`;
+}
+
 function parseCsvRows(text) {
   const rows = [];
   let row = [];
@@ -130,7 +145,7 @@ function normalizeRows(rows, source, meta = {}) {
       const change = toNumber(valueFrom(row, CHANGE_KEYS, derivedChange), derivedChange);
 
       return {
-        id: String(valueFrom(row, ['id', 'key', 'item_id', '商品ID', '編號'], `${name}-${index}`)),
+        id: stableItemKey(valueFrom(row, ['id', 'key', 'item_id', '商品ID', '編號', '固定ID', '固定id', '商品固定ID'], ''), name),
         name,
         category,
         latest,
@@ -247,6 +262,28 @@ async function supabaseRestRequest(path, options = {}) {
   return payload;
 }
 
+async function mergeLegacyPriceKeys() {
+  try {
+    const result = await supabaseRestRequest('/rpc/merge_artale_price_key_aliases', {
+      method: 'POST',
+      headers: {
+        Prefer: 'return=representation',
+      },
+      body: '{}',
+    });
+
+    return {
+      ok: true,
+      result: Array.isArray(result) ? result : [],
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : 'Legacy key merge skipped.',
+    };
+  }
+}
+
 async function persistDailyPricesAndApplyHistory(items, source) {
   if (!items.length) {
     return {
@@ -275,6 +312,8 @@ async function persistDailyPricesAndApplyHistory(items, source) {
       },
       body: JSON.stringify(upsertRows),
     });
+
+    const keyMergeResult = await mergeLegacyPriceKeys();
 
     const itemFilter = items.map((item) => `"${String(item.id).replace(/"/g, '\\"')}"`).join(',');
     const records = await supabaseRestRequest(`/artale_price_daily_records?select=item_key,price_date,last_price,updated_at&item_key=in.(${encodeURIComponent(itemFilter)})&price_date=gte.${since}&order=price_date.asc`, {
@@ -318,6 +357,7 @@ async function persistDailyPricesAndApplyHistory(items, source) {
       historyRows: records?.length || 0,
       priceDate: today,
       historyUpdatedAt,
+      keyMerge: keyMergeResult,
     };
   } catch (error) {
     return {
