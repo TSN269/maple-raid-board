@@ -952,7 +952,10 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
             {watchItems.length > 0 ? watchItems.map((item) => (
               <button key={item.id} type="button" onClick={() => setActiveItemId(item.id)} className="flex items-center justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50/50 px-3 py-2 text-left transition hover:bg-orange-100/70">
                 <span className="min-w-0 truncate text-sm font-black text-slate-800">{item.name}</span>
-                <span className="shrink-0 text-sm font-black text-orange-700">{formatMesos(item.latest)}</span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className={classNames('rounded-full px-2 py-0.5 text-[11px] font-black', item.change >= 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700')}>{item.change >= 0 ? '+' : ''}{item.change.toFixed(1)}%</span>
+                  <span className="text-sm font-black text-orange-700">{formatMesos(item.latest)}</span>
+                </span>
               </button>
             )) : <div className="rounded-2xl border border-dashed border-orange-100 bg-orange-50/50 p-4 text-center text-sm font-semibold text-slate-500 sm:col-span-2 xl:col-span-4">尚未加入自選商品。</div>}
           </div>
@@ -4073,7 +4076,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.1</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.2</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -4235,13 +4238,12 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.1 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.2 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">我的自選清單會保存到瀏覽器本機，關閉 Artale 物價查詢後再開啟不會回到預設。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">商品行情列表模式維持約顯示前 8 項，其餘商品仍可透過卷軸查看。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">延續 UI-7.9：自選清單位於列表模式上方，漲跌幅顏色同步折線圖。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">延續 UI-7.8：物價歷史讀取支援固定 id 與舊資料讀取。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">公告頁面改為只顯示本次版本實際改動，不再放舊版延續資訊。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">我的自選清單商品旁新增漲跌幅百分比。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">自選清單漲跌幅顏色同步商品行情折線圖：上漲紅色、下跌綠色。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">
