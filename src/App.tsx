@@ -948,7 +948,7 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
               </div>
             </div>
 
-            <div className="mt-4 grid max-h-[38rem] gap-3 overflow-y-auto pr-2">
+            <div className="mt-4 grid max-h-[61rem] gap-3 overflow-y-auto pr-2">
               {filteredItems.length > 0 ? filteredItems.map((item) => {
                 const positive = item.change >= 0;
                 const active = activeItem?.id === item.id;
@@ -4053,7 +4053,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-7.9</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.0</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -4215,13 +4215,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-7.9 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.0 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">自選清單移到列表模式上方，開啟物價查詢後更快查看追蹤商品。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">商品漲跌幅顏色同步折線圖：上漲紅色、下跌綠色。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">K線分析右側新增多個每日最後報價數字，盡量對應每個價格點。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">延續 UI-7.8 物價歷史讀取修正，支援固定 id 與舊資料讀取。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">商品行情列表模式預設高度調整為約顯示前 8 項。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">其餘商品仍可透過列表卷軸往下查看。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">延續 UI-7.9：自選清單位於列表模式上方，漲跌幅顏色同步折線圖。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">延續 UI-7.8：物價歷史讀取支援固定 id 與舊資料讀取。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">

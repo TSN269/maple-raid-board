@@ -1,2 +1,2 @@
-UI-7.9
-Move watchlist above list mode, sync percent colors with trend line, show multiple K-line right-side price labels, and add home update announcement.
+UI-8.0
+商品行情列表模式預設高度調整為約顯示前 8 項，並更新首頁公告為 UI-8.0 內容。
