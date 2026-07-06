@@ -3245,41 +3245,265 @@ function TrainingEfficiencyPanel() {
     return { sx, sy, sw, sh };
   }
 
+  function isLevelDigitLightPixel(r: number, g: number, b: number) {
+    const brightness = (r + g + b) / 3;
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+    return brightness >= 165 && channelSpread <= 105 && r >= 150 && g >= 150 && b >= 145;
+  }
+
   function preprocessLevelCrop(sourceCanvas: HTMLCanvasElement) {
-    const scale = 5;
-    const padding = 8;
+    const scale = 10;
+    const padding = 18;
+    const binary = document.createElement('canvas');
+    binary.width = sourceCanvas.width;
+    binary.height = sourceCanvas.height;
+    const binaryCtx = binary.getContext('2d', { willReadFrequently: true });
+    if (!binaryCtx) return sourceCanvas;
+
+    binaryCtx.drawImage(sourceCanvas, 0, 0);
+    const sourceImage = binaryCtx.getImageData(0, 0, binary.width, binary.height);
+    const sourceData = sourceImage.data;
+
+    // The number glyph is white/grey inside an orange tile. Make the glyph
+    // black and everything else white, instead of OCRing the orange tile shape.
+    for (let index = 0; index < sourceData.length; index += 4) {
+      const digitPixel = isLevelDigitLightPixel(
+        sourceData[index],
+        sourceData[index + 1],
+        sourceData[index + 2],
+      );
+      const value = digitPixel ? 0 : 255;
+      sourceData[index] = value;
+      sourceData[index + 1] = value;
+      sourceData[index + 2] = value;
+      sourceData[index + 3] = 255;
+    }
+    binaryCtx.putImageData(sourceImage, 0, 0);
+
     const scaled = document.createElement('canvas');
     scaled.width = sourceCanvas.width * scale + padding * 2;
     scaled.height = sourceCanvas.height * scale + padding * 2;
     const ctx = scaled.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return sourceCanvas;
+    if (!ctx) return binary;
 
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, scaled.width, scaled.height);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(sourceCanvas, padding, padding, sourceCanvas.width * scale, sourceCanvas.height * scale);
+    ctx.drawImage(
+      binary,
+      padding,
+      padding,
+      sourceCanvas.width * scale,
+      sourceCanvas.height * scale,
+    );
 
-    const image = ctx.getImageData(0, 0, scaled.width, scaled.height);
-    const data = image.data;
-    for (let index = 0; index < data.length; index += 4) {
-      const r = data[index];
-      const g = data[index + 1];
-      const b = data[index + 2];
-      const orangeDigit =
-        r >= 165 &&
-        g >= 35 &&
-        g <= 205 &&
-        b <= 125 &&
-        r >= g * 1.2 &&
-        r - b >= 70;
-      const value = orangeDigit ? 255 : 0;
-      data[index] = value;
-      data[index + 1] = value;
-      data[index + 2] = value;
-      data[index + 3] = 255;
-    }
-    ctx.putImageData(image, 0, 0);
     return scaled;
+  }
+
+  function mergeLevelGlyphComponents(components: HudColorComponent[]) {
+    const sorted = [...components].sort((a, b) => a.minX - b.minX || a.minY - b.minY);
+    const merged: HudColorComponent[] = [];
+
+    for (const component of sorted) {
+      const width = component.maxX - component.minX + 1;
+      const height = component.maxY - component.minY + 1;
+      if (width < 1 || height < 3) continue;
+
+      const previous = merged[merged.length - 1];
+      if (previous) {
+        const previousHeight = previous.maxY - previous.minY + 1;
+        const verticalOverlap =
+          Math.min(previous.maxY, component.maxY) -
+          Math.max(previous.minY, component.minY) +
+          1;
+        const overlapRatio =
+          verticalOverlap / Math.max(1, Math.min(previousHeight, height));
+        const gap = component.minX - previous.maxX - 1;
+
+        // Merge only fragments from the same glyph. The actual digit tiles have
+        // a much larger gap than this threshold.
+        if (
+          overlapRatio >= 0.45 &&
+          gap >= -1 &&
+          gap <= Math.max(1, Math.round(Math.min(previousHeight, height) * 0.16))
+        ) {
+          previous.minX = Math.min(previous.minX, component.minX);
+          previous.minY = Math.min(previous.minY, component.minY);
+          previous.maxX = Math.max(previous.maxX, component.maxX);
+          previous.maxY = Math.max(previous.maxY, component.maxY);
+          previous.count += component.count;
+          continue;
+        }
+      }
+
+      merged.push({ ...component });
+    }
+
+    return merged;
+  }
+
+  function sampleLevelGlyphRegion(
+    mask: Uint8Array,
+    width: number,
+    height: number,
+    xStart: number,
+    xEnd: number,
+    yStart: number,
+    yEnd: number,
+  ) {
+    const left = Math.max(0, Math.min(width - 1, Math.round(xStart * (width - 1))));
+    const right = Math.max(left, Math.min(width - 1, Math.round(xEnd * (width - 1))));
+    const top = Math.max(0, Math.min(height - 1, Math.round(yStart * (height - 1))));
+    const bottom = Math.max(top, Math.min(height - 1, Math.round(yEnd * (height - 1))));
+
+    let on = 0;
+    let total = 0;
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        on += mask[y * width + x];
+        total += 1;
+      }
+    }
+    return total > 0 ? on / total : 0;
+  }
+
+  function classifyLevelSevenSegmentDigit(
+    sourceCanvas: HTMLCanvasElement,
+    component: HudColorComponent,
+  ) {
+    const ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+
+    const x = Math.max(0, Math.floor(component.minX));
+    const y = Math.max(0, Math.floor(component.minY));
+    const width = Math.max(1, Math.min(sourceCanvas.width - x, Math.ceil(component.maxX - component.minX + 1)));
+    const height = Math.max(1, Math.min(sourceCanvas.height - y, Math.ceil(component.maxY - component.minY + 1)));
+    const image = ctx.getImageData(x, y, width, height);
+    const data = image.data;
+    const mask = new Uint8Array(width * height);
+
+    for (let index = 0; index < width * height; index += 1) {
+      const pixelIndex = index * 4;
+      mask[index] = isLevelDigitLightPixel(
+        data[pixelIndex],
+        data[pixelIndex + 1],
+        data[pixelIndex + 2],
+      )
+        ? 1
+        : 0;
+    }
+
+    const aspect = width / Math.max(1, height);
+    // The pixel-font "1" is intentionally much narrower than every other digit.
+    if (aspect <= 0.58) {
+      return { digit: 1, error: 0, confidence: 1, segments: [0, 1, 1, 0, 0, 0, 0] };
+    }
+
+    // Sample the seven-segment centers, intentionally avoiding the rounded /
+    // anti-aliased corners visible in the Maple-style pixel font.
+    const segments = [
+      sampleLevelGlyphRegion(mask, width, height, 0.2, 0.8, 0.0, 0.1),   // top
+      sampleLevelGlyphRegion(mask, width, height, 0.86, 1.0, 0.31, 0.36), // upper-right
+      sampleLevelGlyphRegion(mask, width, height, 0.86, 1.0, 0.64, 0.7),  // lower-right
+      sampleLevelGlyphRegion(mask, width, height, 0.2, 0.8, 0.9, 1.0),    // bottom
+      sampleLevelGlyphRegion(mask, width, height, 0.0, 0.14, 0.64, 0.7),  // lower-left
+      sampleLevelGlyphRegion(mask, width, height, 0.0, 0.14, 0.31, 0.36), // upper-left
+      sampleLevelGlyphRegion(mask, width, height, 0.2, 0.8, 0.45, 0.53),  // middle
+    ];
+
+    const patterns: Record<number, number[]> = {
+      0: [1, 1, 1, 1, 1, 1, 0],
+      1: [0, 1, 1, 0, 0, 0, 0],
+      2: [1, 1, 0, 1, 1, 0, 1],
+      3: [1, 1, 1, 1, 0, 0, 1],
+      4: [0, 1, 1, 0, 0, 1, 1],
+      5: [1, 0, 1, 1, 0, 1, 1],
+      6: [1, 0, 1, 1, 1, 1, 1],
+      7: [1, 1, 1, 0, 0, 0, 0],
+      8: [1, 1, 1, 1, 1, 1, 1],
+      9: [1, 1, 1, 1, 0, 1, 1],
+    };
+
+    const ranked = Object.entries(patterns)
+      .map(([digit, pattern]) => ({
+        digit: Number(digit),
+        error: segments.reduce((sum, value, index) => {
+          const difference = value - pattern[index];
+          return sum + difference * difference;
+        }, 0),
+      }))
+      .sort((a, b) => a.error - b.error);
+
+    const best = ranked[0];
+    const second = ranked[1];
+    const confidence = Math.max(0, Math.min(1, (second.error - best.error + 0.15) / 1.15));
+
+    return {
+      digit: best.digit,
+      error: best.error,
+      confidence,
+      segments,
+    };
+  }
+
+  function recognizeLevelByPixelSegments(sourceCanvas: HTMLCanvasElement) {
+    const components = findColorComponents(
+      sourceCanvas,
+      { x: 0, y: 0, w: sourceCanvas.width, h: sourceCanvas.height },
+      isLevelDigitLightPixel,
+      2,
+    );
+
+    const minimumHeight = Math.max(3, sourceCanvas.height * 0.28);
+    const glyphs = mergeLevelGlyphComponents(
+      components.filter((component) => {
+        const width = component.maxX - component.minX + 1;
+        const height = component.maxY - component.minY + 1;
+        return (
+          height >= minimumHeight &&
+          width >= 1 &&
+          width <= sourceCanvas.width * 0.55 &&
+          component.count >= Math.max(3, height * 0.8)
+        );
+      }),
+    )
+      .sort((a, b) => a.minX - b.minX)
+      .slice(-3);
+
+    if (glyphs.length < 1 || glyphs.length > 3) return null;
+
+    const recognized = glyphs.map((glyph) =>
+      classifyLevelSevenSegmentDigit(sourceCanvas, glyph),
+    );
+    if (recognized.some((item) => !item)) return null;
+
+    const results = recognized.filter(Boolean) as Array<{
+      digit: number;
+      error: number;
+      confidence: number;
+      segments: number[];
+    }>;
+    const text = results.map((item) => item.digit).join('');
+    const value = Number(text);
+    const averageConfidence =
+      results.reduce((sum, item) => sum + item.confidence, 0) /
+      Math.max(1, results.length);
+
+    if (
+      !Number.isInteger(value) ||
+      value < 1 ||
+      value > 200 ||
+      averageConfidence < 0.18
+    ) {
+      return null;
+    }
+
+    return {
+      value,
+      text,
+      confidence: averageConfidence,
+      digits: results,
+    };
   }
 
   function parseDetectedLevel(rawText: string) {
@@ -3381,7 +3605,13 @@ function TrainingEfficiencyPanel() {
 
     try {
       const processedExp = preprocessCrop(expCanvas);
-      const processedLevel = levelCanvas ? preprocessLevelCrop(levelCanvas) : null;
+      const pixelLevelResult = levelCanvas
+        ? recognizeLevelByPixelSegments(levelCanvas)
+        : null;
+      const processedLevel =
+        levelCanvas && !pixelLevelResult
+          ? preprocessLevelCrop(levelCanvas)
+          : null;
       const tesseractUrl = 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.esm.min.js';
       const tesseractModule = await import(/* @vite-ignore */ tesseractUrl) as any;
       const tesseractApi = tesseractModule.default ?? tesseractModule;
@@ -3443,9 +3673,18 @@ function TrainingEfficiencyPanel() {
         if (expAccepted) setOcrSuccessCount((prev) => prev + 1);
       }
 
-      const rawLevelText = String(levelResult?.data?.text || '').trim();
-      if (processedLevel) setLevelOcrText(rawLevelText || '(無文字)');
-      const detectedLevel = processedLevel ? parseDetectedLevel(rawLevelText) : null;
+      const tesseractLevelText = String(levelResult?.data?.text || '').trim();
+      const rawLevelText = pixelLevelResult
+        ? pixelLevelResult.text
+        : tesseractLevelText;
+      const levelSource = pixelLevelResult ? '像素七段辨識' : 'Tesseract';
+      setLevelOcrText(
+        rawLevelText
+          ? `${levelSource}：${rawLevelText}`
+          : '(無文字)',
+      );
+      const detectedLevel = pixelLevelResult?.value ??
+        (processedLevel ? parseDetectedLevel(tesseractLevelText) : null);
       const levelAccepted = detectedLevel ? applyDetectedLevel(detectedLevel) : false;
 
       const expStatus = Number.isFinite(exp)
@@ -3462,8 +3701,14 @@ function TrainingEfficiencyPanel() {
           : '尚未定位等級區域';
 
       setOcrMessage(`OCR：${expStatus}；${levelStatus}。`);
-      if (!detectedLevel && processedLevel) {
-        setLevelOcrMessage(`等級 OCR 未找到 1～200 的數字：${rawLevelText || '空白'}`);
+      if (!detectedLevel) {
+        setLevelOcrMessage(
+          `等級辨識失敗：像素七段辨識與 Tesseract 都沒有取得 1～200 的數字${tesseractLevelText ? `（${tesseractLevelText}）` : ''}`,
+        );
+      } else if (pixelLevelResult) {
+        setLevelOcrMessage(
+          `等級像素辨識：Lv.${detectedLevel}｜信心 ${Math.round(pixelLevelResult.confidence * 100)}%`,
+        );
       }
     } catch (err) {
       setOcrFailCount((prev) => prev + 1);
@@ -3868,7 +4113,7 @@ function TrainingEfficiencyPanel() {
                 Debug
               </label>
             </div>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">按「開始分析」後，會先從「螢幕擷取對照」完整快照辨識附圖形式的整條 LV / HP / MP / EXP 狀態列；只有整條狀態列確認成功後，才在區塊內分別建立等級與 EXP OCR 裁切區。</p>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">按「開始分析」後，會先從「螢幕擷取對照」完整快照辨識附圖形式的整條 LV / HP / MP / EXP 狀態列；只有整條狀態列確認成功後，才在區塊內分別建立等級與 EXP 裁切區；等級數字會先用白色像素七段字型辨識，失敗才交給 Tesseract。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析(F8)'}</Button>
@@ -3968,7 +4213,7 @@ function TrainingEfficiencyPanel() {
                 <div className="rounded-3xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">EXP OCR 成功：{ocrSuccessCount}</div>
                 <div className="rounded-3xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-black text-rose-700">EXP 失敗 / 忽略：{ocrFailCount}</div>
                 <div className="rounded-3xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-black text-orange-700">EXP 最近辨識：{ocrText || '--'}</div>
-                <div className="rounded-3xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm font-black text-sky-700">等級：{levelOcrText || '--'}｜成功 {levelOcrSuccessCount}</div>
+                <div className="rounded-3xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm font-black text-sky-700">等級辨識：{levelOcrText || '--'}｜成功 {levelOcrSuccessCount}</div>
               </div>
             </>
           ) : null}
@@ -4748,7 +4993,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.5</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.6</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -4910,13 +5155,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.5 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.6 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">初始定位改為兩階段：先辨識完整 LV / HP / MP / EXP 狀態列，再定位等級與 EXP OCR 子區域。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">完整狀態列使用紅色 HP、藍色 MP、綠色 EXP 三個水平條的固定排列比例進行辨識。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">找不到完整狀態列時停止 OCR，不再沿用可能錯誤的舊裁切座標。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">螢幕擷取對照新增青色完整狀態列框；橘框為 EXP、藍框為當前等級。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正當前等級裁切位置正確但數字無法辨識的問題。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">等級辨識改為先抽取橘色方塊內的白色像素數字，不再把橘色方塊本身當成文字。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">新增 Maple 像素數字七段辨識，直接分析每個數字的上、中、下與左右筆畫。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">像素辨識失敗時才使用放大 10 倍的黑字白底影像交給 Tesseract 備援。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">
