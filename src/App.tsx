@@ -2235,6 +2235,7 @@ function TrainingEfficiencyPanel() {
   const levelPreviewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const captureReferenceFrameRef = useRef<HTMLCanvasElement | null>(null);
   const hudPanelCropRef = useRef<TrainingAdaptiveCrop | null>(null);
+  const hudDetectionMissRef = useRef(0);
   const initialCropDetectionRef = useRef(false);
   const ocrCropRef = useRef<TrainingAdaptiveCrop>(loadSavedTrainingCrop());
   const levelCropRef = useRef<TrainingAdaptiveCrop | null>(loadSavedTrainingLevelCrop());
@@ -2471,6 +2472,7 @@ function TrainingEfficiencyPanel() {
     initialCropDetectionRef.current = false;
     captureReferenceFrameRef.current = null;
     hudPanelCropRef.current = null;
+    hudDetectionMissRef.current = 0;
     setHudPanelCrop(null);
     levelCandidateRef.current = null;
     setOcrSuccessCount(0);
@@ -2695,116 +2697,165 @@ function TrainingEfficiencyPanel() {
       source,
       roi,
       (r, g, b) =>
-        r >= 130 &&
-        g <= 120 &&
-        b <= 125 &&
-        r - g >= 50 &&
-        r - b >= 55,
-      12,
+        r >= 105 &&
+        r >= g * 1.28 &&
+        r >= b * 1.22 &&
+        r - Math.max(g, b) >= 36,
+      8,
     ).filter((item) => isHorizontalHudBar(item, source));
 
     const blueBars = findColorComponents(
       source,
       roi,
       (r, g, b) =>
-        b >= 90 &&
-        g >= 50 &&
-        r <= 125 &&
-        b - r >= 40 &&
-        g - r >= 10,
-      12,
+        b >= 68 &&
+        g >= 32 &&
+        b >= r * 1.2 &&
+        g >= r * 0.9 &&
+        Math.max(b, g) - r >= 28,
+      8,
     ).filter((item) => isHorizontalHudBar(item, source));
 
     const greenBars = findColorComponents(
       source,
       roi,
       (r, g, b) =>
-        g >= 105 &&
-        r >= 55 &&
-        b <= 150 &&
-        g - b >= 42 &&
-        g >= r * 0.7,
-      10,
+        g >= 88 &&
+        g >= b * 1.18 &&
+        g - b >= 28 &&
+        r >= 35 &&
+        r <= 245,
+      6,
     ).filter((item) => isHorizontalHudBar(item, source));
 
-    let best: (TrainingHudPixelBox & { score: number; scale: number }) | null = null;
+    type BarKind = 'red' | 'blue' | 'green';
+    type BarEntry = { kind: BarKind; bar: HudColorComponent };
+    type Candidate = TrainingHudPixelBox & {
+      score: number;
+      scale: number;
+      sourcePair: string;
+    };
 
-    for (const red of redBars) {
-      for (const blue of blueBars) {
-        if (blue.minX <= red.minX) continue;
+    const referenceLeft: Record<BarKind, number> = {
+      red: TRAINING_HUD_REFERENCE.redBarLeft,
+      blue: TRAINING_HUD_REFERENCE.blueBarLeft,
+      green: TRAINING_HUD_REFERENCE.expBarLeft,
+    };
 
-        const redCenterY = (red.minY + red.maxY) / 2;
-        const blueCenterY = (blue.minY + blue.maxY) / 2;
-        const yDifference = Math.abs(redCenterY - blueCenterY);
-        const leftDistance = blue.minX - red.minX;
-        const scale = leftDistance / (TRAINING_HUD_REFERENCE.blueBarLeft - TRAINING_HUD_REFERENCE.redBarLeft);
+    const candidates: Candidate[] = [];
 
-        if (scale < 0.22 || scale > 5) continue;
-        if (yDifference > Math.max(5, 8 * scale)) continue;
+    const addPairCandidates = (
+      firstKind: BarKind,
+      firstBars: HudColorComponent[],
+      secondKind: BarKind,
+      secondBars: HudColorComponent[],
+    ) => {
+      const referenceDistance =
+        referenceLeft[secondKind] - referenceLeft[firstKind];
+      if (referenceDistance <= 0) return;
 
-        const expectedExpLeft =
-          red.minX +
-          (TRAINING_HUD_REFERENCE.expBarLeft - TRAINING_HUD_REFERENCE.redBarLeft) * scale;
+      for (const first of firstBars) {
+        for (const second of secondBars) {
+          if (second.minX <= first.minX) continue;
 
-        let matchedGreen: HudColorComponent | null = null;
-        let greenError = Number.POSITIVE_INFINITY;
+          const firstCenterY = (first.minY + first.maxY) / 2;
+          const secondCenterY = (second.minY + second.maxY) / 2;
+          const yDifference = Math.abs(firstCenterY - secondCenterY);
+          const scale = (second.minX - first.minX) / referenceDistance;
 
-        for (const green of greenBars) {
-          if (green.minX <= blue.minX) continue;
-          const greenCenterY = (green.minY + green.maxY) / 2;
-          const candidateError =
-            Math.abs(green.minX - expectedExpLeft) +
-            Math.abs(greenCenterY - redCenterY) * 3;
+          if (scale < 0.16 || scale > 6.5) continue;
+          if (yDifference > Math.max(8, 12 * scale)) continue;
 
-          if (candidateError < greenError) {
-            greenError = candidateError;
-            matchedGreen = green;
+          const rawPanelX =
+            first.minX - referenceLeft[firstKind] * scale;
+          const rawPanelY =
+            (first.minY + second.minY) / 2 - 24 * scale;
+          const rawPanelWidth = TRAINING_HUD_REFERENCE.width * scale;
+          const rawPanelHeight = TRAINING_HUD_REFERENCE.height * scale;
+
+          const panel: TrainingHudPixelBox = {
+            minX: Math.max(0, rawPanelX),
+            minY: Math.max(0, rawPanelY),
+            maxX: Math.min(width - 1, rawPanelX + rawPanelWidth),
+            maxY: Math.min(height - 1, rawPanelY + rawPanelHeight),
+          };
+
+          const panelWidth = panel.maxX - panel.minX + 1;
+          const panelHeight = panel.maxY - panel.minY + 1;
+          if (panelWidth < 120 || panelHeight < 12) continue;
+
+          const inferredAspect = panelWidth / Math.max(1, panelHeight);
+          const referenceAspect =
+            TRAINING_HUD_REFERENCE.width / TRAINING_HUD_REFERENCE.height;
+          const aspectError = Math.abs(inferredAspect - referenceAspect);
+          const darkRatio = sampleBoxDarkRatio(source, panel);
+          const bottomBias = panel.maxY / Math.max(1, height);
+
+          // Validate the optional third bar. It improves confidence but is no
+          // longer mandatory because a partially filled EXP bar or scaled
+          // fullscreen rendering may not pass a strict green threshold.
+          const thirdKind: BarKind =
+            firstKind !== 'red' && secondKind !== 'red'
+              ? 'red'
+              : firstKind !== 'blue' && secondKind !== 'blue'
+                ? 'blue'
+                : 'green';
+          const thirdBars =
+            thirdKind === 'red'
+              ? redBars
+              : thirdKind === 'blue'
+                ? blueBars
+                : greenBars;
+          const expectedThirdX =
+            panel.minX + referenceLeft[thirdKind] * scale;
+          const expectedCenterY =
+            (firstCenterY + secondCenterY) / 2;
+
+          let thirdError = Number.POSITIVE_INFINITY;
+          for (const third of thirdBars) {
+            const thirdCenterY = (third.minY + third.maxY) / 2;
+            const error =
+              Math.abs(third.minX - expectedThirdX) +
+              Math.abs(thirdCenterY - expectedCenterY) * 3;
+            thirdError = Math.min(thirdError, error);
           }
+
+          const thirdMatched =
+            Number.isFinite(thirdError) &&
+            thirdError <= Math.max(28, 70 * scale);
+
+          if (darkRatio < 0.12) continue;
+          if (aspectError > 7.5) continue;
+
+          const firstHeight = first.maxY - first.minY + 1;
+          const secondHeight = second.maxY - second.minY + 1;
+          const heightDifference = Math.abs(firstHeight - secondHeight);
+
+          const score =
+            620 +
+            darkRatio * 230 +
+            bottomBias * 45 +
+            (thirdMatched ? 230 - thirdError * 1.8 : 0) -
+            yDifference * 16 -
+            heightDifference * 5 -
+            aspectError * 30;
+
+          candidates.push({
+            ...panel,
+            score,
+            scale,
+            sourcePair: `${firstKind}+${secondKind}${thirdMatched ? '+third' : ''}`,
+          });
         }
-
-        const allowedGreenError = Math.max(18, 45 * scale);
-        if (!matchedGreen || greenError > allowedGreenError) continue;
-
-        const rawPanelX =
-          red.minX - TRAINING_HUD_REFERENCE.redBarLeft * scale;
-        const rawPanelY =
-          ((red.minY + blue.minY + matchedGreen.minY) / 3) -
-          24 * scale;
-        const rawPanelWidth = TRAINING_HUD_REFERENCE.width * scale;
-        const rawPanelHeight = TRAINING_HUD_REFERENCE.height * scale;
-
-        const panel: TrainingHudPixelBox = {
-          minX: Math.max(0, rawPanelX),
-          minY: Math.max(0, rawPanelY),
-          maxX: Math.min(width - 1, rawPanelX + rawPanelWidth),
-          maxY: Math.min(height - 1, rawPanelY + rawPanelHeight),
-        };
-
-        const panelWidth = panel.maxX - panel.minX + 1;
-        const panelHeight = panel.maxY - panel.minY + 1;
-        const inferredAspect = panelWidth / Math.max(1, panelHeight);
-        const referenceAspect = TRAINING_HUD_REFERENCE.width / TRAINING_HUD_REFERENCE.height;
-        const aspectError = Math.abs(inferredAspect - referenceAspect);
-        const darkRatio = sampleBoxDarkRatio(source, panel);
-        const bottomBias = panel.maxY / Math.max(1, height);
-        const redBlueHeightDifference = Math.abs(
-          (red.maxY - red.minY) - (blue.maxY - blue.minY),
-        );
-
-        const score =
-          800 -
-          greenError * 5 -
-          yDifference * 20 -
-          aspectError * 20 -
-          redBlueHeightDifference * 4 +
-          darkRatio * 180 +
-          bottomBias * 60;
-
-        if (!best || score > best.score) best = { ...panel, score, scale };
       }
-    }
+    };
 
-    return best;
+    addPairCandidates('red', redBars, 'blue', blueBars);
+    addPairCandidates('red', redBars, 'green', greenBars);
+    addPairCandidates('blue', blueBars, 'green', greenBars);
+
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates[0] || null;
   }
 
   function makeHudRelativeBox(
@@ -2954,6 +3005,18 @@ function TrainingEfficiencyPanel() {
     };
   }
 
+  function percentCropToPixelBox(
+    frame: HTMLCanvasElement,
+    crop: TrainingAdaptiveCrop,
+  ): TrainingHudPixelBox {
+    return {
+      minX: (crop.x / 100) * frame.width,
+      minY: (crop.y / 100) * frame.height,
+      maxX: ((crop.x + crop.w) / 100) * frame.width,
+      maxY: ((crop.y + crop.h) / 100) * frame.height,
+    };
+  }
+
   function detectAdaptiveCrops(options: { silent?: boolean; initial?: boolean; frame?: HTMLCanvasElement | null } = {}) {
     const frame = options.frame || makeAnalysisFrame();
     if (!frame) {
@@ -2969,20 +3032,39 @@ function TrainingEfficiencyPanel() {
     }
 
     // Stage 1: recognize the complete LV / HP / MP / EXP status HUD.
-    const hudPanel = findTrainingHudPanel(frame);
+    let hudPanel: TrainingHudPixelBox | null = findTrainingHudPanel(frame);
+    let usedPreviousHud = false;
+
     if (!hudPanel) {
-      if (!options.silent) {
-        setOcrMessage('初始辨識失敗：螢幕擷取對照中找不到完整的 LV / HP / MP / EXP 狀態列區塊。');
-        setCropDetectionSource('未找到完整狀態列');
+      hudDetectionMissRef.current += 1;
+
+      // After one valid detection, tolerate a few transient misses caused by
+      // fullscreen animation, taskbar transition or a partially painted frame.
+      if (
+        !options.initial &&
+        hudPanelCropRef.current &&
+        hudDetectionMissRef.current <= 3
+      ) {
+        hudPanel = percentCropToPixelBox(frame, hudPanelCropRef.current);
+        usedPreviousHud = true;
+      } else {
+        if (!options.silent) {
+          setOcrMessage(
+            '目前畫面尚未確認完整狀態列，正在重新掃描 HP / MP / EXP 色條。',
+          );
+          setCropDetectionSource('重新掃描完整狀態列');
+        }
+        return {
+          hudFound: false,
+          hudPanelCrop: hudPanelCropRef.current,
+          expCrop: ocrCropRef.current,
+          levelCrop: levelCropRef.current,
+          expFound: false,
+          levelFound: false,
+        };
       }
-      return {
-        hudFound: false,
-        hudPanelCrop: hudPanelCropRef.current,
-        expCrop: ocrCropRef.current,
-        levelCrop: levelCropRef.current,
-        expFound: false,
-        levelFound: false,
-      };
+    } else {
+      hudDetectionMissRef.current = 0;
     }
 
     const detectedHudCrop = pixelBoxToPercentCrop(
@@ -3031,12 +3113,16 @@ function TrainingEfficiencyPanel() {
 
     if (!options.silent) {
       setOcrMessage(
-        `${options.initial ? '初始截圖辨識' : '自適應追蹤'}：已找到完整 LV / HP / MP / EXP 狀態列，再由狀態列內定位等級與 EXP OCR 區域。`,
+        usedPreviousHud
+          ? '狀態列短暫未重新命中，暫用上一個有效狀態列位置並繼續掃描。'
+          : `${options.initial ? '初始截圖辨識' : '自適應追蹤'}：已找到完整 LV / HP / MP / EXP 狀態列，再由狀態列內定位等級與 EXP OCR 區域。`,
       );
       setCropDetectionSource(
-        options.initial
-          ? '螢幕擷取對照快照 → 完整狀態列 → 等級 / EXP'
-          : '即時畫面 → 完整狀態列 → 等級 / EXP',
+        usedPreviousHud
+          ? '上一個有效狀態列（短暫備援）'
+          : options.initial
+            ? '螢幕擷取對照快照 → 完整狀態列 → 等級 / EXP'
+            : '即時畫面 → 完整狀態列 → 等級 / EXP',
       );
     }
 
@@ -3705,7 +3791,7 @@ function TrainingEfficiencyPanel() {
     // Re-detect on every OCR cycle so moving/resizing the game window is handled.
     const adaptive = detectAdaptiveCrops({ silent: true });
     if (!adaptive.hudFound) {
-      setOcrMessage('OCR 暫停：目前畫面找不到完整 LV / HP / MP / EXP 狀態列，不使用舊座標避免裁切錯誤。');
+      setOcrMessage('本次 OCR 略過：目前畫面未確認完整狀態列；下一個週期會重新掃描。');
       return;
     }
 
@@ -3883,6 +3969,39 @@ function TrainingEfficiencyPanel() {
 
   runOcrOnceRef.current = runOcrOnce;
 
+  async function detectInitialHudWithRetries() {
+    hudPanelCropRef.current = null;
+    hudDetectionMissRef.current = 0;
+    setHudPanelCrop(null);
+
+    const attempts = 10;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      await waitForCapturePaint();
+      const frame = captureReferenceFrame(1280);
+      const detection = detectAdaptiveCrops({
+        silent: attempt < attempts,
+        initial: true,
+        frame,
+      });
+
+      if (detection.hudFound) {
+        setOcrMessage(
+          `初始狀態列辨識成功（第 ${attempt} 次掃描），準備開始 OCR。`,
+        );
+        return detection;
+      }
+
+      setOcrMessage(
+        `正在掃描完整狀態列… ${attempt}/${attempts}（允許最大化／全螢幕切換完成）`,
+      );
+      await new Promise<void>((resolve) =>
+        window.setTimeout(resolve, 220),
+      );
+    }
+
+    return null;
+  }
+
   async function startAnalysis() {
     const ok = await startCapture();
     if (!ok) return;
@@ -3904,21 +4023,17 @@ function TrainingEfficiencyPanel() {
       return;
     }
 
-    await waitForCapturePaint();
     initialCropDetectionRef.current = false;
-    const initialFrame = captureReferenceFrame(1280);
-    const initialDetection = detectAdaptiveCrops({
-      silent: false,
-      initial: true,
-      frame: initialFrame,
-    });
-    initialCropDetectionRef.current = initialDetection.hudFound;
+    const initialDetection = await detectInitialHudWithRetries();
+    initialCropDetectionRef.current = Boolean(initialDetection?.hudFound);
 
-    if (!initialDetection.hudFound) {
+    if (!initialDetection?.hudFound) {
       setOcrActive(false);
       setRunning(false);
       setCurrentRunStartedAt(null);
-      setOcrMessage('開始分析已停止：螢幕擷取對照中找不到完整 LV / HP / MP / EXP 狀態列。請確認擷取畫面包含附圖形式的整條狀態列後重新開始。');
+      setOcrMessage(
+        '開始分析已停止：連續 10 次仍找不到完整狀態列。請讓狀態列完整顯示在擷取畫面內，再重新開始。',
+      );
       return;
     }
 
@@ -5156,7 +5271,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.7</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.8</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -5318,13 +5433,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.7 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.8 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正視窗最大化或全螢幕後，EXP 裁切位置正確但 OCR 顯示 Baty／無法取得數字的問題。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">EXP 裁切區改為只保留狀態列上方的 EXP 文字與數字，不再包含下方經驗條。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">EXP OCR 新增二值化 140、白字抽取、原圖放大、二值化 165 四種辨識流程。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">每種流程改用單行文字模式，第一個成功取得 EXP 數字的結果會立即採用。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正開始分析時找不到完整 LV / HP / MP / EXP 狀態列而立即停止的問題。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">完整狀態列辨識不再強制三個色條同時命中；HP、MP、EXP 任兩個色條符合排列比例即可建立候選。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">開始分析會連續掃描最多 10 次，等待最大化或全螢幕切換動畫完成，不再只檢查第一張畫面。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">分析中若狀態列短暫漏判，最多沿用上一個有效位置 3 個週期，之後再重新掃描。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">
