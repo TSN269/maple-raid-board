@@ -2232,6 +2232,8 @@ function TrainingEfficiencyPanel() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const levelPreviewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const captureReferenceFrameRef = useRef<HTMLCanvasElement | null>(null);
+  const initialCropDetectionRef = useRef(false);
   const ocrCropRef = useRef<TrainingAdaptiveCrop>(loadSavedTrainingCrop());
   const levelCropRef = useRef<TrainingAdaptiveCrop | null>(loadSavedTrainingLevelCrop());
   const runOcrOnceRef = useRef<() => Promise<void>>(async () => {});
@@ -2245,6 +2247,7 @@ function TrainingEfficiencyPanel() {
   const [levelOcrText, setLevelOcrText] = useState('');
   const [levelOcrMessage, setLevelOcrMessage] = useState('開始分析後會自動尋找 LV. 等級區塊並辨識目前等級。');
   const [levelOcrSuccessCount, setLevelOcrSuccessCount] = useState(0);
+  const [cropDetectionSource, setCropDetectionSource] = useState('尚未從螢幕擷取對照辨識');
   const [analysisStartedAt, setAnalysisStartedAt] = useState<number | null>(null);
   const [paused, setPaused] = useState(false);
   const [accumulatedActiveMs, setAccumulatedActiveMs] = useState(0);
@@ -2461,6 +2464,9 @@ function TrainingEfficiencyPanel() {
     setLevelOcrText('');
     setLevelOcrMessage('開始分析後會自動尋找 LV. 等級區塊並辨識目前等級。');
     setLevelOcrSuccessCount(0);
+    setCropDetectionSource('尚未從螢幕擷取對照辨識');
+    initialCropDetectionRef.current = false;
+    captureReferenceFrameRef.current = null;
     levelCandidateRef.current = null;
     setOcrSuccessCount(0);
     setOcrFailCount(0);
@@ -2501,6 +2507,14 @@ function TrainingEfficiencyPanel() {
     setOcrMessage('已停止螢幕擷取與 OCR。');
   }
 
+  function waitForCapturePaint() {
+    return new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => resolve());
+      });
+    });
+  }
+
   function waitForVideoReady() {
     return new Promise<boolean>((resolve) => {
       const started = Date.now();
@@ -2520,232 +2534,350 @@ function TrainingEfficiencyPanel() {
     });
   }
 
-  function findExpHudBoundingBox(source: HTMLCanvasElement) {
+  type HudColorComponent = {
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+    count: number;
+  };
+
+  function findColorComponents(
+    source: HTMLCanvasElement,
+    roi: { x: number; y: number; w: number; h: number },
+    matchPixel: (r: number, g: number, b: number) => boolean,
+    minimumPixels = 4,
+  ) {
     const ctx = source.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return null;
+    if (!ctx) return [] as HudColorComponent[];
 
-    const width = source.width;
-    const height = source.height;
-
-    // Search broadly in the lower half because users may crop / scale the game
-    // window differently. Prefer horizontal green/yellow EXP bars, then crop
-    // slightly upward to include the EXP number and percent.
-    const searchXStart = 0;
-    const searchXEnd = width;
-    const searchYStart = Math.floor(height * 0.55);
-    const searchYEnd = height;
-
-    const regionWidth = searchXEnd - searchXStart;
-    const regionHeight = searchYEnd - searchYStart;
-    const image = ctx.getImageData(searchXStart, searchYStart, regionWidth, regionHeight);
+    const safeX = Math.max(0, Math.floor(roi.x));
+    const safeY = Math.max(0, Math.floor(roi.y));
+    const safeW = Math.max(1, Math.min(source.width - safeX, Math.floor(roi.w)));
+    const safeH = Math.max(1, Math.min(source.height - safeY, Math.floor(roi.h)));
+    const image = ctx.getImageData(safeX, safeY, safeW, safeH);
     const data = image.data;
+    const mask = new Uint8Array(safeW * safeH);
 
-    const rows: Array<{ y: number; count: number; minX: number; maxX: number; span: number }> = [];
+    for (let y = 0; y < safeH; y += 1) {
+      for (let x = 0; x < safeW; x += 1) {
+        const pixelIndex = y * safeW + x;
+        const index = pixelIndex * 4;
+        if (matchPixel(data[index], data[index + 1], data[index + 2])) mask[pixelIndex] = 1;
+      }
+    }
 
-    for (let y = 0; y < regionHeight; y += 1) {
-      let count = 0;
-      let minX = regionWidth;
-      let maxX = 0;
+    const components: HudColorComponent[] = [];
+    const queueX = new Int32Array(safeW * safeH);
+    const queueY = new Int32Array(safeW * safeH);
 
-      for (let x = 0; x < regionWidth; x += 1) {
-        const index = (y * regionWidth + x) * 4;
-        const r = data[index];
-        const g = data[index + 1];
-        const b = data[index + 2];
+    for (let startY = 0; startY < safeH; startY += 1) {
+      for (let startX = 0; startX < safeW; startX += 1) {
+        const startIndex = startY * safeW + startX;
+        if (mask[startIndex] !== 1) continue;
 
-        // EXP bar in the provided screenshot is yellow-green / lime. This
-        // selector avoids most white text and only catches the filled bar.
-        const expBarPixel =
-          g >= 120 &&
-          r >= 70 &&
-          r <= 245 &&
-          b <= 140 &&
-          g >= b * 1.35 &&
-          g >= r * 0.68;
+        let head = 0;
+        let tail = 0;
+        queueX[tail] = startX;
+        queueY[tail] = startY;
+        tail += 1;
+        mask[startIndex] = 2;
 
-        if (expBarPixel) {
+        let minX = startX;
+        let maxX = startX;
+        let minY = startY;
+        let maxY = startY;
+        let count = 0;
+
+        while (head < tail) {
+          const x = queueX[head];
+          const y = queueY[head];
+          head += 1;
           count += 1;
           minX = Math.min(minX, x);
           maxX = Math.max(maxX, x);
+          minY = Math.min(minY, y);
+          maxY = Math.max(maxY, y);
+
+          for (let dy = -1; dy <= 1; dy += 1) {
+            for (let dx = -1; dx <= 1; dx += 1) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx < 0 || ny < 0 || nx >= safeW || ny >= safeH) continue;
+              const nextIndex = ny * safeW + nx;
+              if (mask[nextIndex] !== 1) continue;
+              mask[nextIndex] = 2;
+              queueX[tail] = nx;
+              queueY[tail] = ny;
+              tail += 1;
+            }
+          }
+        }
+
+        if (count >= minimumPixels) {
+          components.push({
+            minX: minX + safeX,
+            maxX: maxX + safeX,
+            minY: minY + safeY,
+            maxY: maxY + safeY,
+            count,
+          });
         }
       }
-
-      const span = maxX - minX + 1;
-      if (count >= Math.max(18, regionWidth * 0.01) && span >= Math.max(40, regionWidth * 0.035)) {
-        rows.push({ y, count, minX, maxX, span });
-      }
     }
 
-    if (rows.length < 2) return null;
-
-    let best: typeof rows = [];
-    let current: typeof rows = [];
-
-    for (const row of rows) {
-      const previous = current[current.length - 1];
-      if (!previous || row.y - previous.y <= 2) {
-        current.push(row);
-      } else {
-        if (scoreExpBarCluster(current) > scoreExpBarCluster(best)) best = current;
-        current = [row];
-      }
-    }
-    if (scoreExpBarCluster(current) > scoreExpBarCluster(best)) best = current;
-    if (best.length < 2) return null;
-
-    const minX = Math.min(...best.map((row) => row.minX)) + searchXStart;
-    const maxX = Math.max(...best.map((row) => row.maxX)) + searchXStart;
-    const minY = Math.min(...best.map((row) => row.y)) + searchYStart;
-    const maxY = Math.max(...best.map((row) => row.y)) + searchYStart;
-    const count = best.reduce((sum, row) => sum + row.count, 0);
-
-    if (count < 50 || maxX <= minX || maxY <= minY) return null;
-    return { minX, minY, maxX, maxY, count };
+    return components;
   }
 
-  function scoreExpBarCluster(rows: Array<{ count: number; span: number }>) {
-    return rows.reduce((sum, row) => sum + row.count * 1.5 + row.span, 0);
-  }
-
-  function findLevelHudBoundingBox(source: HTMLCanvasElement) {
+  function sampleHudContext(
+    source: HTMLCanvasElement,
+    box: HudColorComponent,
+    expand: { left: number; top: number; right: number; bottom: number },
+  ) {
     const ctx = source.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return null;
+    if (!ctx) return { darkRatio: 0, whiteCount: 0, sampled: 0 };
 
-    const width = source.width;
-    const height = source.height;
-    const image = ctx.getImageData(0, 0, width, height);
+    const x1 = Math.max(0, Math.floor(box.minX - expand.left));
+    const y1 = Math.max(0, Math.floor(box.minY - expand.top));
+    const x2 = Math.min(source.width - 1, Math.ceil(box.maxX + expand.right));
+    const y2 = Math.min(source.height - 1, Math.ceil(box.maxY + expand.bottom));
+    const width = Math.max(1, x2 - x1 + 1);
+    const height = Math.max(1, y2 - y1 + 1);
+    const image = ctx.getImageData(x1, y1, width, height);
     const data = image.data;
-    const rows: Array<{ y: number; count: number; minX: number; maxX: number; span: number }> = [];
+
+    let darkCount = 0;
+    let whiteCount = 0;
+    const sampled = width * height;
 
     for (let y = 0; y < height; y += 1) {
-      let count = 0;
-      let minX = width;
-      let maxX = 0;
-
       for (let x = 0; x < width; x += 1) {
         const index = (y * width + x) * 4;
         const r = data[index];
         const g = data[index + 1];
         const b = data[index + 2];
-
-        // Reference style: orange digits on a dark LV. badge.
-        const orangeDigit =
-          r >= 180 &&
-          g >= 45 &&
-          g <= 190 &&
-          b <= 105 &&
-          r >= g * 1.32 &&
-          g >= Math.max(1, b) * 1.18 &&
-          r - b >= 90;
-
-        if (orangeDigit) {
-          count += 1;
-          minX = Math.min(minX, x);
-          maxX = Math.max(maxX, x);
+        const brightness = (r + g + b) / 3;
+        if (brightness <= 105) darkCount += 1;
+        if (
+          x1 + x < box.minX &&
+          r >= 145 &&
+          g >= 145 &&
+          b >= 145 &&
+          Math.max(r, g, b) - Math.min(r, g, b) <= 70
+        ) {
+          whiteCount += 1;
         }
       }
-
-      const span = maxX - minX + 1;
-      if (count >= 3 && span >= 5) rows.push({ y, count, minX, maxX, span });
     }
 
-    if (rows.length < 3) return null;
+    return {
+      darkRatio: sampled > 0 ? darkCount / sampled : 0,
+      whiteCount,
+      sampled,
+    };
+  }
 
-    const clusters: typeof rows[] = [];
-    let current: typeof rows = [];
-    for (const row of rows) {
-      const previous = current[current.length - 1];
-      if (!previous || row.y - previous.y <= 2) {
-        current.push(row);
-      } else {
-        if (current.length >= 3) clusters.push(current);
-        current = [row];
-      }
-    }
-    if (current.length >= 3) clusters.push(current);
+  function findExpHudBoundingBox(source: HTMLCanvasElement) {
+    const width = source.width;
+    const height = source.height;
 
-    let best:
-      | { minX: number; minY: number; maxX: number; maxY: number; count: number; score: number }
-      | null = null;
+    // EXP is a long lime/green bar near the bottom. Restricting detection to
+    // the bottom 32% prevents green monsters, skills and maps from becoming
+    // the initial crop.
+    const components = findColorComponents(
+      source,
+      { x: 0, y: height * 0.68, w: width, h: height * 0.32 },
+      (r, g, b) =>
+        g >= 118 &&
+        r >= 55 &&
+        r <= 245 &&
+        b <= 150 &&
+        g >= b * 1.32 &&
+        g >= r * 0.7 &&
+        g - b >= 42,
+      18,
+    );
 
-    for (const cluster of clusters) {
-      const minX = Math.min(...cluster.map((row) => row.minX));
-      const maxX = Math.max(...cluster.map((row) => row.maxX));
-      const minY = Math.min(...cluster.map((row) => row.y));
-      const maxY = Math.max(...cluster.map((row) => row.y));
-      const boxWidth = maxX - minX + 1;
-      const boxHeight = maxY - minY + 1;
-      const count = cluster.reduce((sum, row) => sum + row.count, 0);
+    let best: (HudColorComponent & { score: number }) | null = null;
+
+    for (const component of components) {
+      const boxWidth = component.maxX - component.minX + 1;
+      const boxHeight = component.maxY - component.minY + 1;
       const aspect = boxWidth / Math.max(1, boxHeight);
       const widthRatio = boxWidth / width;
       const heightRatio = boxHeight / height;
-      const fillRatio = count / Math.max(1, boxWidth * boxHeight);
+      const bottomBias = component.maxY / height;
+      const density = component.count / Math.max(1, boxWidth * boxHeight);
 
       if (
-        boxWidth < 8 ||
-        boxHeight < 4 ||
-        aspect < 1.15 ||
-        aspect > 9 ||
-        widthRatio > 0.68 ||
-        heightRatio > 0.55 ||
-        fillRatio < 0.08
+        boxWidth < 28 ||
+        boxHeight < 2 ||
+        aspect < 5 ||
+        aspect > 120 ||
+        widthRatio < 0.035 ||
+        widthRatio > 0.55 ||
+        heightRatio > 0.055 ||
+        density < 0.08
       ) {
         continue;
       }
 
-      const leftStart = Math.max(0, Math.floor(minX - boxWidth * 1.25));
-      const rightEnd = Math.min(width - 1, Math.ceil(maxX + boxWidth * 0.2));
-      const topStart = Math.max(0, Math.floor(minY - boxHeight * 0.45));
-      const bottomEnd = Math.min(height - 1, Math.ceil(maxY + boxHeight * 0.45));
+      const context = sampleHudContext(source, component, {
+        left: boxWidth * 0.05,
+        top: Math.max(8, boxHeight * 4),
+        right: boxWidth * 0.05,
+        bottom: Math.max(3, boxHeight),
+      });
 
-      let whiteCount = 0;
-      let darkCount = 0;
-      let sampled = 0;
-
-      for (let y = topStart; y <= bottomEnd; y += 1) {
-        for (let x = leftStart; x <= rightEnd; x += 1) {
-          const index = (y * width + x) * 4;
-          const r = data[index];
-          const g = data[index + 1];
-          const b = data[index + 2];
-          const brightness = (r + g + b) / 3;
-          if (x < minX && r >= 145 && g >= 145 && b >= 145 && Math.max(r, g, b) - Math.min(r, g, b) <= 75) {
-            whiteCount += 1;
-          }
-          if (brightness <= 105) darkCount += 1;
-          sampled += 1;
-        }
-      }
-
-      const darkRatio = sampled > 0 ? darkCount / sampled : 0;
-      const leftBias = 1 - Math.min(1, minX / Math.max(1, width));
       const score =
-        count * 2 +
-        whiteCount * 0.8 +
-        darkRatio * 160 +
-        fillRatio * 120 +
-        Math.min(6, aspect) * 8 +
-        leftBias * 10;
+        boxWidth * 4 +
+        component.count * 1.4 +
+        Math.min(40, aspect) * 5 +
+        bottomBias * 180 +
+        context.darkRatio * 90 +
+        density * 70 -
+        boxHeight * 2;
 
-      if (!best || score > best.score) best = { minX, minY, maxX, maxY, count, score };
+      if (!best || score > best.score) best = { ...component, score };
     }
 
     return best;
   }
 
-  function makeAnalysisFrame() {
+  function mergeLevelDigitComponents(components: HudColorComponent[]) {
+    const sorted = [...components].sort((a, b) => a.minX - b.minX || a.minY - b.minY);
+    const groups: HudColorComponent[][] = [];
+
+    for (const component of sorted) {
+      const boxWidth = component.maxX - component.minX + 1;
+      const boxHeight = component.maxY - component.minY + 1;
+      if (boxWidth < 2 || boxHeight < 3 || boxHeight > 80) continue;
+
+      let matched: HudColorComponent[] | null = null;
+      for (const group of groups) {
+        const groupMinY = Math.min(...group.map((item) => item.minY));
+        const groupMaxY = Math.max(...group.map((item) => item.maxY));
+        const groupMaxX = Math.max(...group.map((item) => item.maxX));
+        const groupHeight = groupMaxY - groupMinY + 1;
+        const verticalOverlap =
+          Math.min(groupMaxY, component.maxY) - Math.max(groupMinY, component.minY) + 1;
+        const overlapRatio = verticalOverlap / Math.max(1, Math.min(groupHeight, boxHeight));
+        const gap = component.minX - groupMaxX - 1;
+
+        if (overlapRatio >= 0.42 && gap >= -2 && gap <= Math.max(16, Math.max(groupHeight, boxHeight) * 1.25)) {
+          matched = group;
+          break;
+        }
+      }
+
+      if (matched) matched.push(component);
+      else groups.push([component]);
+    }
+
+    return groups.map((group) => ({
+      minX: Math.min(...group.map((item) => item.minX)),
+      minY: Math.min(...group.map((item) => item.minY)),
+      maxX: Math.max(...group.map((item) => item.maxX)),
+      maxY: Math.max(...group.map((item) => item.maxY)),
+      count: group.reduce((sum, item) => sum + item.count, 0),
+      digitParts: group.length,
+    }));
+  }
+
+  function findLevelHudBoundingBox(source: HTMLCanvasElement) {
+    const width = source.width;
+    const height = source.height;
+
+    // The level badge is part of the lower HUD. Limiting the search area avoids
+    // orange damage numbers and buttons elsewhere in the captured screen.
+    const orangeComponents = findColorComponents(
+      source,
+      { x: 0, y: height * 0.55, w: width, h: height * 0.45 },
+      (r, g, b) =>
+        r >= 175 &&
+        g >= 38 &&
+        g <= 205 &&
+        b <= 125 &&
+        r >= g * 1.22 &&
+        r - b >= 78,
+      3,
+    );
+
+    const groups = mergeLevelDigitComponents(orangeComponents);
+    let best:
+      | (HudColorComponent & { digitParts: number; score: number })
+      | null = null;
+
+    for (const group of groups) {
+      const boxWidth = group.maxX - group.minX + 1;
+      const boxHeight = group.maxY - group.minY + 1;
+      const aspect = boxWidth / Math.max(1, boxHeight);
+      const widthRatio = boxWidth / width;
+      const heightRatio = boxHeight / height;
+      const density = group.count / Math.max(1, boxWidth * boxHeight);
+      const bottomBias = group.maxY / height;
+
+      if (
+        group.digitParts < 1 ||
+        group.digitParts > 4 ||
+        boxWidth < 5 ||
+        boxHeight < 4 ||
+        aspect < 0.45 ||
+        aspect > 7.5 ||
+        widthRatio > 0.28 ||
+        heightRatio > 0.15 ||
+        density < 0.055
+      ) {
+        continue;
+      }
+
+      const context = sampleHudContext(source, group, {
+        left: Math.max(16, boxWidth * 1.25),
+        top: Math.max(4, boxHeight * 0.55),
+        right: Math.max(5, boxWidth * 0.25),
+        bottom: Math.max(4, boxHeight * 0.55),
+      });
+
+      // A valid LV badge should have a dark backing and white/grey "LV." text
+      // immediately to the left of the orange number.
+      if (context.darkRatio < 0.32 || context.whiteCount < Math.max(4, boxHeight * 0.35)) continue;
+
+      const score =
+        group.count * 2.5 +
+        context.whiteCount * 1.6 +
+        context.darkRatio * 180 +
+        density * 110 +
+        bottomBias * 110 +
+        Math.min(4, group.digitParts) * 18 +
+        Math.min(5, aspect) * 8;
+
+      if (!best || score > best.score) best = { ...group, score };
+    }
+
+    return best;
+  }
+
+  function captureReferenceFrame(maxWidth = 1280) {
     const video = videoRef.current;
     if (!video || !video.videoWidth || !video.videoHeight) return null;
 
-    const maxWidth = 960;
     const scale = Math.min(1, maxWidth / video.videoWidth);
     const frame = document.createElement('canvas');
     frame.width = Math.max(1, Math.round(video.videoWidth * scale));
     frame.height = Math.max(1, Math.round(video.videoHeight * scale));
     const ctx = frame.getContext('2d', { willReadFrequently: true });
     if (!ctx) return null;
+
+    // The initial crop is derived from the exact image currently visible in
+    // "螢幕擷取對照", rather than from fixed X/Y percentages.
     ctx.drawImage(video, 0, 0, frame.width, frame.height);
+    captureReferenceFrameRef.current = frame;
     return frame;
+  }
+
+  function makeAnalysisFrame() {
+    return captureReferenceFrame(1280);
   }
 
   function pixelBoxToPercentCrop(
@@ -2794,8 +2926,8 @@ function TrainingEfficiencyPanel() {
     };
   }
 
-  function detectAdaptiveCrops(options: { silent?: boolean } = {}) {
-    const frame = makeAnalysisFrame();
+  function detectAdaptiveCrops(options: { silent?: boolean; initial?: boolean; frame?: HTMLCanvasElement | null } = {}) {
+    const frame = options.frame || makeAnalysisFrame();
     if (!frame) {
       if (!options.silent) setOcrMessage('尚未取得畫面，無法執行自適應定位。');
       return {
@@ -2826,7 +2958,7 @@ function TrainingEfficiencyPanel() {
         },
         { w: 4, h: 3 },
       );
-      nextExpCrop = smoothAdaptiveCrop(ocrCropRef.current, detectedExp);
+      nextExpCrop = options.initial ? detectedExp : smoothAdaptiveCrop(ocrCropRef.current, detectedExp);
       ocrCropRef.current = nextExpCrop;
       setOcrCrop(nextExpCrop);
       drawOcrCropPreview(nextExpCrop);
@@ -2846,7 +2978,7 @@ function TrainingEfficiencyPanel() {
         },
         { w: 2, h: 2 },
       );
-      nextLevelCrop = smoothAdaptiveCrop(levelCropRef.current, detectedLevel);
+      nextLevelCrop = options.initial ? detectedLevel : smoothAdaptiveCrop(levelCropRef.current, detectedLevel);
       levelCropRef.current = nextLevelCrop;
       setLevelCrop(nextLevelCrop);
       drawLevelCropPreview(nextLevelCrop);
@@ -2857,7 +2989,8 @@ function TrainingEfficiencyPanel() {
         expBox ? 'EXP 區域已定位' : 'EXP 區域沿用上次位置',
         levelBox ? '等級區域已定位' : '等級區域沿用上次位置',
       ];
-      setOcrMessage(`自適應定位：${statuses.join('；')}。`);
+      setOcrMessage(`${options.initial ? '初始截圖辨識' : '自適應定位'}：${statuses.join('；')}。`);
+      setCropDetectionSource(options.initial ? '螢幕擷取對照快照' : '即時螢幕擷取畫面');
     }
 
     return {
@@ -2869,8 +3002,10 @@ function TrainingEfficiencyPanel() {
   }
 
   function autoDetectOcrCrop() {
-    const result = detectAdaptiveCrops({ silent: false });
-    return result.expFound || result.levelFound;
+    const frame = captureReferenceFrame(1280);
+    const result = detectAdaptiveCrops({ silent: false, initial: true, frame });
+    initialCropDetectionRef.current = result.expFound || result.levelFound;
+    return initialCropDetectionRef.current;
   }
 
   function getVideoDisplayGeometry() {
@@ -3307,7 +3442,23 @@ function TrainingEfficiencyPanel() {
       return;
     }
 
-    detectAdaptiveCrops({ silent: false });
+    await waitForCapturePaint();
+    initialCropDetectionRef.current = false;
+    const initialFrame = captureReferenceFrame(1280);
+    const initialDetection = detectAdaptiveCrops({
+      silent: false,
+      initial: true,
+      frame: initialFrame,
+    });
+    initialCropDetectionRef.current = initialDetection.expFound || initialDetection.levelFound;
+
+    if (!initialDetection.expFound || !initialDetection.levelFound) {
+      const missing = [
+        !initialDetection.expFound ? 'EXP' : '',
+        !initialDetection.levelFound ? '等級' : '',
+      ].filter(Boolean).join('、');
+      setOcrMessage(`初始截圖已辨識；${missing} 未找到，該區域暫時沿用上次裁切位置並在後續畫面繼續追蹤。`);
+    }
 
     if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
     void runOcrOnceRef.current();
@@ -3662,7 +3813,7 @@ function TrainingEfficiencyPanel() {
                 Debug
               </label>
             </div>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">按「開始分析」後會持續自適應追蹤 EXP 區域與「LV. 數字」區域；遊戲視窗移動或縮放後會重新定位。Debug 仍保留 EXP 手動框選備援。</p>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">按「開始分析」後，會先截取「螢幕擷取對照」當下完整畫面，從該快照辨識 EXP 綠色長條與深色 LV. 橘色數字區塊；完成初始定位後才開始 OCR，後續再隨畫面移動或縮放追蹤。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析(F8)'}</Button>
@@ -3723,9 +3874,9 @@ function TrainingEfficiencyPanel() {
               <div className="flex flex-wrap gap-2 rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-3">
                 <Button variant="secondary" disabled={!captureActive} onClick={() => setManualSelectMode((prev) => !prev)}>{manualSelectMode ? '取消框選' : '手動框選裁切區'}</Button>
                 <Button variant="secondary" disabled={!captureActive} onClick={saveCropAsDefault}>儲存為預設裁切區</Button>
-                <Button variant="secondary" disabled={!captureActive} onClick={autoDetectOcrCrop}>重新自適應定位 EXP / 等級</Button>
+                <Button variant="secondary" disabled={!captureActive} onClick={autoDetectOcrCrop}>從螢幕擷取對照重新辨識 EXP / 等級</Button>
                 <Button variant="ghost" onClick={resetSavedCrop}>清除預設裁切區</Button>
-                <span className="self-center text-xs font-semibold text-orange-700">橘框為 EXP、藍框為等級數字。手動框選只校正 EXP；等級區域會依橘色數字與深色 LV. 背景自動定位。</span>
+                <span className="self-center text-xs font-semibold text-orange-700">初始橘框與藍框都由螢幕擷取對照快照辨識：橘框為 EXP、藍框為等級。手動框選只作為 EXP 辨識失敗時的備援。</span>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-5">
@@ -3748,6 +3899,7 @@ function TrainingEfficiencyPanel() {
                 </Field>
               </div>
 
+              <div className="mb-3 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm font-black text-sky-700">定位來源：{cropDetectionSource}</div>
               <div className="grid gap-3 md:grid-cols-4">
                 <div className="rounded-3xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">EXP OCR 成功：{ocrSuccessCount}</div>
                 <div className="rounded-3xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-black text-rose-700">EXP 失敗 / 忽略：{ocrFailCount}</div>
@@ -4532,7 +4684,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.3</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.4</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -4694,13 +4846,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.3 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.4 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">練功效率 EXP OCR 裁切區改為持續自適應定位，遊戲視窗移動或縮放後會自動重新追蹤。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">當前等級改為自動辨識，會尋找深色 LV. 區塊中的橘色等級數字。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">新增 EXP 與等級雙裁切預覽；橘框代表 EXP、藍框代表等級。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">等級辨識範圍限制為 1～200；大幅跳號時需連續辨識兩次才會套用。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正 EXP 與當前等級初始裁切區位置錯誤。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">開始分析後先截取「螢幕擷取對照」完整畫面，再從快照辨識 EXP 綠色長條與 LV. 橘色數字位置。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">EXP 與等級改用獨立色彩連通區分析，避免同一水平線上的其他綠色或橘色物件被合併成錯誤裁切框。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">初始定位直接採用截圖辨識結果，不再受到舊固定座標的平滑偏移影響。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">
