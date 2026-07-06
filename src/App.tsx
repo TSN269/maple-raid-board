@@ -2224,6 +2224,16 @@ type TrainingExpPushResult = {
   message: string;
 };
 
+type TrainingOcrHistoryRecord = {
+  id: string;
+  timestamp: number;
+  source: 'ocr' | 'manual';
+  status: 'added' | 'unchanged' | 'pending' | 'rebaseline' | 'rejected' | 'failed';
+  exp: number | null;
+  rawText?: string;
+  message: string;
+};
+
 function TrainingEfficiencyPanel() {
   const TRAINING_OCR_CROP_STORAGE_KEY = 'maple_raid_board_training_ocr_crop_v46';
   const TRAINING_LEVEL_CROP_STORAGE_KEY = 'maple_raid_board_training_level_crop_v83';
@@ -2255,6 +2265,7 @@ function TrainingEfficiencyPanel() {
   const [captureActive, setCaptureActive] = useState(false);
   const [ocrActive, setOcrActive] = useState(false);
   const [samples, setSamples] = useState<TrainingSample[]>([]);
+  const [ocrHistory, setOcrHistory] = useState<TrainingOcrHistoryRecord[]>([]);
   const [expInput, setExpInput] = useState('');
   const [currentLevelInput, setCurrentLevelInput] = useState('');
   const [levelOcrText, setLevelOcrText] = useState('');
@@ -2419,6 +2430,22 @@ function TrainingEfficiencyPanel() {
   const predicted10 = expPerMinute * 10;
   const predicted60 = expPerMinute * 60;
 
+  function appendTrainingOcrHistory(
+    record: Omit<TrainingOcrHistoryRecord, 'id' | 'timestamp'>,
+  ) {
+    const timestamp = Date.now();
+    const nextRecord: TrainingOcrHistoryRecord = {
+      ...record,
+      id: `${timestamp}-${Math.random().toString(36).slice(2)}`,
+      timestamp,
+    };
+
+    setOcrHistory((previous) => {
+      const next = [...previous, nextRecord];
+      return next.length > 2000 ? next.slice(-2000) : next;
+    });
+  }
+
   function setConfirmedExpBaseline(exp: number, reason: 'lower' | 'outlier') {
     const timestamp = Date.now();
     const baseline: TrainingSample = {
@@ -2578,7 +2605,14 @@ function TrainingEfficiencyPanel() {
   }
 
   function addSample() {
-    pushSample(Number(expInput.replace(/,/g, '')), 'manual');
+    const exp = Number(expInput.replace(/,/g, ''));
+    const decision = pushSample(exp, 'manual');
+    appendTrainingOcrHistory({
+      source: 'manual',
+      status: decision.status,
+      exp: Number.isFinite(exp) ? exp : null,
+      message: decision.message,
+    });
   }
 
   function resetAll() {
@@ -2587,6 +2621,7 @@ function TrainingEfficiencyPanel() {
     if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
     ocrTimerRef.current = null;
     setSamples([]);
+    setOcrHistory([]);
     setExpInput('');
     setAnalysisStartedAt(null);
     setPaused(false);
@@ -4046,8 +4081,22 @@ function TrainingEfficiencyPanel() {
       let expDecision: TrainingExpPushResult | null = null;
       if (!Number.isFinite(exp)) {
         setOcrFailCount((prev) => prev + 1);
+        appendTrainingOcrHistory({
+          source: 'ocr',
+          status: 'failed',
+          exp: null,
+          rawText,
+          message: `EXP 未辨識${rawText ? `：${rawText}` : '：空白'}`,
+        });
       } else {
         expDecision = pushSample(exp, 'ocr');
+        appendTrainingOcrHistory({
+          source: 'ocr',
+          status: expDecision.status,
+          exp,
+          rawText,
+          message: expDecision.message,
+        });
         if (expDecision.accepted) {
           setOcrSuccessCount((prev) => prev + 1);
         } else if (expDecision.status === 'rejected') {
@@ -4738,17 +4787,42 @@ function TrainingEfficiencyPanel() {
 
       {debugEnabled ? (
         <section className="rounded-[2rem] border border-orange-100 bg-white/85 p-5 shadow-[0_18px_60px_-42px_rgba(124,45,18,0.75)] backdrop-blur-xl">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-lg font-black text-slate-950">最近 OCR / 手動紀錄</h3>
-            <span className="text-xs font-black text-slate-400">資料筆數：{samples.length}</span>
+            <span className="text-xs font-black text-slate-400">OCR 紀錄：{ocrHistory.length}｜目前統計樣本：{samples.length}</span>
           </div>
-          <div className="mt-3 max-h-72 overflow-auto rounded-2xl border border-orange-100 bg-orange-50/50 p-3">
-            {samples.length > 0 ? samples.slice().reverse().map((sample) => (
-              <div key={sample.id} className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 border-b border-orange-100 py-2 text-sm last:border-b-0">
-                <span className="font-bold text-slate-400">{new Date(sample.timestamp).toLocaleTimeString('zh-TW')}</span>
-                <span className="font-black text-slate-700">EXP {formatTrainingNumber(sample.exp)}</span>
-              </div>
-            )) : <div className="py-6 text-center text-sm font-bold text-slate-400">尚無紀錄。先框選並儲存裁切區，再按「開始分析」啟動 OCR。</div>}
+          <div className="mt-3 max-h-96 overflow-auto rounded-2xl border border-orange-100 bg-orange-50/50 p-3">
+            {ocrHistory.length > 0 ? ocrHistory.slice().reverse().map((record) => {
+              const tone =
+                record.status === 'added' || record.status === 'unchanged'
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : record.status === 'rebaseline'
+                    ? 'bg-sky-50 text-sky-700'
+                    : record.status === 'pending'
+                      ? 'bg-amber-50 text-amber-700'
+                      : 'bg-rose-50 text-rose-700';
+              const statusLabel =
+                record.status === 'added'
+                  ? '已加入'
+                  : record.status === 'unchanged'
+                    ? '未變化'
+                    : record.status === 'pending'
+                      ? '待確認'
+                      : record.status === 'rebaseline'
+                        ? '新基準'
+                        : record.status === 'failed'
+                          ? '未辨識'
+                          : '已拒絕';
+
+              return (
+                <div key={record.id} className="grid gap-2 border-b border-orange-100 py-2 text-sm last:border-b-0 md:grid-cols-[110px_70px_110px_minmax(0,1fr)] md:items-center">
+                  <span className="font-bold text-slate-400">{new Date(record.timestamp).toLocaleTimeString('zh-TW')}</span>
+                  <span className={classNames('w-fit rounded-full px-2 py-0.5 text-[11px] font-black', tone)}>{statusLabel}</span>
+                  <span className="font-black text-slate-700">{record.exp !== null ? `EXP ${formatTrainingNumber(record.exp)}` : 'EXP --'}</span>
+                  <span className="min-w-0 break-words text-xs font-semibold text-slate-500">{record.message}{record.rawText ? `｜原始：${record.rawText}` : ''}</span>
+                </div>
+              );
+            }) : <div className="py-6 text-center text-sm font-bold text-slate-400">尚無紀錄。按「開始分析」後，每次 OCR 成功、失敗、待確認與手動輸入都會保留在這裡。</div>}
           </div>
         </section>
       ) : null}
@@ -5402,7 +5476,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.9</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.0</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -5564,13 +5638,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.9 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.0 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正 EXP 已正確辨識但只顯示「未加入」，無法得知被拒絕原因的問題。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">當 EXP 小於目前基準或與近期趨勢差異過大時，改為待確認，不再直接永久忽略。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">連續兩次辨識到相近數值後，會將該值設為新的正確基準並重新起算統計。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">OCR 狀態會明確顯示已加入、未變化、待確認或已重新設定基準。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正「最近 OCR / 手動紀錄」在重新建立 EXP 基準後只剩開始與結束兩筆的問題。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">OCR 操作紀錄與統計樣本改為分開保存；統計重新起算時不再刪除先前 OCR 紀錄。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">每次 OCR 都會記錄已加入、未變化、待確認、新基準、未辨識或已拒絕狀態。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">Debug 紀錄會同時顯示辨識值、處理原因與原始 OCR 文字，最多保留最近 2,000 筆。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">
