@@ -2559,8 +2559,8 @@ function TrainingEfficiencyPanel() {
     levelDigitsBottom: 37,
     expCropLeft: 688,
     expCropTop: 0,
-    expCropRight: 868,
-    expCropBottom: 48,
+    expCropRight: 870,
+    expCropBottom: 23,
   };
 
   function findColorComponents(
@@ -3172,29 +3172,180 @@ function TrainingEfficiencyPanel() {
     setOcrMessage('已清除保存的 EXP 與等級裁切區；下次辨識會重新自適應定位。');
   }
 
-  function preprocessCrop(sourceCanvas: HTMLCanvasElement) {
-    const ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+  function scaleCanvasNearest(
+    sourceCanvas: HTMLCanvasElement,
+    scale: number,
+    padding = 8,
+    background = '#fff',
+  ) {
+    const scaled = document.createElement('canvas');
+    scaled.width = sourceCanvas.width * scale + padding * 2;
+    scaled.height = sourceCanvas.height * scale + padding * 2;
+    const ctx = scaled.getContext('2d');
     if (!ctx) return sourceCanvas;
 
-    const imageData = ctx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
-    const data = imageData.data;
-    for (let index = 0; index < data.length; index += 4) {
-      const gray = data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
-      const boosted = gray > 118 ? 255 : Math.max(0, gray - 35);
-      data[index] = boosted;
-      data[index + 1] = boosted;
-      data[index + 2] = boosted;
-    }
-    ctx.putImageData(imageData, 0, 0);
-
-    const scaled = document.createElement('canvas');
-    scaled.width = sourceCanvas.width * 3;
-    scaled.height = sourceCanvas.height * 3;
-    const scaledCtx = scaled.getContext('2d');
-    if (!scaledCtx) return sourceCanvas;
-    scaledCtx.imageSmoothingEnabled = false;
-    scaledCtx.drawImage(sourceCanvas, 0, 0, scaled.width, scaled.height);
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, scaled.width, scaled.height);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      sourceCanvas,
+      padding,
+      padding,
+      sourceCanvas.width * scale,
+      sourceCanvas.height * scale,
+    );
     return scaled;
+  }
+
+  function buildExpBinaryVariant(
+    sourceCanvas: HTMLCanvasElement,
+    threshold: number,
+  ) {
+    const binary = document.createElement('canvas');
+    binary.width = sourceCanvas.width;
+    binary.height = sourceCanvas.height;
+    const ctx = binary.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return sourceCanvas;
+
+    ctx.drawImage(sourceCanvas, 0, 0);
+    const image = ctx.getImageData(0, 0, binary.width, binary.height);
+    const data = image.data;
+
+    for (let index = 0; index < data.length; index += 4) {
+      const gray =
+        data[index] * 0.299 +
+        data[index + 1] * 0.587 +
+        data[index + 2] * 0.114;
+      const value = gray >= threshold ? 0 : 255;
+      data[index] = value;
+      data[index + 1] = value;
+      data[index + 2] = value;
+      data[index + 3] = 255;
+    }
+
+    ctx.putImageData(image, 0, 0);
+    return scaleCanvasNearest(binary, 6, 12, '#fff');
+  }
+
+  function buildExpWhiteTextVariant(sourceCanvas: HTMLCanvasElement) {
+    const binary = document.createElement('canvas');
+    binary.width = sourceCanvas.width;
+    binary.height = sourceCanvas.height;
+    const ctx = binary.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return sourceCanvas;
+
+    ctx.drawImage(sourceCanvas, 0, 0);
+    const image = ctx.getImageData(0, 0, binary.width, binary.height);
+    const data = image.data;
+
+    for (let index = 0; index < data.length; index += 4) {
+      const r = data[index];
+      const g = data[index + 1];
+      const b = data[index + 2];
+      const brightness = (r + g + b) / 3;
+      const spread = Math.max(r, g, b) - Math.min(r, g, b);
+      const textPixel =
+        brightness >= 145 &&
+        spread <= 105 &&
+        r >= 135 &&
+        g >= 135 &&
+        b >= 130;
+      const value = textPixel ? 0 : 255;
+      data[index] = value;
+      data[index + 1] = value;
+      data[index + 2] = value;
+      data[index + 3] = 255;
+    }
+
+    ctx.putImageData(image, 0, 0);
+    return scaleCanvasNearest(binary, 8, 14, '#fff');
+  }
+
+  function buildExpOcrVariants(sourceCanvas: HTMLCanvasElement) {
+    return [
+      { name: '二值化140', canvas: buildExpBinaryVariant(sourceCanvas, 140) },
+      { name: '白字抽取', canvas: buildExpWhiteTextVariant(sourceCanvas) },
+      { name: '原圖放大', canvas: scaleCanvasNearest(sourceCanvas, 6, 12, '#111827') },
+      { name: '二值化165', canvas: buildExpBinaryVariant(sourceCanvas, 165) },
+    ];
+  }
+
+  function normalizeExpOcrText(rawText: string) {
+    return String(rawText || '')
+      .replace(/[Oo]/g, '0')
+      .replace(/[Il|]/g, '1')
+      .replace(/[Ss]/g, '5')
+      .replace(/[Bb]/g, '8')
+      .replace(/\s+/g, '');
+  }
+
+  function parseExpOcrText(rawText: string) {
+    const normalized = normalizeExpOcrText(rawText);
+    const beforePercent = normalized.split('%')[0] || normalized;
+    const beforeBracket =
+      beforePercent.split('[')[0]?.split('(')[0] || beforePercent;
+
+    const labelled = beforeBracket.match(
+      /(?:EXP|EP|XP|E)?[:：]?([0-9][0-9,]{0,14})/i,
+    );
+    if (labelled?.[1]) {
+      const value = Number(labelled[1].replace(/,/g, ''));
+      if (Number.isFinite(value) && value >= 0) return value;
+    }
+
+    const sequences =
+      beforeBracket
+        .match(/[0-9][0-9,]*/g)
+        ?.map((value) => value.replace(/,/g, ''))
+        .filter((value) => value.length > 0) || [];
+
+    if (sequences.length === 0) return null;
+
+    const best = [...sequences].sort((a, b) => b.length - a.length)[0];
+    const value = Number(best);
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  }
+
+  async function recognizeExpWithVariants(
+    recognize: any,
+    variants: Array<{ name: string; canvas: HTMLCanvasElement }>,
+  ) {
+    const results: Array<{
+      name: string;
+      rawText: string;
+      value: number | null;
+      confidence: number;
+    }> = [];
+
+    for (const variant of variants) {
+      const result = await recognize(variant.canvas, 'eng', {
+        tessedit_char_whitelist: 'EXPexp:0123456789,.%[]() ',
+        tessedit_pageseg_mode: '7',
+        preserve_interword_spaces: '1',
+      });
+      const rawText = String(result?.data?.text || '').trim();
+      const value = parseExpOcrText(rawText);
+      const confidence = Number(result?.data?.confidence || 0);
+      results.push({ name: variant.name, rawText, value, confidence });
+
+      if (value !== null) {
+        return {
+          value,
+          rawText,
+          source: variant.name,
+          confidence,
+          attempts: results,
+        };
+      }
+    }
+
+    return {
+      value: null,
+      rawText: results.map((item) => `${item.name}:${item.rawText || '空白'}`).join('｜'),
+      source: '全部失敗',
+      confidence: 0,
+      attempts: results,
+    };
   }
 
   function drawOcrCropPreview(nextCrop: TrainingAdaptiveCrop = ocrCropRef.current) {
@@ -3604,7 +3755,7 @@ function TrainingEfficiencyPanel() {
     setOcrMessage('自適應定位完成，正在辨識 EXP 與等級…');
 
     try {
-      const processedExp = preprocessCrop(expCanvas);
+      const expVariants = buildExpOcrVariants(expCanvas);
       const pixelLevelResult = levelCanvas
         ? recognizeLevelByPixelSegments(levelCanvas)
         : null;
@@ -3617,14 +3768,17 @@ function TrainingEfficiencyPanel() {
       const tesseractApi = tesseractModule.default ?? tesseractModule;
       const recognize = tesseractApi.recognize ?? tesseractModule.recognize;
 
-      let expResult: any;
+      let expRecognition: {
+        value: number | null;
+        rawText: string;
+        source: string;
+        confidence: number;
+        attempts: Array<{ name: string; rawText: string; value: number | null; confidence: number }>;
+      } | null = null;
       let levelResult: any = null;
 
       if (typeof recognize === 'function') {
-        expResult = await recognize(processedExp, 'eng', {
-          tessedit_char_whitelist: 'EXP0123456789,.%[] ',
-          tessedit_pageseg_mode: '6',
-        });
+        expRecognition = await recognizeExpWithVariants(recognize, expVariants);
         if (processedLevel) {
           levelResult = await recognize(processedLevel, 'eng', {
             tessedit_char_whitelist: '0123456789',
@@ -3635,13 +3789,20 @@ function TrainingEfficiencyPanel() {
         const createWorker = tesseractApi.createWorker ?? tesseractModule.createWorker;
         if (typeof createWorker !== 'function') throw new Error('tesseract.js recognize/createWorker API unavailable');
         const worker = await createWorker('eng');
-        if (typeof worker.setParameters === 'function') {
-          await worker.setParameters({
-            tessedit_char_whitelist: 'EXP0123456789,.%[] ',
-            tessedit_pageseg_mode: '6',
-          });
-        }
-        expResult = await worker.recognize(processedExp);
+        const recognizeWithWorker = async (
+          canvas: HTMLCanvasElement,
+          _language: string,
+          parameters: Record<string, string>,
+        ) => {
+          if (typeof worker.setParameters === 'function') {
+            await worker.setParameters(parameters);
+          }
+          return worker.recognize(canvas);
+        };
+        expRecognition = await recognizeExpWithVariants(
+          recognizeWithWorker,
+          expVariants,
+        );
 
         if (processedLevel) {
           if (typeof worker.setParameters === 'function') {
@@ -3655,15 +3816,17 @@ function TrainingEfficiencyPanel() {
         if (typeof worker.terminate === 'function') await worker.terminate();
       }
 
-      const rawText = String(expResult?.data?.text || '').trim();
-      setOcrText(rawText || '(無文字)');
-
-      const candidates = rawText
-        .replace(/[Oo]/g, '0')
-        .match(/[0-9][0-9,]{2,}/g)
-        ?.map((value) => Number(value.replace(/,/g, '')))
-        .filter((value) => Number.isFinite(value) && value >= 0) || [];
-      const exp = candidates.length > 0 ? Math.max(...candidates) : NaN;
+      const rawText = expRecognition?.rawText || '';
+      const exp =
+        expRecognition?.value !== null &&
+        expRecognition?.value !== undefined
+          ? expRecognition.value
+          : NaN;
+      setOcrText(
+        expRecognition
+          ? `${expRecognition.source}：${rawText || '空白'}`
+          : '(無文字)',
+      );
 
       let expAccepted = false;
       if (!Number.isFinite(exp)) {
@@ -3689,7 +3852,7 @@ function TrainingEfficiencyPanel() {
 
       const expStatus = Number.isFinite(exp)
         ? expAccepted
-          ? `EXP ${formatTrainingNumber(exp)}`
+          ? `EXP ${formatTrainingNumber(exp)}（${expRecognition?.source || 'OCR'}）`
           : `EXP ${formatTrainingNumber(exp)} 未加入`
         : `EXP 未辨識${rawText ? `（${rawText}）` : ''}`;
       const levelStatus = detectedLevel
@@ -4113,7 +4276,7 @@ function TrainingEfficiencyPanel() {
                 Debug
               </label>
             </div>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">按「開始分析」後，會先從「螢幕擷取對照」完整快照辨識附圖形式的整條 LV / HP / MP / EXP 狀態列；只有整條狀態列確認成功後，才在區塊內分別建立等級與 EXP 裁切區；等級數字會先用白色像素七段字型辨識，失敗才交給 Tesseract。</p>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">按「開始分析」後，會先從「螢幕擷取對照」完整快照辨識附圖形式的整條 LV / HP / MP / EXP 狀態列；只有整條狀態列確認成功後，才在區塊內分別建立等級與 EXP 裁切區。EXP 只裁切上方文字列，不再把下方經驗條一起送入 OCR，並依序嘗試多種影像處理。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析(F8)'}</Button>
@@ -4993,7 +5156,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.6</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.7</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -5155,13 +5318,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.6 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.7 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正當前等級裁切位置正確但數字無法辨識的問題。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">等級辨識改為先抽取橘色方塊內的白色像素數字，不再把橘色方塊本身當成文字。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">新增 Maple 像素數字七段辨識，直接分析每個數字的上、中、下與左右筆畫。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">像素辨識失敗時才使用放大 10 倍的黑字白底影像交給 Tesseract 備援。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正視窗最大化或全螢幕後，EXP 裁切位置正確但 OCR 顯示 Baty／無法取得數字的問題。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">EXP 裁切區改為只保留狀態列上方的 EXP 文字與數字，不再包含下方經驗條。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">EXP OCR 新增二值化 140、白字抽取、原圖放大、二值化 165 四種辨識流程。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">每種流程改用單行文字模式，第一個成功取得 EXP 數字的結果會立即採用。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">
