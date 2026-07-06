@@ -2218,6 +2218,11 @@ const ARTALE_EXP_BY_LEVEL: Record<number, number> = {
 
 type TrainingAdaptiveCrop = { x: number; y: number; w: number; h: number };
 type TrainingHudPixelBox = { minX: number; minY: number; maxX: number; maxY: number; score?: number };
+type TrainingExpPushResult = {
+  accepted: boolean;
+  status: 'added' | 'unchanged' | 'pending' | 'rebaseline' | 'rejected';
+  message: string;
+};
 
 function TrainingEfficiencyPanel() {
   const TRAINING_OCR_CROP_STORAGE_KEY = 'maple_raid_board_training_ocr_crop_v46';
@@ -2241,6 +2246,11 @@ function TrainingEfficiencyPanel() {
   const levelCropRef = useRef<TrainingAdaptiveCrop | null>(loadSavedTrainingLevelCrop());
   const runOcrOnceRef = useRef<() => Promise<void>>(async () => {});
   const levelCandidateRef = useRef<{ value: number; count: number } | null>(null);
+  const expCandidateRef = useRef<{
+    value: number;
+    count: number;
+    reason: 'lower' | 'outlier';
+  } | null>(null);
   const [running, setRunning] = useState(false);
   const [captureActive, setCaptureActive] = useState(false);
   const [ocrActive, setOcrActive] = useState(false);
@@ -2409,44 +2419,162 @@ function TrainingEfficiencyPanel() {
   const predicted10 = expPerMinute * 10;
   const predicted60 = expPerMinute * 60;
 
-  function pushSample(exp: number, source: 'manual' | 'ocr') {
+  function setConfirmedExpBaseline(exp: number, reason: 'lower' | 'outlier') {
+    const timestamp = Date.now();
+    const baseline: TrainingSample = {
+      id: `${timestamp}-${Math.random().toString(36).slice(2)}`,
+      timestamp,
+      exp,
+    };
+
+    setSamples([baseline]);
+    setExpInput(String(exp));
+    setAccumulatedActiveMs(0);
+    setCurrentRunStartedAt(timestamp);
+    setAnalysisStartedAt(timestamp);
+    setRunning(true);
+    expCandidateRef.current = null;
+
+    const reasonText =
+      reason === 'lower'
+        ? '先前基準高於目前正確值'
+        : '與先前趨勢差異過大';
+    const message =
+      `EXP ${formatTrainingNumber(exp)} 已連續辨識確認；因${reasonText}，已改設為新基準並重新起算。`;
+    setMessage(message);
+
+    return {
+      accepted: true,
+      status: 'rebaseline',
+      message,
+    } satisfies TrainingExpPushResult;
+  }
+
+  function confirmExceptionalExp(
+    exp: number,
+    reason: 'lower' | 'outlier',
+  ): TrainingExpPushResult {
+    const previous = expCandidateRef.current;
+    const tolerance = Math.max(100000, exp * 0.001);
+    const matchesPrevious =
+      previous &&
+      previous.reason === reason &&
+      Math.abs(previous.value - exp) <= tolerance;
+    const count = matchesPrevious ? previous.count + 1 : 1;
+
+    expCandidateRef.current = { value: exp, count, reason };
+
+    if (count >= 2) {
+      return setConfirmedExpBaseline(exp, reason);
+    }
+
+    const reasonText =
+      reason === 'lower'
+        ? '小於目前基準'
+        : '與近期趨勢差異過大';
+    const message =
+      `EXP ${formatTrainingNumber(exp)} 待確認（1/2）：${reasonText}；下一次辨識接近此值才會設為新基準。`;
+    setMessage(message);
+
+    return {
+      accepted: false,
+      status: 'pending',
+      message,
+    };
+  }
+
+  function pushSample(
+    exp: number,
+    source: 'manual' | 'ocr',
+  ): TrainingExpPushResult {
     if (!Number.isFinite(exp) || exp < 0) {
-      setMessage(source === 'ocr' ? 'OCR 辨識到的 EXP 格式不正確。' : '請輸入正確的目前 EXP。');
-      return false;
+      const message =
+        source === 'ocr'
+          ? 'EXP OCR 辨識格式不正確。'
+          : '請輸入正確的目前 EXP。';
+      setMessage(message);
+      return { accepted: false, status: 'rejected', message };
+    }
+
+    if (source === 'manual') {
+      expCandidateRef.current = null;
+      const timestamp = Date.now();
+      setSamples((prev) =>
+        [
+          ...prev,
+          {
+            id: `${timestamp}-${Math.random().toString(36).slice(2)}`,
+            timestamp,
+            exp,
+          },
+        ].sort((a, b) => a.timestamp - b.timestamp),
+      );
+      setExpInput(String(exp));
+      setRunning(true);
+      const message = `已加入 EXP 紀錄：${formatTrainingNumber(exp)}。`;
+      setMessage(message);
+      return { accepted: true, status: 'added', message };
     }
 
     const last = samples[samples.length - 1];
-    if (source === 'ocr' && last) {
+    if (last) {
       if (exp < last.exp) {
-        setOcrFailCount((prev) => prev + 1);
-        setOcrMessage(`OCR 忽略：辨識值 ${formatTrainingNumber(exp)} 小於上一筆 ${formatTrainingNumber(last.exp)}。`);
-        return false;
+        return confirmExceptionalExp(exp, 'lower');
       }
 
       const nowForOutlierCheck = Date.now();
-      const elapsed = Math.max(1, (nowForOutlierCheck - last.timestamp) / 60000);
+      const elapsed = Math.max(
+        1,
+        (nowForOutlierCheck - last.timestamp) / 60000,
+      );
       const delta = exp - last.exp;
       const estimatedPerMinute = delta / elapsed;
-      if (
-        (samples.length >= 3 && expPerMinute > 0 && estimatedPerMinute > expPerMinute * 20 && delta > 100000) ||
-        isExtremeTrainingOcrSample(samples, exp, nowForOutlierCheck)
-      ) {
-        setOcrFailCount((prev) => prev + 1);
-        setOcrMessage(`OCR 忽略：辨識值與近期大多數 EXP 差異過大（${formatTrainingNumber(exp)}），未加入趨勢圖資料。`);
-        return false;
+      const outlier =
+        (samples.length >= 3 &&
+          expPerMinute > 0 &&
+          estimatedPerMinute > expPerMinute * 20 &&
+          delta > 100000) ||
+        isExtremeTrainingOcrSample(
+          samples,
+          exp,
+          nowForOutlierCheck,
+        );
+
+      if (outlier) {
+        return confirmExceptionalExp(exp, 'outlier');
       }
 
       if (exp === last.exp) {
-        setOcrMessage(`OCR 成功，但 EXP 未變化：${formatTrainingNumber(exp)}。`);
-        return true;
+        expCandidateRef.current = null;
+        const message =
+          `EXP ${formatTrainingNumber(exp)} 辨識成功，數值未變化。`;
+        setMessage(message);
+        return {
+          accepted: true,
+          status: 'unchanged',
+          message,
+        };
       }
     }
 
-    setSamples((prev) => [...prev, { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, timestamp: Date.now(), exp }].sort((a, b) => a.timestamp - b.timestamp));
+    expCandidateRef.current = null;
+    const timestamp = Date.now();
+    setSamples((prev) =>
+      [
+        ...prev,
+        {
+          id: `${timestamp}-${Math.random().toString(36).slice(2)}`,
+          timestamp,
+          exp,
+        },
+      ].sort((a, b) => a.timestamp - b.timestamp),
+    );
     setExpInput(String(exp));
     setRunning(true);
-    setMessage(source === 'ocr' ? `OCR 已加入 EXP：${formatTrainingNumber(exp)}` : '已加入 EXP 紀錄。');
-    return true;
+    const message =
+      `EXP ${formatTrainingNumber(exp)} 已加入統計。`;
+    setMessage(message);
+    return { accepted: true, status: 'added', message };
   }
 
   function addSample() {
@@ -2475,6 +2603,7 @@ function TrainingEfficiencyPanel() {
     hudDetectionMissRef.current = 0;
     setHudPanelCrop(null);
     levelCandidateRef.current = null;
+    expCandidateRef.current = null;
     setOcrSuccessCount(0);
     setOcrFailCount(0);
     setMessage('已重置練功效率紀錄。');
@@ -3914,12 +4043,16 @@ function TrainingEfficiencyPanel() {
           : '(無文字)',
       );
 
-      let expAccepted = false;
+      let expDecision: TrainingExpPushResult | null = null;
       if (!Number.isFinite(exp)) {
         setOcrFailCount((prev) => prev + 1);
       } else {
-        expAccepted = pushSample(exp, 'ocr');
-        if (expAccepted) setOcrSuccessCount((prev) => prev + 1);
+        expDecision = pushSample(exp, 'ocr');
+        if (expDecision.accepted) {
+          setOcrSuccessCount((prev) => prev + 1);
+        } else if (expDecision.status === 'rejected') {
+          setOcrFailCount((prev) => prev + 1);
+        }
       }
 
       const tesseractLevelText = String(levelResult?.data?.text || '').trim();
@@ -3937,9 +4070,7 @@ function TrainingEfficiencyPanel() {
       const levelAccepted = detectedLevel ? applyDetectedLevel(detectedLevel) : false;
 
       const expStatus = Number.isFinite(exp)
-        ? expAccepted
-          ? `EXP ${formatTrainingNumber(exp)}（${expRecognition?.source || 'OCR'}）`
-          : `EXP ${formatTrainingNumber(exp)} 未加入`
+        ? `${expDecision?.message || `EXP ${formatTrainingNumber(exp)}`}（${expRecognition?.source || 'OCR'}）`
         : `EXP 未辨識${rawText ? `（${rawText}）` : ''}`;
       const levelStatus = detectedLevel
         ? levelAccepted
@@ -5271,7 +5402,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.8</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.9</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -5433,13 +5564,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.8 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.9 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正開始分析時找不到完整 LV / HP / MP / EXP 狀態列而立即停止的問題。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">完整狀態列辨識不再強制三個色條同時命中；HP、MP、EXP 任兩個色條符合排列比例即可建立候選。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">開始分析會連續掃描最多 10 次，等待最大化或全螢幕切換動畫完成，不再只檢查第一張畫面。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">分析中若狀態列短暫漏判，最多沿用上一個有效位置 3 個週期，之後再重新掃描。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正 EXP 已正確辨識但只顯示「未加入」，無法得知被拒絕原因的問題。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">當 EXP 小於目前基準或與近期趨勢差異過大時，改為待確認，不再直接永久忽略。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">連續兩次辨識到相近數值後，會將該值設為新的正確基準並重新起算統計。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">OCR 狀態會明確顯示已加入、未變化、待確認或已重新設定基準。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">
