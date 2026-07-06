@@ -598,10 +598,7 @@ function GameAccountModal({ records, onClose, onSaveRecords }: { records: GameAc
             <h2 className="mt-1 text-2xl font-black text-slate-950">遊戲id / 特徵碼紀錄</h2>
             <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">紀錄格式為「遊戲id#特徵碼」，最多 10 個。特徵碼限制為最多 6 位英數字元。</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => void loadMarket()} disabled={loadingMarket}>重新讀取報價</Button>
-            <Button variant="ghost" onClick={onClose}>關閉</Button>
-          </div>
+          <Button variant="ghost" onClick={onClose}>關閉</Button>
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">
@@ -2219,10 +2216,13 @@ const ARTALE_EXP_BY_LEVEL: Record<number, number> = {
   200: 2121276324,
 };
 
+type TrainingAdaptiveCrop = { x: number; y: number; w: number; h: number };
+
 function TrainingEfficiencyPanel() {
   const TRAINING_OCR_CROP_STORAGE_KEY = 'maple_raid_board_training_ocr_crop_v46';
+  const TRAINING_LEVEL_CROP_STORAGE_KEY = 'maple_raid_board_training_level_crop_v83';
   const TRAINING_STATS_SNAPSHOTS_STORAGE_KEY = 'maple_raid_board_training_stats_snapshots_v68';
-  const DEFAULT_OCR_CROP = { x: 50.4, y: 93.6, w: 13, h: 6.4 };
+  const DEFAULT_OCR_CROP: TrainingAdaptiveCrop = { x: 50.4, y: 93.6, w: 13, h: 6.4 };
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const videoWrapRef = useRef<HTMLDivElement | null>(null);
@@ -2231,12 +2231,20 @@ function TrainingEfficiencyPanel() {
   const ocrBusyRef = useRef(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const levelPreviewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const ocrCropRef = useRef<TrainingAdaptiveCrop>(loadSavedTrainingCrop());
+  const levelCropRef = useRef<TrainingAdaptiveCrop | null>(loadSavedTrainingLevelCrop());
+  const runOcrOnceRef = useRef<() => Promise<void>>(async () => {});
+  const levelCandidateRef = useRef<{ value: number; count: number } | null>(null);
   const [running, setRunning] = useState(false);
   const [captureActive, setCaptureActive] = useState(false);
   const [ocrActive, setOcrActive] = useState(false);
   const [samples, setSamples] = useState<TrainingSample[]>([]);
   const [expInput, setExpInput] = useState('');
   const [currentLevelInput, setCurrentLevelInput] = useState('');
+  const [levelOcrText, setLevelOcrText] = useState('');
+  const [levelOcrMessage, setLevelOcrMessage] = useState('開始分析後會自動尋找 LV. 等級區塊並辨識目前等級。');
+  const [levelOcrSuccessCount, setLevelOcrSuccessCount] = useState(0);
   const [analysisStartedAt, setAnalysisStartedAt] = useState<number | null>(null);
   const [paused, setPaused] = useState(false);
   const [accumulatedActiveMs, setAccumulatedActiveMs] = useState(0);
@@ -2248,7 +2256,8 @@ function TrainingEfficiencyPanel() {
   const [ocrSuccessCount, setOcrSuccessCount] = useState(0);
   const [ocrFailCount, setOcrFailCount] = useState(0);
   const [ocrIntervalSec, setOcrIntervalSec] = useState(3);
-  const [ocrCrop, setOcrCrop] = useState(() => loadSavedTrainingCrop());
+  const [ocrCrop, setOcrCrop] = useState<TrainingAdaptiveCrop>(() => ocrCropRef.current);
+  const [levelCrop, setLevelCrop] = useState<TrainingAdaptiveCrop | null>(() => levelCropRef.current);
   const [debugEnabled, setDebugEnabled] = useState(false);
   const [manualSelectMode, setManualSelectMode] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
@@ -2276,6 +2285,27 @@ function TrainingEfficiencyPanel() {
       // ignore invalid storage
     }
     return DEFAULT_OCR_CROP;
+  }
+
+  function loadSavedTrainingLevelCrop(): TrainingAdaptiveCrop | null {
+    try {
+      const raw = localStorage.getItem(TRAINING_LEVEL_CROP_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (
+        parsed &&
+        Number.isFinite(parsed.x) &&
+        Number.isFinite(parsed.y) &&
+        Number.isFinite(parsed.w) &&
+        Number.isFinite(parsed.h) &&
+        parsed.w > 0 &&
+        parsed.h > 0
+      ) {
+        return parsed as TrainingAdaptiveCrop;
+      }
+    } catch {
+      // ignore invalid storage
+    }
+    return null;
   }
 
   function loadTrainingStatsSnapshots(): TrainingStatsSnapshot[] {
@@ -2335,8 +2365,14 @@ function TrainingEfficiencyPanel() {
   }, []);
 
   useEffect(() => {
-    if (captureActive) drawOcrCropPreview();
+    ocrCropRef.current = ocrCrop;
+    if (captureActive) drawOcrCropPreview(ocrCrop);
   }, [ocrCrop, captureActive]);
+
+  useEffect(() => {
+    levelCropRef.current = levelCrop;
+    if (captureActive) drawLevelCropPreview(levelCrop);
+  }, [levelCrop, captureActive]);
 
   useEffect(() => {
     if (!debugEnabled) {
@@ -2422,6 +2458,10 @@ function TrainingEfficiencyPanel() {
     setAccumulatedActiveMs(0);
     setCurrentRunStartedAt(null);
     setOcrText('');
+    setLevelOcrText('');
+    setLevelOcrMessage('開始分析後會自動尋找 LV. 等級區塊並辨識目前等級。');
+    setLevelOcrSuccessCount(0);
+    levelCandidateRef.current = null;
     setOcrSuccessCount(0);
     setOcrFailCount(0);
     setMessage('已重置練功效率紀錄。');
@@ -2567,47 +2607,270 @@ function TrainingEfficiencyPanel() {
     return rows.reduce((sum, row) => sum + row.count * 1.5 + row.span, 0);
   }
 
-  function autoDetectOcrCrop() {
+  function findLevelHudBoundingBox(source: HTMLCanvasElement) {
+    const ctx = source.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+
+    const width = source.width;
+    const height = source.height;
+    const image = ctx.getImageData(0, 0, width, height);
+    const data = image.data;
+    const rows: Array<{ y: number; count: number; minX: number; maxX: number; span: number }> = [];
+
+    for (let y = 0; y < height; y += 1) {
+      let count = 0;
+      let minX = width;
+      let maxX = 0;
+
+      for (let x = 0; x < width; x += 1) {
+        const index = (y * width + x) * 4;
+        const r = data[index];
+        const g = data[index + 1];
+        const b = data[index + 2];
+
+        // Reference style: orange digits on a dark LV. badge.
+        const orangeDigit =
+          r >= 180 &&
+          g >= 45 &&
+          g <= 190 &&
+          b <= 105 &&
+          r >= g * 1.32 &&
+          g >= Math.max(1, b) * 1.18 &&
+          r - b >= 90;
+
+        if (orangeDigit) {
+          count += 1;
+          minX = Math.min(minX, x);
+          maxX = Math.max(maxX, x);
+        }
+      }
+
+      const span = maxX - minX + 1;
+      if (count >= 3 && span >= 5) rows.push({ y, count, minX, maxX, span });
+    }
+
+    if (rows.length < 3) return null;
+
+    const clusters: typeof rows[] = [];
+    let current: typeof rows = [];
+    for (const row of rows) {
+      const previous = current[current.length - 1];
+      if (!previous || row.y - previous.y <= 2) {
+        current.push(row);
+      } else {
+        if (current.length >= 3) clusters.push(current);
+        current = [row];
+      }
+    }
+    if (current.length >= 3) clusters.push(current);
+
+    let best:
+      | { minX: number; minY: number; maxX: number; maxY: number; count: number; score: number }
+      | null = null;
+
+    for (const cluster of clusters) {
+      const minX = Math.min(...cluster.map((row) => row.minX));
+      const maxX = Math.max(...cluster.map((row) => row.maxX));
+      const minY = Math.min(...cluster.map((row) => row.y));
+      const maxY = Math.max(...cluster.map((row) => row.y));
+      const boxWidth = maxX - minX + 1;
+      const boxHeight = maxY - minY + 1;
+      const count = cluster.reduce((sum, row) => sum + row.count, 0);
+      const aspect = boxWidth / Math.max(1, boxHeight);
+      const widthRatio = boxWidth / width;
+      const heightRatio = boxHeight / height;
+      const fillRatio = count / Math.max(1, boxWidth * boxHeight);
+
+      if (
+        boxWidth < 8 ||
+        boxHeight < 4 ||
+        aspect < 1.15 ||
+        aspect > 9 ||
+        widthRatio > 0.68 ||
+        heightRatio > 0.55 ||
+        fillRatio < 0.08
+      ) {
+        continue;
+      }
+
+      const leftStart = Math.max(0, Math.floor(minX - boxWidth * 1.25));
+      const rightEnd = Math.min(width - 1, Math.ceil(maxX + boxWidth * 0.2));
+      const topStart = Math.max(0, Math.floor(minY - boxHeight * 0.45));
+      const bottomEnd = Math.min(height - 1, Math.ceil(maxY + boxHeight * 0.45));
+
+      let whiteCount = 0;
+      let darkCount = 0;
+      let sampled = 0;
+
+      for (let y = topStart; y <= bottomEnd; y += 1) {
+        for (let x = leftStart; x <= rightEnd; x += 1) {
+          const index = (y * width + x) * 4;
+          const r = data[index];
+          const g = data[index + 1];
+          const b = data[index + 2];
+          const brightness = (r + g + b) / 3;
+          if (x < minX && r >= 145 && g >= 145 && b >= 145 && Math.max(r, g, b) - Math.min(r, g, b) <= 75) {
+            whiteCount += 1;
+          }
+          if (brightness <= 105) darkCount += 1;
+          sampled += 1;
+        }
+      }
+
+      const darkRatio = sampled > 0 ? darkCount / sampled : 0;
+      const leftBias = 1 - Math.min(1, minX / Math.max(1, width));
+      const score =
+        count * 2 +
+        whiteCount * 0.8 +
+        darkRatio * 160 +
+        fillRatio * 120 +
+        Math.min(6, aspect) * 8 +
+        leftBias * 10;
+
+      if (!best || score > best.score) best = { minX, minY, maxX, maxY, count, score };
+    }
+
+    return best;
+  }
+
+  function makeAnalysisFrame() {
     const video = videoRef.current;
-    if (!video || !video.videoWidth || !video.videoHeight) {
-      setOcrMessage('尚未取得畫面，無法自動抓取 OCR 裁切區域。');
-      return false;
-    }
+    if (!video || !video.videoWidth || !video.videoHeight) return null;
 
+    const maxWidth = 960;
+    const scale = Math.min(1, maxWidth / video.videoWidth);
     const frame = document.createElement('canvas');
-    frame.width = video.videoWidth;
-    frame.height = video.videoHeight;
-    const frameCtx = frame.getContext('2d', { willReadFrequently: true });
-    if (!frameCtx) return false;
-    frameCtx.drawImage(video, 0, 0, frame.width, frame.height);
+    frame.width = Math.max(1, Math.round(video.videoWidth * scale));
+    frame.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const ctx = frame.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, frame.width, frame.height);
+    return frame;
+  }
 
-    const box = findExpHudBoundingBox(frame);
-    if (!box) {
-      setOcrCrop(DEFAULT_OCR_CROP);
-      drawOcrCropPreview(DEFAULT_OCR_CROP);
-      setOcrMessage(`自動抓取失敗，已套用預設裁切區：X ${DEFAULT_OCR_CROP.x} / Y ${DEFAULT_OCR_CROP.y} / 寬 ${DEFAULT_OCR_CROP.w} / 高 ${DEFAULT_OCR_CROP.h}`);
-      return false;
+  function pixelBoxToPercentCrop(
+    frame: HTMLCanvasElement,
+    box: { minX: number; minY: number; maxX: number; maxY: number },
+    padding: { left: number; top: number; right: number; bottom: number },
+    minimum: { w: number; h: number },
+  ): TrainingAdaptiveCrop {
+    const x = Math.max(0, box.minX - padding.left);
+    const y = Math.max(0, box.minY - padding.top);
+    const right = Math.min(frame.width, box.maxX + padding.right);
+    const bottom = Math.min(frame.height, box.maxY + padding.bottom);
+
+    return {
+      x: Math.round((x / frame.width) * 1000) / 10,
+      y: Math.round((y / frame.height) * 1000) / 10,
+      w: Math.max(minimum.w, Math.round(((right - x) / frame.width) * 1000) / 10),
+      h: Math.max(minimum.h, Math.round(((bottom - y) / frame.height) * 1000) / 10),
+    };
+  }
+
+  function smoothAdaptiveCrop(previous: TrainingAdaptiveCrop | null, detected: TrainingAdaptiveCrop) {
+    if (!previous) return detected;
+
+    const previousCenterX = previous.x + previous.w / 2;
+    const previousCenterY = previous.y + previous.h / 2;
+    const detectedCenterX = detected.x + detected.w / 2;
+    const detectedCenterY = detected.y + detected.h / 2;
+    const centerDistance = Math.hypot(detectedCenterX - previousCenterX, detectedCenterY - previousCenterY);
+    const sizeRatio = Math.max(
+      detected.w / Math.max(0.1, previous.w),
+      previous.w / Math.max(0.1, detected.w),
+      detected.h / Math.max(0.1, previous.h),
+      previous.h / Math.max(0.1, detected.h),
+    );
+
+    // Large movement usually means the game window changed position/scale.
+    if (centerDistance > 8 || sizeRatio > 1.8) return detected;
+
+    const weight = 0.45;
+    return {
+      x: Math.round((previous.x * (1 - weight) + detected.x * weight) * 10) / 10,
+      y: Math.round((previous.y * (1 - weight) + detected.y * weight) * 10) / 10,
+      w: Math.round((previous.w * (1 - weight) + detected.w * weight) * 10) / 10,
+      h: Math.round((previous.h * (1 - weight) + detected.h * weight) * 10) / 10,
+    };
+  }
+
+  function detectAdaptiveCrops(options: { silent?: boolean } = {}) {
+    const frame = makeAnalysisFrame();
+    if (!frame) {
+      if (!options.silent) setOcrMessage('尚未取得畫面，無法執行自適應定位。');
+      return {
+        expCrop: ocrCropRef.current,
+        levelCrop: levelCropRef.current,
+        expFound: false,
+        levelFound: false,
+      };
     }
 
-    const barWidth = box.maxX - box.minX + 1;
-    const barHeight = box.maxY - box.minY + 1;
+    const expBox = findExpHudBoundingBox(frame);
+    const levelBox = findLevelHudBoundingBox(frame);
 
-    const cropX = Math.max(0, box.minX - Math.max(4, Math.round(barWidth * 0.03)));
-    const cropY = Math.max(0, box.minY - Math.max(20, Math.round(barHeight * 2.6)));
-    const cropRight = Math.min(frame.width, box.maxX + Math.max(4, Math.round(barWidth * 0.04)));
-    const cropBottom = Math.min(frame.height, box.maxY + Math.max(3, Math.round(barHeight * 0.28)));
+    let nextExpCrop = ocrCropRef.current;
+    let nextLevelCrop = levelCropRef.current;
 
-    const next = {
-      x: Math.round((cropX / frame.width) * 1000) / 10,
-      y: Math.round((cropY / frame.height) * 1000) / 10,
-      w: Math.max(4, Math.round(((cropRight - cropX) / frame.width) * 1000) / 10),
-      h: Math.max(3, Math.round(((cropBottom - cropY) / frame.height) * 1000) / 10),
+    if (expBox) {
+      const barWidth = expBox.maxX - expBox.minX + 1;
+      const barHeight = expBox.maxY - expBox.minY + 1;
+      const detectedExp = pixelBoxToPercentCrop(
+        frame,
+        expBox,
+        {
+          left: Math.max(4, Math.round(barWidth * 0.04)),
+          top: Math.max(20, Math.round(barHeight * 3.1)),
+          right: Math.max(4, Math.round(barWidth * 0.05)),
+          bottom: Math.max(3, Math.round(barHeight * 0.35)),
+        },
+        { w: 4, h: 3 },
+      );
+      nextExpCrop = smoothAdaptiveCrop(ocrCropRef.current, detectedExp);
+      ocrCropRef.current = nextExpCrop;
+      setOcrCrop(nextExpCrop);
+      drawOcrCropPreview(nextExpCrop);
+    }
+
+    if (levelBox) {
+      const levelWidth = levelBox.maxX - levelBox.minX + 1;
+      const levelHeight = levelBox.maxY - levelBox.minY + 1;
+      const detectedLevel = pixelBoxToPercentCrop(
+        frame,
+        levelBox,
+        {
+          left: Math.max(3, Math.round(levelWidth * 0.1)),
+          top: Math.max(2, Math.round(levelHeight * 0.28)),
+          right: Math.max(3, Math.round(levelWidth * 0.12)),
+          bottom: Math.max(2, Math.round(levelHeight * 0.28)),
+        },
+        { w: 2, h: 2 },
+      );
+      nextLevelCrop = smoothAdaptiveCrop(levelCropRef.current, detectedLevel);
+      levelCropRef.current = nextLevelCrop;
+      setLevelCrop(nextLevelCrop);
+      drawLevelCropPreview(nextLevelCrop);
+    }
+
+    if (!options.silent) {
+      const statuses = [
+        expBox ? 'EXP 區域已定位' : 'EXP 區域沿用上次位置',
+        levelBox ? '等級區域已定位' : '等級區域沿用上次位置',
+      ];
+      setOcrMessage(`自適應定位：${statuses.join('；')}。`);
+    }
+
+    return {
+      expCrop: nextExpCrop,
+      levelCrop: nextLevelCrop,
+      expFound: Boolean(expBox),
+      levelFound: Boolean(levelBox),
     };
+  }
 
-    setOcrCrop(next);
-    drawOcrCropPreview(next);
-    setOcrMessage(`已自動抓取 OCR 裁切區：X ${next.x} / Y ${next.y} / 寬 ${next.w} / 高 ${next.h}`);
-    return true;
+  function autoDetectOcrCrop() {
+    const result = detectAdaptiveCrops({ silent: false });
+    return result.expFound || result.levelFound;
   }
 
   function getVideoDisplayGeometry() {
@@ -2648,7 +2911,8 @@ function TrainingEfficiencyPanel() {
     };
   }
 
-  function cropToOverlayBox(crop = ocrCrop) {
+  function cropToOverlayBox(crop: TrainingAdaptiveCrop | null = ocrCropRef.current) {
+    if (!crop) return null;
     const geo = getVideoDisplayGeometry();
     if (!geo) return null;
 
@@ -2707,14 +2971,21 @@ function TrainingEfficiencyPanel() {
   }
 
   function saveCropAsDefault() {
-    localStorage.setItem(TRAINING_OCR_CROP_STORAGE_KEY, JSON.stringify(ocrCrop));
-    setOcrMessage(`已儲存為預設裁切區：X ${ocrCrop.x} / Y ${ocrCrop.y} / 寬 ${ocrCrop.w} / 高 ${ocrCrop.h}。此座標以擷取畫面百分比保存，不受網站視窗大小影響。`);
+    localStorage.setItem(TRAINING_OCR_CROP_STORAGE_KEY, JSON.stringify(ocrCropRef.current));
+    if (levelCropRef.current) {
+      localStorage.setItem(TRAINING_LEVEL_CROP_STORAGE_KEY, JSON.stringify(levelCropRef.current));
+    }
+    setOcrMessage('已儲存目前 EXP 與等級裁切區。自適應定位仍會依畫面位置與縮放持續微調。');
   }
 
   function resetSavedCrop() {
     localStorage.removeItem(TRAINING_OCR_CROP_STORAGE_KEY);
+    localStorage.removeItem(TRAINING_LEVEL_CROP_STORAGE_KEY);
+    ocrCropRef.current = DEFAULT_OCR_CROP;
+    levelCropRef.current = null;
     setOcrCrop(DEFAULT_OCR_CROP);
-    setOcrMessage('已清除保存的預設裁切區，並恢復系統預設。');
+    setLevelCrop(null);
+    setOcrMessage('已清除保存的 EXP 與等級裁切區；下次辨識會重新自適應定位。');
   }
 
   function preprocessCrop(sourceCanvas: HTMLCanvasElement) {
@@ -2742,7 +3013,7 @@ function TrainingEfficiencyPanel() {
     return scaled;
   }
 
-  function drawOcrCropPreview(nextCrop = ocrCrop) {
+  function drawOcrCropPreview(nextCrop: TrainingAdaptiveCrop = ocrCropRef.current) {
     const video = videoRef.current;
     const preview = previewCanvasRef.current;
     if (!video || !preview || !video.videoWidth || !video.videoHeight) return null;
@@ -2751,8 +3022,8 @@ function TrainingEfficiencyPanel() {
     const sourceHeight = video.videoHeight;
     const sx = Math.max(0, Math.floor((nextCrop.x / 100) * sourceWidth));
     const sy = Math.max(0, Math.floor((nextCrop.y / 100) * sourceHeight));
-    const sw = Math.max(10, Math.floor((nextCrop.w / 100) * sourceWidth));
-    const sh = Math.max(10, Math.floor((nextCrop.h / 100) * sourceHeight));
+    const sw = Math.max(10, Math.min(sourceWidth - sx, Math.floor((nextCrop.w / 100) * sourceWidth)));
+    const sh = Math.max(10, Math.min(sourceHeight - sy, Math.floor((nextCrop.h / 100) * sourceHeight)));
 
     preview.width = sw;
     preview.height = sh;
@@ -2763,6 +3034,107 @@ function TrainingEfficiencyPanel() {
     return { sx, sy, sw, sh };
   }
 
+  function drawLevelCropPreview(nextCrop: TrainingAdaptiveCrop | null = levelCropRef.current) {
+    const video = videoRef.current;
+    const preview = levelPreviewCanvasRef.current;
+    if (!preview) return null;
+
+    if (!video || !nextCrop || !video.videoWidth || !video.videoHeight) {
+      const clearCtx = preview.getContext('2d');
+      if (clearCtx) clearCtx.clearRect(0, 0, preview.width, preview.height);
+      return null;
+    }
+
+    const sourceWidth = video.videoWidth;
+    const sourceHeight = video.videoHeight;
+    const sx = Math.max(0, Math.floor((nextCrop.x / 100) * sourceWidth));
+    const sy = Math.max(0, Math.floor((nextCrop.y / 100) * sourceHeight));
+    const sw = Math.max(8, Math.min(sourceWidth - sx, Math.floor((nextCrop.w / 100) * sourceWidth)));
+    const sh = Math.max(8, Math.min(sourceHeight - sy, Math.floor((nextCrop.h / 100) * sourceHeight)));
+
+    preview.width = sw;
+    preview.height = sh;
+    const pctx = preview.getContext('2d');
+    if (!pctx) return null;
+    pctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    return { sx, sy, sw, sh };
+  }
+
+  function preprocessLevelCrop(sourceCanvas: HTMLCanvasElement) {
+    const scale = 5;
+    const padding = 8;
+    const scaled = document.createElement('canvas');
+    scaled.width = sourceCanvas.width * scale + padding * 2;
+    scaled.height = sourceCanvas.height * scale + padding * 2;
+    const ctx = scaled.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return sourceCanvas;
+
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, scaled.width, scaled.height);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(sourceCanvas, padding, padding, sourceCanvas.width * scale, sourceCanvas.height * scale);
+
+    const image = ctx.getImageData(0, 0, scaled.width, scaled.height);
+    const data = image.data;
+    for (let index = 0; index < data.length; index += 4) {
+      const r = data[index];
+      const g = data[index + 1];
+      const b = data[index + 2];
+      const orangeDigit =
+        r >= 165 &&
+        g >= 35 &&
+        g <= 205 &&
+        b <= 125 &&
+        r >= g * 1.2 &&
+        r - b >= 70;
+      const value = orangeDigit ? 255 : 0;
+      data[index] = value;
+      data[index + 1] = value;
+      data[index + 2] = value;
+      data[index + 3] = 255;
+    }
+    ctx.putImageData(image, 0, 0);
+    return scaled;
+  }
+
+  function parseDetectedLevel(rawText: string) {
+    const normalized = rawText
+      .replace(/[Oo]/g, '0')
+      .replace(/[Il|]/g, '1');
+    const values = normalized
+      .match(/[0-9]{1,3}/g)
+      ?.map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value >= 1 && value <= 200) || [];
+    return values.length > 0 ? values[values.length - 1] : null;
+  }
+
+  function applyDetectedLevel(level: number) {
+    const current = Math.max(0, Math.min(200, Number(currentLevelInput) || 0));
+
+    if (current === 0 || level === current || level === current + 1) {
+      setCurrentLevelInput(String(level));
+      levelCandidateRef.current = { value: level, count: 1 };
+      setLevelOcrMessage(`等級自動辨識成功：Lv.${level}`);
+      setLevelOcrSuccessCount((prev) => prev + 1);
+      return true;
+    }
+
+    const previous = levelCandidateRef.current;
+    const nextCount = previous?.value === level ? previous.count + 1 : 1;
+    levelCandidateRef.current = { value: level, count: nextCount };
+
+    if (nextCount >= 2) {
+      setCurrentLevelInput(String(level));
+      setLevelOcrMessage(`等級連續辨識確認：Lv.${level}`);
+      setLevelOcrSuccessCount((prev) => prev + 1);
+      return true;
+    }
+
+    setLevelOcrMessage(`等級候選 Lv.${level}，等待下一次辨識確認。`);
+    return false;
+  }
+
   async function runOcrOnce() {
     if (ocrBusyRef.current) return;
     const video = videoRef.current;
@@ -2771,49 +3143,100 @@ function TrainingEfficiencyPanel() {
       return;
     }
 
-    const crop = drawOcrCropPreview();
-    if (!crop) {
-      setOcrMessage('無法裁切 OCR 區域。');
+    // Re-detect on every OCR cycle so moving/resizing the game window is handled.
+    const adaptive = detectAdaptiveCrops({ silent: true });
+    const expCrop = drawOcrCropPreview(adaptive.expCrop);
+    const levelCropPixels = drawLevelCropPreview(adaptive.levelCrop);
+
+    if (!expCrop) {
+      setOcrMessage('無法裁切 EXP OCR 區域。');
       return;
     }
 
-    const canvas = canvasRef.current || document.createElement('canvas');
-    canvasRef.current = canvas;
-    canvas.width = crop.sw;
-    canvas.height = crop.sh;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) {
+    const expCanvas = canvasRef.current || document.createElement('canvas');
+    canvasRef.current = expCanvas;
+    expCanvas.width = expCrop.sw;
+    expCanvas.height = expCrop.sh;
+    const expCtx = expCanvas.getContext('2d', { willReadFrequently: true });
+    if (!expCtx) {
       setOcrMessage('瀏覽器無法建立 Canvas。');
       return;
     }
+    expCtx.drawImage(video, expCrop.sx, expCrop.sy, expCrop.sw, expCrop.sh, 0, 0, expCrop.sw, expCrop.sh);
 
-    ctx.drawImage(video, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, crop.sw, crop.sh);
+    let levelCanvas: HTMLCanvasElement | null = null;
+    if (levelCropPixels) {
+      levelCanvas = document.createElement('canvas');
+      levelCanvas.width = levelCropPixels.sw;
+      levelCanvas.height = levelCropPixels.sh;
+      const levelCtx = levelCanvas.getContext('2d', { willReadFrequently: true });
+      if (levelCtx) {
+        levelCtx.drawImage(
+          video,
+          levelCropPixels.sx,
+          levelCropPixels.sy,
+          levelCropPixels.sw,
+          levelCropPixels.sh,
+          0,
+          0,
+          levelCropPixels.sw,
+          levelCropPixels.sh,
+        );
+      } else {
+        levelCanvas = null;
+      }
+    }
+
     ocrBusyRef.current = true;
-    setOcrMessage('OCR 辨識中…');
+    setOcrMessage('自適應定位完成，正在辨識 EXP 與等級…');
 
     try {
-      const processed = preprocessCrop(canvas);
-      const tesseractModule = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.esm.min.js') as any;
+      const processedExp = preprocessCrop(expCanvas);
+      const processedLevel = levelCanvas ? preprocessLevelCrop(levelCanvas) : null;
+      const tesseractUrl = 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.esm.min.js';
+      const tesseractModule = await import(/* @vite-ignore */ tesseractUrl) as any;
       const tesseractApi = tesseractModule.default ?? tesseractModule;
       const recognize = tesseractApi.recognize ?? tesseractModule.recognize;
-      let result: any;
+
+      let expResult: any;
+      let levelResult: any = null;
 
       if (typeof recognize === 'function') {
-        result = await recognize(processed, 'eng', {
+        expResult = await recognize(processedExp, 'eng', {
           tessedit_char_whitelist: 'EXP0123456789,.%[] ',
+          tessedit_pageseg_mode: '6',
         });
+        if (processedLevel) {
+          levelResult = await recognize(processedLevel, 'eng', {
+            tessedit_char_whitelist: '0123456789',
+            tessedit_pageseg_mode: '7',
+          });
+        }
       } else {
         const createWorker = tesseractApi.createWorker ?? tesseractModule.createWorker;
         if (typeof createWorker !== 'function') throw new Error('tesseract.js recognize/createWorker API unavailable');
         const worker = await createWorker('eng');
         if (typeof worker.setParameters === 'function') {
-          await worker.setParameters({ tessedit_char_whitelist: 'EXP0123456789,.%[] ' });
+          await worker.setParameters({
+            tessedit_char_whitelist: 'EXP0123456789,.%[] ',
+            tessedit_pageseg_mode: '6',
+          });
         }
-        result = await worker.recognize(processed);
+        expResult = await worker.recognize(processedExp);
+
+        if (processedLevel) {
+          if (typeof worker.setParameters === 'function') {
+            await worker.setParameters({
+              tessedit_char_whitelist: '0123456789',
+              tessedit_pageseg_mode: '7',
+            });
+          }
+          levelResult = await worker.recognize(processedLevel);
+        }
         if (typeof worker.terminate === 'function') await worker.terminate();
       }
 
-      const rawText = String(result?.data?.text || '').trim();
+      const rawText = String(expResult?.data?.text || '').trim();
       setOcrText(rawText || '(無文字)');
 
       const candidates = rawText
@@ -2823,16 +3246,35 @@ function TrainingEfficiencyPanel() {
         .filter((value) => Number.isFinite(value) && value >= 0) || [];
       const exp = candidates.length > 0 ? Math.max(...candidates) : NaN;
 
+      let expAccepted = false;
       if (!Number.isFinite(exp)) {
         setOcrFailCount((prev) => prev + 1);
-        setOcrMessage(`OCR 未找到 EXP 數字：${rawText || '空白'}`);
-        return;
+      } else {
+        expAccepted = pushSample(exp, 'ocr');
+        if (expAccepted) setOcrSuccessCount((prev) => prev + 1);
       }
 
-      const accepted = pushSample(exp, 'ocr');
-      if (accepted) {
-        setOcrSuccessCount((prev) => prev + 1);
-        setOcrMessage(`OCR 辨識成功：${formatTrainingNumber(exp)}`);
+      const rawLevelText = String(levelResult?.data?.text || '').trim();
+      if (processedLevel) setLevelOcrText(rawLevelText || '(無文字)');
+      const detectedLevel = processedLevel ? parseDetectedLevel(rawLevelText) : null;
+      const levelAccepted = detectedLevel ? applyDetectedLevel(detectedLevel) : false;
+
+      const expStatus = Number.isFinite(exp)
+        ? expAccepted
+          ? `EXP ${formatTrainingNumber(exp)}`
+          : `EXP ${formatTrainingNumber(exp)} 未加入`
+        : `EXP 未辨識${rawText ? `（${rawText}）` : ''}`;
+      const levelStatus = detectedLevel
+        ? levelAccepted
+          ? `Lv.${detectedLevel}`
+          : `Lv.${detectedLevel} 待確認`
+        : adaptive.levelCrop
+          ? '等級未辨識'
+          : '尚未定位等級區域';
+
+      setOcrMessage(`OCR：${expStatus}；${levelStatus}。`);
+      if (!detectedLevel && processedLevel) {
+        setLevelOcrMessage(`等級 OCR 未找到 1～200 的數字：${rawLevelText || '空白'}`);
       }
     } catch (err) {
       setOcrFailCount((prev) => prev + 1);
@@ -2841,6 +3283,8 @@ function TrainingEfficiencyPanel() {
       ocrBusyRef.current = false;
     }
   }
+
+  runOcrOnceRef.current = runOcrOnce;
 
   async function startAnalysis() {
     const ok = await startCapture();
@@ -2863,12 +3307,12 @@ function TrainingEfficiencyPanel() {
       return;
     }
 
-    autoDetectOcrCrop();
+    detectAdaptiveCrops({ silent: false });
 
     if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
-    void runOcrOnce();
+    void runOcrOnceRef.current();
     ocrTimerRef.current = window.setInterval(() => {
-      void runOcrOnce();
+      void runOcrOnceRef.current();
     }, Math.max(1, ocrIntervalSec) * 1000);
   }
 
@@ -2893,9 +3337,9 @@ function TrainingEfficiencyPanel() {
     setCurrentRunStartedAt(Date.now());
     setOcrMessage('分析已繼續，OCR 與計時已恢復。');
     if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
-    void runOcrOnce();
+    void runOcrOnceRef.current();
     ocrTimerRef.current = window.setInterval(() => {
-      void runOcrOnce();
+      void runOcrOnceRef.current();
     }, Math.max(1, ocrIntervalSec) * 1000);
   }
 
@@ -2946,7 +3390,8 @@ function TrainingEfficiencyPanel() {
     return () => window.removeEventListener('keydown', onTrainingHotkey);
   }, [ocrActive, paused, currentRunStartedAt, ocrIntervalSec, captureActive]);
 
-  const overlayBox = cropToOverlayBox();
+  const overlayBox = cropToOverlayBox(ocrCrop);
+  const levelOverlayBox = cropToOverlayBox(levelCrop);
   const activeBox = dragBox ? cropToOverlayBox(dragBox) : overlayBox;
 
   function getTrainingStatsShareRows() {
@@ -3217,7 +3662,7 @@ function TrainingEfficiencyPanel() {
                 Debug
               </label>
             </div>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">按「開始分析」會自動抓取 OCR 裁切區。需要手動校正時，勾選 Debug 後可在螢幕擷取對照上框選完整 EXP 區域並儲存為預設裁切區。</p>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">按「開始分析」後會持續自適應追蹤 EXP 區域與「LV. 數字」區域；遊戲視窗移動或縮放後會重新定位。Debug 仍保留 EXP 手動框選備援。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析(F8)'}</Button>
@@ -3229,11 +3674,11 @@ function TrainingEfficiencyPanel() {
         </div>
 
         <div className="mt-5 grid gap-4">
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_260px_160px] xl:items-end">
-            <Field label="當前等級">
-              <Input inputMode="numeric" value={currentLevelInput} placeholder="例如 90" onChange={(event) => setCurrentLevelInput(event.target.value.replace(/[^0-9]/g, ''))} />
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_260px_160px_160px] xl:items-end">
+            <Field label="當前等級（自動辨識）">
+              <Input inputMode="numeric" value={currentLevelInput} placeholder="開始分析後自動辨識，可手動修正" onChange={(event) => setCurrentLevelInput(event.target.value.replace(/[^0-9]/g, '').slice(0, 3))} />
               <div className="mt-2 text-xs font-bold text-orange-700">
-                {targetExp > 0 ? `升下一级所需经验：${formatTrainingNumber(targetExp)}` : '輸入 1～200 等級後自動帶入升級所需總 EXP'}
+                {targetExp > 0 ? `Lv.${currentLevel}｜升下一级所需经验：${formatTrainingNumber(targetExp)}` : levelOcrMessage}
               </div>
             </Field>
             <div className={classNames('rounded-2xl border border-orange-100 bg-orange-50/70 p-2', manualSelectMode && 'xl:col-span-4')}>
@@ -3251,15 +3696,25 @@ function TrainingEfficiencyPanel() {
                 <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-contain" />
                 {activeBox ? (
                   <div
-                    className="pointer-events-none absolute border-2 border-orange-400 bg-orange-400/15 shadow-[0_0_0_999px_rgba(15,23,42,0.35)]"
+                    className="pointer-events-none absolute border-2 border-orange-400 bg-orange-400/15 shadow-[0_0_0_999px_rgba(15,23,42,0.25)]"
                     style={{ left: activeBox.x, top: activeBox.y, width: activeBox.w, height: activeBox.h }}
+                  />
+                ) : null}
+                {levelOverlayBox && !manualSelectMode ? (
+                  <div
+                    className="pointer-events-none absolute border-2 border-sky-400 bg-sky-400/15"
+                    style={{ left: levelOverlayBox.x, top: levelOverlayBox.y, width: levelOverlayBox.w, height: levelOverlayBox.h }}
                   />
                 ) : null}
               </div>
             </div>
             <div className="rounded-2xl border border-orange-100 bg-white/85 p-2">
-              <div className="mb-1 text-[11px] font-black text-orange-700">OCR 裁切預覽</div>
+              <div className="mb-1 text-[11px] font-black text-orange-700">EXP OCR 預覽</div>
               <canvas ref={previewCanvasRef} className="h-28 w-full rounded-xl bg-slate-950 object-contain" />
+            </div>
+            <div className="rounded-2xl border border-sky-100 bg-white/85 p-2">
+              <div className="mb-1 text-[11px] font-black text-sky-700">等級 OCR 預覽</div>
+              <canvas ref={levelPreviewCanvasRef} className="h-28 w-full rounded-xl bg-slate-950 object-contain" />
             </div>
           </div>
 
@@ -3268,9 +3723,9 @@ function TrainingEfficiencyPanel() {
               <div className="flex flex-wrap gap-2 rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-3">
                 <Button variant="secondary" disabled={!captureActive} onClick={() => setManualSelectMode((prev) => !prev)}>{manualSelectMode ? '取消框選' : '手動框選裁切區'}</Button>
                 <Button variant="secondary" disabled={!captureActive} onClick={saveCropAsDefault}>儲存為預設裁切區</Button>
-                <Button variant="secondary" disabled={!captureActive} onClick={autoDetectOcrCrop}>重新自動抓取裁切區</Button>
+                <Button variant="secondary" disabled={!captureActive} onClick={autoDetectOcrCrop}>重新自適應定位 EXP / 等級</Button>
                 <Button variant="ghost" onClick={resetSavedCrop}>清除預設裁切區</Button>
-                <span className="self-center text-xs font-semibold text-orange-700">框選時請包含：EXP 字樣、數字、百分比與下方綠色經驗條。框選模式會放大「螢幕擷取對照」欄位。</span>
+                <span className="self-center text-xs font-semibold text-orange-700">橘框為 EXP、藍框為等級數字。手動框選只校正 EXP；等級區域會依橘色數字與深色 LV. 背景自動定位。</span>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-5">
@@ -3293,10 +3748,11 @@ function TrainingEfficiencyPanel() {
                 </Field>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-3xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">OCR 成功：{ocrSuccessCount}</div>
-                <div className="rounded-3xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-black text-rose-700">OCR 失敗 / 忽略：{ocrFailCount}</div>
-                <div className="rounded-3xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-black text-orange-700">最近辨識：{ocrText || '--'}</div>
+              <div className="grid gap-3 md:grid-cols-4">
+                <div className="rounded-3xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">EXP OCR 成功：{ocrSuccessCount}</div>
+                <div className="rounded-3xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-black text-rose-700">EXP 失敗 / 忽略：{ocrFailCount}</div>
+                <div className="rounded-3xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-black text-orange-700">EXP 最近辨識：{ocrText || '--'}</div>
+                <div className="rounded-3xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm font-black text-sky-700">等級：{levelOcrText || '--'}｜成功 {levelOcrSuccessCount}</div>
               </div>
             </>
           ) : null}
@@ -4076,7 +4532,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.2</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-8.3</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -4238,12 +4694,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.2 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-8.3 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">公告頁面改為只顯示本次版本實際改動，不再放舊版延續資訊。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">我的自選清單商品旁新增漲跌幅百分比。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">自選清單漲跌幅顏色同步商品行情折線圖：上漲紅色、下跌綠色。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">練功效率 EXP OCR 裁切區改為持續自適應定位，遊戲視窗移動或縮放後會自動重新追蹤。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">當前等級改為自動辨識，會尋找深色 LV. 區塊中的橘色等級數字。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">新增 EXP 與等級雙裁切預覽；橘框代表 EXP、藍框代表等級。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">等級辨識範圍限制為 1～200；大幅跳號時需連續辨識兩次才會套用。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">
