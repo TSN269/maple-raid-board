@@ -1849,14 +1849,93 @@ function getWindowExpDelta(samples: TrainingSample[], minutes: number, now: numb
 
 function getMaxWindowExpDelta(samples: TrainingSample[], minutes: number) {
   if (samples.length < 2) return 0;
-  const windowMs = minutes * 60000;
-  let best = 0;
-  for (const current of samples) {
-    const cutoff = current.timestamp - windowMs;
-    const baseline = [...samples].reverse().find((sample) => sample.timestamp <= cutoff) || samples[0];
-    best = Math.max(best, current.exp - baseline.exp);
+
+  const ordered = [...samples].sort((a, b) => a.timestamp - b.timestamp);
+  const intervalRates: number[] = [];
+
+  for (let index = 1; index < ordered.length; index += 1) {
+    const previous = ordered[index - 1];
+    const current = ordered[index];
+    const elapsedMinutes = Math.max(
+      1 / 60,
+      (current.timestamp - previous.timestamp) / 60000,
+    );
+    const delta = current.exp - previous.exp;
+    if (delta > 0) intervalRates.push(delta / elapsedMinutes);
   }
-  return Math.max(0, best);
+
+  const medianRate = getMedianTrainingValue(intervalRates);
+  const rateDeviations = intervalRates.map((rate) =>
+    Math.abs(rate - medianRate),
+  );
+  const rateMad = getMedianTrainingValue(rateDeviations);
+  const rateUpperLimit =
+    medianRate > 0 && intervalRates.length >= 3
+      ? medianRate +
+        Math.max(
+          medianRate * 5,
+          rateMad * 8,
+          750000,
+        )
+      : Number.POSITIVE_INFINITY;
+
+  // Remove a single accepted OCR jump that is far above the surrounding
+  // training rate. This prevents a screen-switch number from becoming the
+  // permanent "highest" 10/60-minute result.
+  const cleaned: TrainingSample[] = [];
+  for (const sample of ordered) {
+    const previous = cleaned[cleaned.length - 1];
+    if (!previous) {
+      cleaned.push(sample);
+      continue;
+    }
+
+    const elapsedMinutes = Math.max(
+      1 / 60,
+      (sample.timestamp - previous.timestamp) / 60000,
+    );
+    const delta = sample.exp - previous.exp;
+    if (delta < 0) continue;
+
+    const rate = delta / elapsedMinutes;
+    if (rate > rateUpperLimit) continue;
+    cleaned.push(sample);
+  }
+
+  if (cleaned.length < 2) return 0;
+
+  const windowMs = minutes * 60000;
+  const candidates: number[] = [];
+
+  for (const current of cleaned) {
+    const cutoff = current.timestamp - windowMs;
+    const baseline =
+      [...cleaned]
+        .reverse()
+        .find((sample) => sample.timestamp <= cutoff) ||
+      cleaned[0];
+    const delta = current.exp - baseline.exp;
+    if (delta > 0) candidates.push(delta);
+  }
+
+  if (candidates.length === 0) return 0;
+  if (candidates.length < 4) return Math.max(...candidates);
+
+  const median = getMedianTrainingValue(candidates);
+  const deviations = candidates.map((value) =>
+    Math.abs(value - median),
+  );
+  const mad = getMedianTrainingValue(deviations);
+  const upperLimit =
+    median +
+    Math.max(
+      median * 4,
+      mad * 8,
+      1000000,
+    );
+  const valid = candidates.filter((value) => value <= upperLimit);
+
+  return Math.max(0, ...(valid.length > 0 ? valid : [median]));
 }
 
 function getMedianTrainingValue(values: number[]) {
@@ -2234,6 +2313,8 @@ type TrainingOcrHistoryRecord = {
   message: string;
 };
 
+type TrainingOcrHistoryFilter = 'all' | TrainingOcrHistoryRecord['status'];
+
 function TrainingEfficiencyPanel() {
   const TRAINING_OCR_CROP_STORAGE_KEY = 'maple_raid_board_training_ocr_crop_v46';
   const TRAINING_LEVEL_CROP_STORAGE_KEY = 'maple_raid_board_training_level_crop_v83';
@@ -2266,6 +2347,7 @@ function TrainingEfficiencyPanel() {
   const [ocrActive, setOcrActive] = useState(false);
   const [samples, setSamples] = useState<TrainingSample[]>([]);
   const [ocrHistory, setOcrHistory] = useState<TrainingOcrHistoryRecord[]>([]);
+  const [ocrHistoryFilter, setOcrHistoryFilter] = useState<TrainingOcrHistoryFilter>('all');
   const [expInput, setExpInput] = useState('');
   const [currentLevelInput, setCurrentLevelInput] = useState('');
   const [levelOcrText, setLevelOcrText] = useState('');
@@ -2429,6 +2511,24 @@ function TrainingEfficiencyPanel() {
   const highest60 = getMaxWindowExpDelta(samples, 60);
   const predicted10 = expPerMinute * 10;
   const predicted60 = expPerMinute * 60;
+  const ocrHistoryFilterOptions: Array<{
+    key: TrainingOcrHistoryFilter;
+    label: string;
+  }> = [
+    { key: 'all', label: '全部' },
+    { key: 'added', label: '已加入' },
+    { key: 'unchanged', label: '未變化' },
+    { key: 'pending', label: '待確認' },
+    { key: 'rebaseline', label: '新基準' },
+    { key: 'failed', label: '未辨識' },
+    { key: 'rejected', label: '已拒絕' },
+  ];
+  const filteredOcrHistory =
+    ocrHistoryFilter === 'all'
+      ? ocrHistory
+      : ocrHistory.filter(
+          (record) => record.status === ocrHistoryFilter,
+        );
 
   function appendTrainingOcrHistory(
     record: Omit<TrainingOcrHistoryRecord, 'id' | 'timestamp'>,
@@ -2556,7 +2656,16 @@ function TrainingEfficiencyPanel() {
       );
       const delta = exp - last.exp;
       const estimatedPerMinute = delta / elapsed;
+      const earlyJumpTooHigh =
+        samples.length < 3 &&
+        elapsed < 1 &&
+        delta >
+          Math.max(
+            2000000,
+            Math.max(1, last.exp) * 0.03,
+          );
       const outlier =
+        earlyJumpTooHigh ||
         (samples.length >= 3 &&
           expPerMinute > 0 &&
           estimatedPerMinute > expPerMinute * 20 &&
@@ -2622,6 +2731,7 @@ function TrainingEfficiencyPanel() {
     ocrTimerRef.current = null;
     setSamples([]);
     setOcrHistory([]);
+    setOcrHistoryFilter('all');
     setExpInput('');
     setAnalysisStartedAt(null);
     setPaused(false);
@@ -4571,7 +4681,7 @@ function TrainingEfficiencyPanel() {
                 Debug
               </label>
             </div>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">按「開始分析」後，會先從「螢幕擷取對照」完整快照辨識附圖形式的整條 LV / HP / MP / EXP 狀態列；只有整條狀態列確認成功後，才在區塊內分別建立等級與 EXP 裁切區。EXP 只裁切上方文字列，不再把下方經驗條一起送入 OCR，並依序嘗試多種影像處理。</p>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">一般使用直接按「開始分析」；勾選 Debug 可查看裁切框、OCR 預覽、定位來源、原始辨識文字與最近 OCR／手動紀錄。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析(F8)'}</Button>
@@ -4791,8 +4901,33 @@ function TrainingEfficiencyPanel() {
             <h3 className="text-lg font-black text-slate-950">最近 OCR / 手動紀錄</h3>
             <span className="text-xs font-black text-slate-400">OCR 紀錄：{ocrHistory.length}｜目前統計樣本：{samples.length}</span>
           </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {ocrHistoryFilterOptions.map((option) => {
+              const count =
+                option.key === 'all'
+                  ? ocrHistory.length
+                  : ocrHistory.filter(
+                      (record) => record.status === option.key,
+                    ).length;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setOcrHistoryFilter(option.key)}
+                  className={classNames(
+                    'rounded-full px-3 py-1.5 text-xs font-black transition',
+                    ocrHistoryFilter === option.key
+                      ? 'bg-orange-500 text-white shadow-sm'
+                      : 'bg-white text-slate-600 ring-1 ring-orange-100 hover:bg-orange-50',
+                  )}
+                >
+                  {option.label} {count}
+                </button>
+              );
+            })}
+          </div>
           <div className="mt-3 max-h-96 overflow-auto rounded-2xl border border-orange-100 bg-orange-50/50 p-3">
-            {ocrHistory.length > 0 ? ocrHistory.slice().reverse().map((record) => {
+            {filteredOcrHistory.length > 0 ? filteredOcrHistory.slice().reverse().map((record) => {
               const tone =
                 record.status === 'added' || record.status === 'unchanged'
                   ? 'bg-emerald-50 text-emerald-700'
@@ -4822,7 +4957,7 @@ function TrainingEfficiencyPanel() {
                   <span className="min-w-0 break-words text-xs font-semibold text-slate-500">{record.message}{record.rawText ? `｜原始：${record.rawText}` : ''}</span>
                 </div>
               );
-            }) : <div className="py-6 text-center text-sm font-bold text-slate-400">尚無紀錄。按「開始分析」後，每次 OCR 成功、失敗、待確認與手動輸入都會保留在這裡。</div>}
+            }) : <div className="py-6 text-center text-sm font-bold text-slate-400">{ocrHistory.length > 0 ? '此分類目前沒有紀錄。' : '尚無紀錄。按「開始分析」後，每次 OCR 成功、失敗、待確認與手動輸入都會保留在這裡。'}</div>}
           </div>
         </section>
       ) : null}
@@ -5476,7 +5611,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.0</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.1</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -5638,13 +5773,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.0 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.1 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正「最近 OCR / 手動紀錄」在重新建立 EXP 基準後只剩開始與結束兩筆的問題。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">OCR 操作紀錄與統計樣本改為分開保存；統計重新起算時不再刪除先前 OCR 紀錄。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">每次 OCR 都會記錄已加入、未變化、待確認、新基準、未辨識或已拒絕狀態。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">Debug 紀錄會同時顯示辨識值、處理原因與原始 OCR 文字，最多保留最近 2,000 筆。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">練功效率說明改為簡易 Debug 用途提示，避免顯示過長的辨識流程說明。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">最近 OCR／手動紀錄新增全部、已加入、未變化、待確認、新基準、未辨識與已拒絕分類按鈕。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">預估 10 分與預估 60 分的最高值新增異常速率及離群值排除，避免切換畫面造成錯誤最高紀錄。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">分析初期若短時間出現超大 EXP 跳升，改為待確認兩次，不會直接加入統計。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">
