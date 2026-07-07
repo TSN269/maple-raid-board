@@ -1,287 +1,429 @@
-# Maple Raid Board — TSN UI-9.3
+# Maple Raid Board
 
-> React + TypeScript + Vite + Supabase + Vercel  
-> GitHub：TSN269 / maple-raid-board  
-> 最新版本：UI-9.3  
-> 主要用途：楓之谷 / Artale 突襲報名、羅茱跳台協作、練功效率偵測、隊伍收藏、遊戲 ID 紀錄、Artale 物價查詢。
+> Artale／楓之谷多人協作工具站  
+> 目前版本：**TSN UI-9.3**  
+> GitHub：`TSN269/maple-raid-board`  
+> 部署架構：React + TypeScript + Vite + Supabase + Vercel
+
+Maple Raid Board 整合突襲報名、隊伍管理、羅茱跳台協作、練功效率 OCR、遊戲 ID 紀錄與 Artale 物價查詢。前端以 Vite SPA 運作，Supabase 提供資料庫與 Realtime，Vercel Serverless API 負責物價資料讀取與每日歷史價格寫入。
 
 ---
 
 ## 目錄
 
-```text
-1. 專案概要
-2. 目前版本重點
-3. 功能總覽
-4. 技術架構
-5. 環境變數
-6. Supabase SQL
-7. Artale 物價資料格式
-8. Vercel 部署
-9. 本機開發
-10. 常見問題
-11. GitHub 推送指令
-12. UI-7.7 舊 key 合併修正
-13. 歷代改版紀錄
-```
+1. [功能摘要](#1-功能摘要)
+2. [快速開始](#2-快速開始)
+3. [環境變數](#3-環境變數)
+4. [Supabase 建置與升級](#4-supabase-建置與升級)
+5. [練功效率 OCR](#5-練功效率-ocr)
+6. [Artale 物價查詢](#6-artale-物價查詢)
+7. [專案架構](#7-專案架構)
+8. [Vercel 部署](#8-vercel-部署)
+9. [開發與驗證](#9-開發與驗證)
+10. [安全與資料說明](#10-安全與資料說明)
+11. [故障排除](#11-故障排除)
+12. [GitHub 更新流程](#12-github-更新流程)
+13. [完整改版紀錄](#13-完整改版紀錄)
 
 ---
 
-## 1. 專案概要
+## 1. 功能摘要
 
-Maple Raid Board 是一個 Artale / Maple 類型工具站，主要功能如下：
+### 突襲報名與隊伍管理
 
-```text
-1. 突襲報名看板
-2. 羅茱跳台協作工具
-3. 練功效率偵測
-4. 隊伍收藏
-5. 遊戲 ID / 特徵碼紀錄
-6. Artale 物價查詢
-```
+- 建立 NORMAL／HARD 場次。
+- 招募上限 1～18 人，自動對應 1～3 隊。
+- 團長可設定角色需求、管理碼、邀請碼與公告。
+- 玩家僅能選擇團長開放的角色定位。
+- 支援成員狀態、拖曳排序、刪除成員與刪除場次。
+- 查看名單僅顯示已確認成員。
+- 支援團連結分享與常用隊伍匯入。
 
-專案使用 Supabase 作為資料庫與 Realtime 後端，使用 Vercel 部署前端與 Serverless API。
+### 羅茱跳台協作
 
----
+- 多人房間、房間代碼與密碼。
+- 每位玩家只能選擇一個角色。
+- 支援快捷鍵 1～4。
+- 支援 1～10 路徑格、上次路徑與迷你路徑預覽。
+- 支援再次點擊清除格子。
+- 使用 Supabase Realtime／Presence 同步。
+- 房間閒置一小時後可自動退出。
 
-## 2. 目前版本重點
+### 練功效率偵測
 
-目前最新版本為 **UI-9.3**。
+- 螢幕擷取與自適應狀態列定位。
+- 自動辨識等級與目前 EXP。
+- EXP／分、10 分鐘、60 分鐘與升級時間估算。
+- 折線圖、離群值排除與最高效率排除異常資料。
+- 暫停、繼續、停止與快捷鍵控制。
+- OCR／手動紀錄分類、統計快照與圖片輸出。
+- 支援剪貼簿與 Web Share API。
 
-```text
-1. 商品行情旁新增「狀態」
-   - 顯示資料庫更新時間
-   - 來源為 artale_price_daily_records.updated_at 的最新時間
+### 遊戲 ID 與收藏
 
-2. 商品列表改成卷軸式
-   - 預設高度約顯示前 5 項
-   - 其餘商品可往下捲動查看
+- 保存遊戲 ID、特徵碼與常用隊伍。
+- 報名及建立場次時可自動帶入。
+- 收藏團連結，快速返回常用場次。
 
-3. 折線圖顏色調整
-   - 上漲：紅色
-   - 下跌：綠色
-   - 商品行情與 K線分析同步套用
+### Artale 物價查詢
 
-4. K線分析折線圖
-   - 右側顯示最後報價點數字
-   - 方便直接查看最後一筆價格
-
-5. Artale 物價查詢
-   - 關閉按鈕左邊新增「重新讀取報價」
-   - 按下後重新呼叫 /api/artale-prices
-   - 立即刷新 Google Sheet CSV、資料庫歷史紀錄、7日均、30日均、走勢圖
-```
-
----
-
-## 3. 功能總覽
-
-### 3.1 突襲報名看板
-
-```text
-1. 建立突襲場次
-2. 場次可設定 NORMAL / HARD
-3. 場次可設定招募人數 1～18
-4. 人數會自動對應隊伍數：
-   - 1～6 人：1 隊
-   - 7～12 人：2 隊
-   - 13～18 人：3 隊
-5. 團長可設定角色需求
-6. 玩家報名時只會看到團長設定的角色需求
-7. 團長可拖曳調整隊伍
-8. 團長可刪除成員、修改狀態、刪除團
-9. 查看名單只顯示已確認成員
-10. 支援管理碼、邀請碼、團連結
-```
-
-### 3.2 羅茱跳台協作工具
-
-```text
-1. 支援多人同步房間
-2. 支援房間代碼與房間密碼
-3. 每人只能選擇一個角色
-4. 支援 1～4 快捷鍵
-5. 支援 1 → 10 路徑格
-6. 支援儲存上次路徑
-7. 支援迷你上次路徑格
-8. 支援清除與重置
-9. 閒置 1 小時後可自動清空房間
-10. 手機版強制左右欄與可滑動版面
-```
-
-### 3.3 練功效率偵測
-
-```text
-1. 按下開始分析後啟動 OCR
-2. 自動抓取 EXP 區域
-3. 支援手動框選 OCR 裁切區域
-4. 支援儲存預設裁切區域
-5. 支援暫停、繼續、停止
-6. 顯示開始時間與統計時間
-7. 顯示 EXP 增量與百分比
-8. 顯示預估 10 分鐘 / 60 分鐘效率
-9. 支援折線圖趨勢
-10. 支援極端值排除
-11. 支援統計紀錄保存
-12. 支援統計紀錄刪除
-13. 支援統計紀錄匯出圖片
-14. 支援複製圖片到剪貼簿
-```
-
-### 3.4 隊伍收藏
-
-```text
-1. 可收藏團連結
-2. 可建立常用隊伍名單
-3. 建立場次時可匯入收藏隊伍
-4. 支援角色定位與遊戲 ID
-```
-
-### 3.5 遊戲 ID / 特徵碼紀錄
-
-```text
-1. 右上蘑菇 Logo 可開啟紀錄面板
-2. 可紀錄遊戲 ID
-3. 可紀錄特徵碼
-4. 報名時可自動帶入已紀錄資料
-5. 建立場次時團長欄位可用下拉選擇已紀錄遊戲 ID
-```
-
-### 3.6 Artale 物價查詢
-
-```text
-1. 右上 Artale 物價查詢按鈕開啟小頁面
-2. 支援 Google Sheet CSV 作為物價來源
-3. 支援搜尋商品
-4. 支援分類篩選
-5. 商品行情顯示：
-   - 最後報價
-   - 7日均
-   - 30日均
-6. 商品行情採卷軸式清單
-7. 折線圖上漲紅色、下跌綠色
-8. K線分析支援：
-   - 1D
-   - 3MA
-   - 5MA
-   - 20MA
-9. K線分析右側顯示最後報價點數字
-10. 重新讀取報價可立即刷新資料
-11. 自動保存每日最後報價到資料庫
-12. 走勢圖、7日均、30日均由資料庫歷史紀錄計算
-```
+- Google Sheet CSV／CSV URL 資料來源。
+- 商品搜尋、分類、列表與自選清單。
+- 最後報價、7 日均、30 日均與漲跌幅。
+- 歷史走勢、K 線分析與均線。
+- 自選清單保存於 localStorage。
+- 每日最後報價寫入 Supabase。
 
 ---
 
-## 4. 技術架構
+## 2. 快速開始
 
-| 類型 | 技術 |
-|---|---|
-| 前端框架 | React |
-| 語言 | TypeScript |
-| 建置工具 | Vite |
-| 樣式 | Tailwind CSS |
-| 資料庫 | Supabase PostgreSQL |
-| 即時同步 | Supabase Realtime / Presence |
-| 後端 API | Vercel Serverless Function |
-| 部署 | Vercel |
-| OCR | tesseract.js CDN |
-| 圖片輸出 | Canvas |
-| 圖片分享 | Clipboard API / Web Share API |
-| 本機資料 | localStorage |
-| 物價資料源 | Google Sheet CSV / CSV URL |
-| 物價歷史 | Supabase REST API 寫入 |
+### 系統需求
+
+- Node.js **20.x**
+- npm
+- Supabase Project
+- Vercel Project
+- 支援 `getDisplayMedia` 的瀏覽器，例如 Chrome 或 Edge
+
+### 下載與安裝
+
+```bash
+git clone <repository-url>
+cd maple-raid-board
+npm install
+```
+
+### 建立本機環境變數
+
+```bash
+cp .env.example .env.local
+```
+
+Windows PowerShell：
+
+```powershell
+Copy-Item .env.example .env.local
+```
+
+填入 Supabase 與 Artale 物價設定後啟動：
+
+```bash
+npm run dev
+```
+
+預設由 Vite 顯示本機網址。需要讓同網段裝置連線時：
+
+```bash
+npm run dev -- --host 0.0.0.0
+```
+
+### 首次建立 Supabase
+
+在 Supabase SQL Editor 執行：
+
+```text
+supabase/schema.sql
+```
+
+接著設定 Vercel 環境變數並部署。
 
 ---
 
-## 5. 環境變數
+## 3. 環境變數
 
-### 5.1 Vercel Production 必填
+專案範例位於 `.env.example`。
 
-到 Vercel：
-
-```text
-Project
-→ Settings
-→ Environment Variables
-```
-
-新增：
+### 前端必填
 
 ```env
-VITE_SUPABASE_URL=https://你的-project-ref.supabase.co
-VITE_SUPABASE_ANON_KEY=你的-anon-public-key
-SUPABASE_SERVICE_ROLE_KEY=你的-service-role-key
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-public-key
+```
 
-ARTALE_PRICE_CSV_URL=https://docs.google.com/spreadsheets/d/e/xxxx/pub?gid=0&single=true&output=csv
+### Artale 物價 API
+
+```env
+ARTALE_PRICE_CSV_URL=https://example.com/prices.csv
 ARTALE_PRICE_GOOGLE_SHEET_GID=
 ARTALE_PRICE_DATA_AUTH_HEADER=
-
 VITE_ARTALE_PRICE_ENDPOINT=/api/artale-prices
 ```
 
-### 5.2 注意事項
+### 物價歷史寫入
 
-```text
-1. SUPABASE_SERVICE_ROLE_KEY 不可加 VITE_
-2. SUPABASE_SERVICE_ROLE_KEY 只給 Serverless API 使用
-3. 不要把 service_role key 寫進前端程式碼
-4. VITE_SUPABASE_ANON_KEY 是前端可用的 anon key
-5. ARTALE_PRICE_CSV_URL 建議使用 Google Sheet 發布到網路後的 CSV 連結
+```env
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
+
+API 也支援以下相容名稱：
+
+```env
+SUPABASE_URL=
+ARTALE_PRICE_SUPABASE_SERVICE_ROLE_KEY=
+ARTALE_PRICE_DATA_URL=
+ARTALE_PRICE_EXCEL_URL=
+```
+
+### 安全規則
+
+- `SUPABASE_SERVICE_ROLE_KEY` 不得加上 `VITE_`。
+- `service_role` 只能存在於 Vercel／Netlify Serverless 環境。
+- 不可把 `service_role` 寫進前端程式碼、Git 或瀏覽器 localStorage。
+- `VITE_SUPABASE_ANON_KEY` 是前端使用的公開 anon key，實際權限由 RLS 與 RPC 控制。
+- 修改環境變數後必須重新部署，既有 Deployment 不會自動更新。
 
 ---
 
-## 6. Supabase SQL
+## 4. Supabase 建置與升級
 
-UI-7.7 沿用 UI-7.5 的物價歷史資料表，並新增舊 key 合併 SQL。
+### 全新資料庫
 
-尚未執行過者，請先到 Supabase SQL Editor 執行：
+執行：
 
 ```text
-supabase/ui-7-5-artale-price-history.sql
+supabase/schema.sql
 ```
 
-Google Sheet 已新增固定 id 欄位後，請再執行一次舊 key 合併 SQL：
+此檔案包含主要資料表、RPC、RLS、Realtime 與目前 schema 所需結構。
+
+### 舊資料庫升級
+
+依既有版本與問題選擇執行：
+
+| SQL 檔案 | 用途 |
+|---|---|
+| `supabase/ui-5-9-sqlfix1-role-options.sql` | 修正角色需求選項與「大法」驗證 |
+| `supabase/ui-6-7-sqlfix-rojhu-toggle-cell.sql` | 羅茱格子再次點擊取消選取 |
+| `supabase/ui-7-5-artale-price-history.sql` | 建立物價每日歷史資料表 |
+| `supabase/ui-7-7-artale-merge-legacy-keys.sql` | 合併舊版商品 key |
+| `supabase/ui-7-8-artale-history-read-sqlfix1.sql` | 舊價格 key／商品名稱合併初版 |
+| `supabase/ui-7-8-sqlfix2-artale-history-read.sql` | 修正 SQLFIX1 的 `item_name` ambiguous 錯誤 |
+
+### Artale 舊價格資料建議處理順序
+
+1. 部署目前版本。
+2. 開啟 Artale 物價查詢。
+3. 按一次「重新讀取報價」。
+4. 執行：
 
 ```text
 supabase/ui-7-8-sqlfix2-artale-history-read.sql
 ```
 
-或執行獨立 SQL 檔：
+5. 再按一次「重新讀取報價」。
+6. 確認走勢圖、7 日均與 30 日均讀得到舊資料。
+
+SQLFIX1 若出現：
 
 ```text
-sqlfix-ui-7-5-artale-price-history.sql
+ERROR: 42702: column reference "item_name" is ambiguous
 ```
 
-此 SQL 會建立：
+不要繼續使用 SQLFIX1，改執行 SQLFIX2。
+
+---
+
+## 5. 練功效率 OCR
+
+### 使用方式
+
+1. 開啟「練功效率」。
+2. 按「開始分析」。
+3. 在瀏覽器分享視窗中選擇包含遊戲畫面的螢幕或視窗。
+4. 保持遊戲狀態列完整顯示。
+5. 等待狀態列與 OCR 引擎完成初始化。
+
+快捷鍵：
+
+| 快捷鍵 | 功能 |
+|---|---|
+| `F8` | 開始分析 |
+| `F9` | 暫停／繼續 |
+| `F10` | 停止分析 |
+
+### 定位流程
+
+程式先在螢幕擷取畫面中尋找完整狀態列，再建立子裁切區：
+
+```text
+完整 LV / HP / MP / EXP 狀態列
+├─ 等級裁切區
+└─ EXP 文字裁切區
+```
+
+狀態列辨識會比對 HP、MP、EXP 色條的排列與比例。最大化、全螢幕或畫面切換期間若短暫漏判，程式會重試或暫時沿用上一個有效位置。
+
+### 等級辨識
+
+- 優先使用白色像素字型結構辨識。
+- 無法判定時使用 Tesseract 備援。
+- 等級範圍限制為 1～200。
+- 等級變化需要連續確認，避免單次誤判。
+- 等級提高一級後，才允許較低 EXP 進入新基準判定。
+
+### EXP 辨識
+
+目前流程：
+
+1. 使用最近成功的影像處理方式進行快速 OCR。
+2. 一般情況只執行一次 OCR。
+3. 初始值、較低值、失敗或衝突時追加其他影像流程。
+4. 多流程結果依接近程度分組。
+5. 異常高值直接拒絕，不會自動成為新基準。
+6. 較低值必須符合升級條件並連續確認，才可重設基準。
+
+支援的影像處理方式：
+
+- 二值化 140
+- 白字抽取
+- 原圖放大
+- 二值化 165
+
+### 效能
+
+UI-9.3 起：
+
+- Tesseract Worker 在開始分析時建立一次。
+- EXP 與等級 OCR 共用同一個 Worker。
+- Worker 不會在每次辨識時重新初始化。
+- 預設辨識間隔為 1 秒。
+- OCR 尚未完成時不會重疊啟動下一次。
+
+### Debug
+
+勾選 Debug 可查看：
+
+- 完整狀態列、EXP 與等級裁切框。
+- EXP／等級 OCR 預覽。
+- 狀態列定位來源。
+- OCR Worker 狀態。
+- 最近一次 OCR 耗時。
+- 原始 OCR 文字與影像流程一致數。
+- 最近 OCR／手動紀錄。
+
+紀錄分類：
+
+- 全部
+- 已加入
+- 未變化
+- 待確認
+- 新基準
+- 未辨識
+- 已拒絕
+
+### 統計與異常值
+
+顯示內容包括：
+
+- 目前 EXP 與百分比
+- 累積 EXP
+- EXP／分
+- 近 10 分鐘與近 60 分鐘
+- 預估 10 分鐘與預估 60 分鐘
+- 10／60 分鐘最高值
+- 預估升級時間
+
+最高值會先排除異常速率與離群時間窗，避免切換畫面時誤讀其他數字，造成永久異常高值。
+
+---
+
+## 6. Artale 物價查詢
+
+### CSV 建議格式
+
+建議使用固定 `id`：
+
+```csv
+id,商品名稱,分類,最後報價
+chaos_scroll_60,混沌卷軸 60%,卷軸,28500000
+glove_att_60,手套攻擊卷軸 60%,卷軸,16800000
+white_potion,白色藥水,消耗品,850
+```
+
+英文欄位也可使用：
+
+```csv
+id,name,category,latest
+```
+
+固定 `id` 不應隨排序或列位置改變。避免使用商品列號作為 key，否則插入、刪除或重新排序商品時，舊歷史資料可能無法對應。
+
+### Google Sheet 發布
+
+```text
+Google Sheet
+→ 檔案
+→ 分享
+→ 發布到網路
+→ 選擇工作表
+→ 逗號分隔值 .csv
+→ 發布
+```
+
+將 URL 填入：
+
+```env
+ARTALE_PRICE_CSV_URL=
+```
+
+### API
+
+Vercel：
+
+```text
+/api/artale-prices
+```
+
+Netlify：
+
+```text
+/.netlify/functions/artale-prices
+```
+
+前端使用：
+
+```env
+VITE_ARTALE_PRICE_ENDPOINT=/api/artale-prices
+```
+
+API 功能：
+
+- 下載並解析 CSV。
+- 對應固定商品 key。
+- 讀取最近歷史報價。
+- 計算 7 日均、30 日均與趨勢。
+- 使用 `service_role` 寫入每日最後報價。
+- 回傳資料來源與最後更新時間。
+
+### 每日歷史價格
+
+Vercel Cron 設定於 `vercel.json`：
+
+```cron
+55 15 * * *
+```
+
+即每天 UTC 15:55 呼叫 `/api/artale-prices`，約為台灣時間 23:55。
+
+歷史表：
 
 ```text
 public.artale_price_daily_records
 ```
 
-資料表用途：
-
-```text
-1. 保存每日最後報價
-2. 同一天同商品重複抓取時更新當天資料
-3. 走勢圖從此表查詢
-4. 7日均從此表最近 7 筆 / 7 日資料計算
-5. 30日均從此表最近 30 筆 / 30 日資料計算
-```
-
 主要欄位：
 
-| 欄位 | 說明 |
+| 欄位 | 用途 |
 |---|---|
-| item_key | 商品唯一鍵 |
-| price_date | 價格日期 |
-| item_name | 商品名稱 |
-| category | 商品分類 |
-| last_price | 每日最後報價 |
-| source | 資料來源 |
-| created_at | 建立時間 |
-| updated_at | 更新時間 |
+| `item_key` | 固定商品識別碼 |
+| `price_date` | 報價日期 |
+| `item_name` | 商品名稱 |
+| `category` | 分類 |
+| `last_price` | 每日最後報價 |
+| `source` | 資料來源 |
+| `created_at` | 建立時間 |
+| `updated_at` | 更新時間 |
 
 主鍵：
 
@@ -291,215 +433,235 @@ public.artale_price_daily_records
 
 ---
 
-## 7. Artale 物價資料格式
-
-Google Sheet 建議第一列使用：
+## 7. 專案架構
 
 ```text
-商品名稱,分類,最後報價
+.
+├─ api/
+│  └─ artale-prices.js
+├─ netlify/
+│  └─ functions/
+│     └─ artale-prices.cjs
+├─ public/
+│  └─ training-hud-reference.png
+├─ src/
+│  ├─ App.tsx
+│  └─ ...
+├─ supabase/
+│  ├─ schema.sql
+│  ├─ ui-5-9-sqlfix1-role-options.sql
+│  ├─ ui-6-7-sqlfix-rojhu-toggle-cell.sql
+│  ├─ ui-7-5-artale-price-history.sql
+│  ├─ ui-7-7-artale-merge-legacy-keys.sql
+│  ├─ ui-7-8-artale-history-read-sqlfix1.sql
+│  └─ ui-7-8-sqlfix2-artale-history-read.sql
+├─ .env.example
+├─ package.json
+├─ vercel.json
+├─ vite.config.ts
+└─ README.md
 ```
 
-範例：
+### 技術
 
-```csv
-商品名稱,分類,最後報價
-混沌卷軸 60%,卷軸,28500000
-手套攻擊卷軸 60%,卷軸,16800000
-白色藥水,消耗品,850
-```
-
-也可使用英文欄位：
-
-```text
-name,category,latest
-```
-
-支援常見欄位名稱：
-
-```text
-商品名稱
-名稱
-商品
-道具名稱
-物品名稱
-品名
-物品
-道具
-分類
-類別
-種類
-最後報價
-最新價格
-價格
-現價
-成交價
-目前價格
-最新成交
-最新成交價
-市場價格
-```
-
-### Google Sheet CSV 取得方式
-
-```text
-Google Sheet
-→ 檔案
-→ 分享
-→ 發布到網路
-→ 選擇工作表
-→ 格式選「逗號分隔值 .csv」
-→ 發布
-→ 複製產生的 CSV 連結
-```
-
-建議 URL 類型：
-
-```text
-https://docs.google.com/spreadsheets/d/e/xxxx/pub?gid=0&single=true&output=csv
-```
+| 類型 | 使用技術 |
+|---|---|
+| UI | React 19 |
+| 語言 | TypeScript 5.8 |
+| Build | Vite 6 |
+| CSS | Tailwind CSS 3 |
+| Backend | Supabase PostgreSQL |
+| 即時同步 | Supabase Realtime／Presence |
+| OCR | tesseract.js 6 CDN |
+| Serverless | Vercel Function／Netlify Function |
+| 圖片輸出 | Canvas API |
+| 分享 | Clipboard API／Web Share API |
+| 本機狀態 | localStorage |
 
 ---
 
 ## 8. Vercel 部署
 
-### 8.1 Vercel 專案設定
+### 專案設定
 
-建議：
+| 設定 | 值 |
+|---|---|
+| Framework Preset | Vite |
+| Node.js | 20.x |
+| Output Directory | `dist` |
+| Build Command | `node -v && npm -v && npm run build` |
 
-```text
-Framework Preset: Vite
-Node.js Version: 20.x
-Install Command:
-rm -rf node_modules package-lock.json && npm install --no-package-lock --prefer-online --no-audit --no-fund
+`vercel.json` 已定義 Install Command、Build Command、SPA rewrite 與 Cron。
 
-Build Command:
-node -v && npm -v && npm run build
+### 部署流程
 
-Output Directory:
-dist
-```
+1. 將專案推送至 GitHub。
+2. 在 Vercel Import Project。
+3. 設定環境變數。
+4. 確認 Node.js 版本為 20.x。
+5. Deploy。
+6. 測試首頁、Supabase、`/api/artale-prices` 與 OCR 頁面。
 
-### 8.2 vercel.json
+環境變數更新後請執行 Redeploy。
 
-專案內已包含：
+### SPA Rewrite
+
+目前 rewrite 會保留 `/api/*`，其餘路徑回到 SPA：
 
 ```json
 {
-  "framework": "vite",
-  "installCommand": "rm -rf node_modules package-lock.json && npm install --no-package-lock --prefer-online --no-audit --no-fund",
-  "buildCommand": "node -v && npm -v && npm run build",
-  "outputDirectory": "dist",
-  "rewrites": [
-    {
-      "source": "/((?!api/.*).*)",
-      "destination": "/"
-    }
-  ],
-  "crons": [
-    {
-      "path": "/api/artale-prices",
-      "schedule": "55 15 * * *"
-    }
-  ]
+  "source": "/((?!api/.*).*)",
+  "destination": "/"
 }
 ```
 
-Cron 說明：
-
-```text
-55 15 * * *
-```
-
-代表每天 UTC 15:55 呼叫 `/api/artale-prices`，約等於台灣時間 23:55，用來保存每日最後報價。
-
 ---
 
-## 9. 本機開發
+## 9. 開發與驗證
 
-安裝：
-
-```bash
-npm install
-```
-
-啟動：
+### 指令
 
 ```bash
 npm run dev
+npm run typecheck
+npm run lint
+npm run build
+npm run preview
 ```
 
-Build：
+Vercel CLI：
 
 ```bash
-npm run build
+npm run preview:vercel
+npm run deploy:vercel
 ```
 
-Type check：
+### 發布前最低檢查
 
 ```bash
 npm run typecheck
+npm run build
+node --check api/artale-prices.js
+node --check netlify/functions/artale-prices.cjs
 ```
 
-Lint：
+### Node.js 版本
 
-```bash
-npm run lint
+專案指定：
+
+```text
+20.x
+```
+
+相關檔案：
+
+```text
+.node-version
+.nvmrc
+package.json > engines.node
 ```
 
 ---
 
-## 10. 常見問題
+## 10. 安全與資料說明
 
-### 10.1 Vercel npm install：Exit handler never called
+- 團長管理操作透過管理碼與 Supabase RPC 驗證。
+- 報名流程含輸入驗證、重複名稱檢查、honeypot 與瀏覽器 nonce／冷卻機制。
+- Supabase 權限以 RLS 與 RPC 為準。
+- `service_role` 僅供 Serverless API 使用。
+- 隊伍收藏、自選清單、遊戲 ID、部分練功統計與 OCR 設定保存在瀏覽器 localStorage。
+- 螢幕擷取由瀏覽器 `getDisplayMedia` 啟動；使用者必須主動選擇分享來源。
+- OCR 影像在瀏覽器端處理，程式碼未設計成將擷取畫面上傳至 Supabase。
 
-處理方式：
+正式公開站仍應定期檢查：
 
-```text
-1. 固定 Node.js 20.x
-2. 清除 Build Cache
-3. Install Command 使用：
-   rm -rf node_modules package-lock.json && npm install --no-package-lock --prefer-online --no-audit --no-fund
-```
-
-### 10.2 Vercel npm install：ENOTEMPTY adler-32
-
-UI-7.5 VERCELFIX1 已移除 `xlsx` 與 `adler-32` 相關依賴。
-
-目前物價資料建議使用 Google Sheet CSV，不需要 xlsx parser。
-
-### 10.3 Node.js 20 without native WebSocket support
-
-UI-7.5 VERCELFIX2 已修正。
-
-Serverless API 不再 import `@supabase/supabase-js`，改用 Supabase REST API 寫入與查詢 `artale_price_daily_records`。
-
-### 10.4 物價資料讀取失敗：沒有可用商品資料
-
-檢查：
-
-```text
-1. ARTALE_PRICE_CSV_URL 是否為 CSV 連結
-2. Google Sheet 是否已發布到網路
-3. 第一列是否有商品名稱與最後報價欄位
-4. 價格欄位是否為數字
-5. Vercel 是否重新部署
-```
-
-### 10.5 資料庫沒有寫入每日價格
-
-檢查：
-
-```text
-1. 是否已執行 supabase/ui-7-5-artale-price-history.sql
-2. Vercel 是否有 SUPABASE_SERVICE_ROLE_KEY
-3. Vercel 是否有 VITE_SUPABASE_URL
-4. /api/artale-prices 是否成功回傳資料
-5. Supabase Table Editor 是否看到 artale_price_daily_records
-```
+- RLS Policy
+- RPC 權限
+- Vercel 環境變數
+- Supabase API 日誌
+- Serverless Function 日誌
+- Cron 執行結果
 
 ---
 
-## 11. GitHub 推送指令
+## 11. 故障排除
+
+### Vercel 安裝失敗：`Exit handler never called`
+
+確認：
+
+1. Node.js 使用 20.x。
+2. 清除 Vercel Build Cache。
+3. 使用專案內 `vercel.json` 的 Install Command。
+4. 重新部署。
+
+### `ENOTEMPTY`／`adler-32`
+
+舊版 xlsx 依賴已移除。物價來源應使用 CSV／Google Sheet CSV。
+
+### `/api/artale-prices` 沒有資料
+
+檢查：
+
+1. `ARTALE_PRICE_CSV_URL` 是否為直接 CSV URL。
+2. Google Sheet 是否已發布到網路。
+3. 第一列是否含商品名稱與價格欄位。
+4. 價格是否可解析為正數。
+5. Vercel Environment Variables 是否套用至 Production。
+6. 修改後是否已 Redeploy。
+
+### 物價歷史沒有寫入
+
+檢查：
+
+1. `public.artale_price_daily_records` 是否存在。
+2. `SUPABASE_SERVICE_ROLE_KEY` 是否設定於 Serverless 環境。
+3. `VITE_SUPABASE_URL` 或 `SUPABASE_URL` 是否正確。
+4. `/api/artale-prices` 日誌是否有 Supabase REST 錯誤。
+5. Cron 是否有執行紀錄。
+
+### 舊商品歷史不見
+
+通常是舊版使用「商品名稱 + 列順序」作為 key。執行：
+
+```text
+supabase/ui-7-8-sqlfix2-artale-history-read.sql
+```
+
+並重新讀取報價。
+
+### OCR 找不到完整狀態列
+
+- 確認擷取來源包含完整遊戲畫面。
+- 狀態列不可被其他視窗遮住。
+- 切換最大化或全螢幕後等待畫面穩定。
+- 查看 Debug 的定位來源與裁切框。
+- 按重新辨識狀態列。
+- 必要時停止擷取後重新開始。
+
+### OCR 更新延遲
+
+- Debug 查看「OCR 引擎」是否為已就緒。
+- 查看最近一次 OCR 耗時。
+- 避免同時執行高負載瀏覽器分頁。
+- 確認沒有持續切換遊戲畫面或遮蔽狀態列。
+- Worker 僅在開始分析時載入；若狀態異常，停止螢幕擷取後重新開始。
+
+### EXP 被拒絕
+
+可能原因：
+
+- 超過目前等級的合理 EXP 範圍。
+- 與近期趨勢差異過大。
+- 只有單一影像流程支持異常值。
+- 等級未確認提升，卻出現較低 EXP。
+- 多流程結果互相衝突。
+
+在 Debug 的「已拒絕」分類查看原因。若目前基準本身錯誤，可手動輸入正確 EXP；低於目前值的手動輸入會作為人工確認的新基準。
+
+---
+
+## 12. GitHub 更新流程
 
 一般更新：
 
@@ -509,541 +671,43 @@ git commit -m "deploy ui 9.3"
 git push
 ```
 
-如果遠端比較新：
+只更新 README：
+
+```bash
+git add README.md
+git commit -m "rewrite readme for ui 9.3"
+git push
+```
+
+遠端已有更新：
 
 ```bash
 git pull --rebase origin main
 git push origin main
 ```
 
-如果 README conflict：
+發生衝突：
 
 ```bash
 git status
-git add README.md
+# 修正衝突後
+git add <resolved-files>
 git rebase --continue
 git push origin main
 ```
 
----
+README 必須與每次功能更新同步，包括：
 
-## 12. UI-7.7 舊 key 合併修正
-
-UI-7.7 針對 Artale 物價歷史資料的 `item_key` 進行修正。
-
-舊版在 Google Sheet 沒有固定 `id` 欄位時，會用：
-
-```text
-商品名稱-列順序
-```
-
-例如：
-
-```text
-混沌卷軸 60%-0
-手套攻擊卷軸 60%-1
-```
-
-只要 Google Sheet 排序變更、插入商品、刪除商品，列順序就可能改變，導致舊歷史資料看起來消失。
-
-UI-7.7 修正：
-
-```text
-1. 優先使用 Google Sheet 的 id 欄位作為 item_key
-2. 沒有 id 時，改用商品名稱正規化 key
-3. 不再使用列順序 index 作為 item_key
-4. 新增 SQLFIX 合併舊 key
-```
-
-建議欄位：
-
-```csv
-id,商品名稱,分類,最後報價
-chaos_scroll_60,混沌卷軸 60%,卷軸,28500000
-glove_att_60,手套攻擊卷軸 60%,卷軸,16800000
-```
-
-合併順序：
-
-```text
-1. 部署 UI-7.8
-2. 開啟 Artale 物價查詢
-3. 按「重新讀取報價」
-4. 到 Supabase SQL Editor 執行 supabase/ui-7-8-sqlfix2-artale-history-read.sql
-5. 再按一次「重新讀取報價」
-```
-
+- 目前版本
+- 新功能與修正
+- 環境變數
+- SQL／部署需求
+- 使用方式
+- 完整改版紀錄
 
 ---
 
-## UI-7.8 舊資料讀取修正
-
-UI-7.8 修正「合併成功但前端讀不到舊資料最後報價」問題。
-
-原因：
-
-```text
-1. UI-7.7 合併 SQL 可能已把資料合併到新 key
-2. 但 API 只用 item_key 精準查詢目前 Google Sheet 的 id
-3. 如果舊資料 item_name 相同但 key 還沒完全對上，走勢圖 / 7日均 / 30日均仍可能讀不到
-4. UI-7.7 API 也有 historyUpdatedAt 未定義問題，可能導致歷史資料計算回退
-```
-
-修正：
-
-```text
-1. 歷史資料查詢改為最近 365 天
-2. API 讀取歷史資料時同時比對：
-   - item_key
-   - 正規化 item_name
-3. 同一天多筆資料時保留 updated_at 較新的資料
-4. 新增 merge_artale_price_key_aliases_for_items(p_items jsonb)
-5. API 會把目前 Google Sheet 的固定 id / 商品名稱傳給 SQL function 合併
-```
-
-補救順序：
-
-```text
-1. 部署 UI-7.8
-2. 按一次「重新讀取報價」
-3. 到 Supabase SQL Editor 執行：
-   supabase/ui-7-8-sqlfix2-artale-history-read.sql
-4. 再按一次「重新讀取報價」
-```
-
-
----
-
-## UI-7.8 SQLFIX2
-
-修正 Supabase SQL Editor 執行 `ui-7-8-artale-history-read-sqlfix1.sql` 時出現：
-
-```text
-ERROR: 42702: column reference "item_name" is ambiguous
-```
-
-原因是 PL/pgSQL `returns table` 裡有輸出欄位 `item_name`，function 內部又直接寫 `item_name`，PostgreSQL 無法判斷要用輸出變數還是資料表欄位。
-
-SQLFIX2 已把相關欄位全部改成 table alias，例如：
-
-```text
-r.item_name
-q.item_name
-f.item_name
-```
-
-執行檔案：
-
-```text
-supabase/ui-7-8-sqlfix2-artale-history-read.sql
-```
-
-
----
-
-## UI-7.9 更新內容
-
-```text
-1. 自選清單移到列表模式上面
-2. 商品漲跌幅百分比顏色同步折線圖
-   - 上漲：紅色
-   - 下跌：綠色
-3. K線分析折線圖右側顯示多個每日最後報價數字
-   - 盡量對應每個價格點
-   - 點數太多時自動保留合理間距
-4. 進入首頁時跳出版本更新公告
-   - 公告列出當下版本更新內容
-   - 最後顯示：若有問題可以聯絡作者DC:Mmumu0730
-```
-
----
-
-## UI-8.0 更新內容
-
-```text
-1. 商品行情列表模式預設高度調整為約顯示前 8 項
-2. 其餘商品仍透過商品行情區塊內卷軸查看
-3. 首頁版本公告已更新為 UI-8.0 內容
-```
-
----
-
-## UI-8.1 更新內容
-
-```text
-1. 修正我的自選清單關閉 Artale 物價查詢後會回到預設的問題
-2. 自選清單改為保存到瀏覽器 localStorage
-3. 重新開啟 Artale 物價查詢時會讀取上次保存的自選商品
-4. 若 Google Sheet 商品 id 變動，會自動保留仍存在的自選商品；若全部失效才回到預設前 2 項
-```
-
----
-
-## UI-8.2 更新內容
-
-```text
-1. 公告頁面改為只顯示本次版本實際改動
-2. 移除公告內舊版延續資訊，避免和當前版本更新內容混在一起
-3. 我的自選清單商品旁新增漲跌幅百分比
-4. 自選清單漲跌幅顏色同步商品行情折線圖：
-   - 上漲：紅色
-   - 下跌：綠色
-```
-
----
-
-## UI-8.3 更新內容
-
-```text
-1. 練功效率 EXP OCR 裁切區改為持續自適應
-   - 每次 OCR 週期重新偵測畫面錨點
-   - 遊戲視窗移動、縮放後自動重新定位
-   - 偵測不到時沿用上次成功位置，不會立刻跳回固定預設
-
-2. 當前等級改為自動辨識
-   - 尋找深色 LV. 區塊內的橘色數字
-   - 例如附圖「LV. 136」會辨識為 136 等
-   - 辨識範圍限制為 1～200
-   - 大幅跳號需連續兩次辨識一致才套用
-
-3. 新增雙裁切預覽與框線
-   - 橘框：EXP OCR
-   - 藍框：等級 OCR
-
-4. 保留手動備援
-   - 當前等級仍可手動修正
-   - Debug 可手動框選 EXP 區域
-   - 等級區域維持自適應定位
-```
-
----
-
-## UI-8.4 更新內容
-
-```text
-1. 修正 EXP 與當前等級初始裁切區位置錯誤
-
-2. 初始裁切改由螢幕擷取對照快照辨識
-   - 等待螢幕擷取畫面完成繪製
-   - 截取螢幕擷取對照當下完整畫面
-   - 從同一張快照找出 EXP 與 LV. 等級位置
-   - 完成初始定位後才開始 OCR
-
-3. 改用色彩連通區分析
-   - EXP：辨識畫面底部的綠色 / 黃綠色水平長條
-   - 等級：辨識畫面底部深色 LV. 區塊內的橘色數字
-   - 不再把同一水平線上相隔很遠的色塊合併成一個候選框
-
-4. 初始定位不再套用舊座標平滑
-   - 第一個裁切框直接採用截圖辨識結果
-   - 後續追蹤才使用平滑移動
-   - 辨識失敗時才沿用上次裁切位置作為備援
-
-5. Debug 新增定位來源
-   - 螢幕擷取對照快照
-   - 即時螢幕擷取畫面
-```
-
----
-
-## UI-8.5 更新內容
-
-```text
-1. EXP 與當前等級初始裁切改為兩階段辨識
-
-2. 第一階段：辨識完整狀態列
-   - 從螢幕擷取對照完整快照尋找 LV / HP / MP / EXP 區塊
-   - 依附圖的固定結構辨識：
-     - HP 紅色水平條
-     - MP 藍色水平條
-     - EXP 綠色水平條
-   - 使用三個水平條的相對距離與排列比例推算整條狀態列位置
-
-3. 第二階段：從完整狀態列內建立 OCR 裁切區
-   - 左側 LV. 橘色數字 → 當前等級 OCR
-   - 右側 EXP 文字與經驗條 → EXP OCR
-
-4. 防止錯誤座標
-   - 找不到完整狀態列時停止 OCR
-   - 不再沿用可能錯誤的舊 EXP / 等級座標
-   - 初始定位不使用舊座標平滑
-
-5. 螢幕擷取對照框線
-   - 青框：完整 LV / HP / MP / EXP 狀態列
-   - 橘框：EXP OCR
-   - 藍框：當前等級 OCR
-
-6. Debug 顯示辨識參考圖
-   - public/training-hud-reference.png
-```
-
----
-
-## UI-8.6 更新內容
-
-```text
-1. 修正當前等級裁切位置正確但數字未辨識的問題
-
-2. 修正原本的等級預處理方向
-   - 舊版把橘色數字底框轉成白色
-   - 實際要辨識的是橘色底框內的白色數字筆畫
-   - 新版改為白色數字轉黑字、其餘區域轉白底
-   - 放大倍率由 5 倍提高為 10 倍
-
-3. 新增像素七段字型辨識
-   - 分離每個白色數字連通區
-   - 分析上、中、下、左上、右上、左下、右下筆畫
-   - 對應數字 0～9
-   - 1～200 等級可直接由像素結構辨識
-
-4. 雙重辨識順序
-   - 第一順位：像素七段辨識
-   - 第二順位：Tesseract OCR 備援
-
-5. Debug 顯示辨識來源
-   - 像素七段辨識
-   - Tesseract
-```
-
----
-
-## UI-8.7 更新內容
-
-```text
-1. 修正最大化 / 全螢幕後 EXP 顯示未辨識（例如 Baty）
-
-2. EXP 裁切改為文字列專用
-   - 舊版裁切包含 EXP 文字與下方經驗條
-   - 經驗條會干擾 Tesseract，把 UI 圖形辨識成英文字
-   - 新版只裁切狀態列上方 EXP:數值[百分比] 文字列
-
-3. EXP OCR 改為多流程辨識
-   - 二值化門檻 140
-   - 白色文字抽取
-   - 原圖最近鄰放大
-   - 二值化門檻 165
-   - 第一個成功取得數值的流程立即採用
-
-4. OCR 參數調整
-   - 頁面分割模式改為單行文字
-   - 保留 EXP、冒號、數字、中括號、小數點與百分比
-   - 支援 EP / XP 等標題誤判後仍解析後方數值
-
-5. Debug 最近辨識會顯示實際成功來源
-   - 二值化140
-   - 白字抽取
-   - 原圖放大
-   - 二值化165
-```
-
----
-
-## UI-8.8 更新內容
-
-```text
-1. 修正開始分析時找不到完整狀態列而立即停止
-
-2. 放寬完整狀態列判定
-   - 舊版強制 HP 紅條、MP 藍條、EXP 綠條三者同時命中
-   - 新版任兩個色條符合固定排列比例即可推算狀態列
-   - 第三個色條命中時只增加可信度，不再作為必要條件
-   - 放寬最大化 / 全螢幕後的顏色與尺寸門檻
-
-3. 初始辨識改為重試
-   - 最多掃描 10 次
-   - 每次間隔約 220ms
-   - 等待視窗最大化、全螢幕與分享畫面完成繪製
-   - 不再只檢查第一張可能尚未完成的畫面
-
-4. 分析中短暫漏判處理
-   - 首次成功後保存有效狀態列位置
-   - 短暫漏判時最多沿用 3 個 OCR 週期
-   - 超過 3 次後停止使用舊位置並重新掃描
-   - 單次漏判只略過當次 OCR，不會停止整個分析
-
-5. Debug 定位來源新增
-   - 上一個有效狀態列（短暫備援）
-   - 重新掃描完整狀態列
-```
-
----
-
-## UI-8.9 更新內容
-
-```text
-1. 修正 EXP 正確辨識後只顯示「未加入」
-   - 原因是舊版異常值保護直接拒絕樣本
-   - runOcrOnce 又把詳細拒絕原因覆蓋成通用的「未加入」
-
-2. EXP 異常值改為二次確認
-   - 小於目前基準：待確認 1/2
-   - 與近期趨勢差異過大：待確認 1/2
-   - 下一次辨識值在容許範圍內才確認
-
-3. 連續確認後重新建立基準
-   - 將確認後的 EXP 設為目前正確基準
-   - 清除先前可能錯誤的當次統計樣本
-   - 統計時間與趨勢圖從新基準重新起算
-   - 不會把錯誤舊基準與新值連成巨大尖峰
-
-4. OCR 顯示狀態改為明確原因
-   - 已加入統計
-   - 數值未變化
-   - 待確認 1/2
-   - 已設為新基準並重新起算
-   - OCR 格式不正確
-
-5. 二次確認容許誤差
-   - 至少 100,000 EXP
-   - 或辨識值的 0.1%
-   - 取兩者較大值
-```
-
----
-
-## UI-9.0 更新內容
-
-```text
-1. 修正最近 OCR / 手動紀錄只剩開始與結束兩筆
-   - UI-8.9 在確認異常 EXP 後會重新建立統計基準
-   - 舊紀錄區直接使用統計 samples
-   - samples 重設後，中間辨識紀錄也跟著從畫面消失
-
-2. OCR 紀錄與統計樣本分離
-   - samples：只供目前有效區段的效率與趨勢計算
-   - ocrHistory：保存每次 OCR 與手動輸入結果
-   - 重新建立統計基準不會清除 ocrHistory
-
-3. 每次 OCR 都記錄處理狀態
-   - 已加入
-   - 數值未變化
-   - 待確認
-   - 已建立新基準
-   - 未辨識
-   - 已拒絕
-
-4. Debug 紀錄資訊
-   - 辨識時間
-   - EXP 數值
-   - 處理狀態
-   - 處理原因
-   - 原始 OCR 文字
-   - 同時顯示 OCR 紀錄數與目前統計樣本數
-
-5. 紀錄數量
-   - 最多保留最近 2,000 筆 OCR / 手動紀錄
-   - 重設全部資料時才會清空
-```
-
----
-
-## UI-9.1 更新內容
-
-```text
-1. 練功效率說明文字簡化
-   - 一般使用直接按開始分析
-   - Debug 用途改為簡短提示：
-     - 查看裁切框
-     - 查看 OCR 預覽
-     - 查看定位來源
-     - 查看原始辨識文字
-     - 查看最近 OCR / 手動紀錄
-
-2. 最近 OCR / 手動紀錄新增分類按鈕
-   - 全部
-   - 已加入
-   - 未變化
-   - 待確認
-   - 新基準
-   - 未辨識
-   - 已拒絕
-   - 每個按鈕顯示該分類筆數
-
-3. 預估 10 分 / 60 分最高值排除異常資料
-   - 先以相鄰樣本計算 EXP / 分速率
-   - 使用中位數與 MAD 建立合理速率上限
-   - 排除切換畫面造成的單筆極高 EXP 跳升
-   - 再對各時間窗增量做第二層離群值過濾
-   - 最高值只取過濾後的有效資料
-
-4. 分析初期超大跳升保護
-   - 樣本不足 3 筆時也會檢查異常跳升
-   - 1 分鐘內增加超過 2,000,000 EXP
-     或前一筆 EXP 的 3% 時先進入待確認
-   - 連續兩次相近才建立新基準
-```
-
----
-
-## UI-9.2 更新內容
-
-```text
-1. 修正錯誤 EXP 連續辨識後變成新基準
-
-2. EXP 多流程改為共識判定
-   - 二值化 140
-   - 白字抽取
-   - 原圖放大
-   - 二值化 165
-   - 四種流程全部執行完後分組
-   - 優先採用最多流程辨識一致的數值
-   - Debug 顯示一致數，例如 3/4
-
-3. 異常高值禁止自動建立新基準
-   - 與近期增長趨勢差異過大時直接拒絕
-   - 即使相同錯誤值重複出現，也不會設為新基準
-   - 超過目前等級升級需求合理範圍時直接拒絕
-
-4. 較低 EXP 僅允許升級後重新建立基準
-   - 必須確認等級由基準等級提升一級
-   - 等級 +1 需連續辨識兩次
-   - EXP 至少兩種影像流程一致
-   - EXP 需連續三次相近且不下降
-   - 完成全部條件後才重新起算
-
-5. 手動輸入保留校正能力
-   - 手動輸入低於目前值時視為人工確認
-   - 直接設為新基準並重新起算
-   - 用於 OCR 基準已經錯誤時人工復原
-```
-
----
-
-## UI-9.3 更新內容
-
-```text
-1. 修正 EXP 變動辨識延遲數分鐘
-   - 舊版每個 OCR 週期都重新載入 Tesseract
-   - 並依序執行最多四種 EXP 影像處理
-   - OCR 執行期間後續計時器會因 busy 狀態略過
-   - 單次週期過長時就會造成數分鐘才看到新值
-
-2. Tesseract Worker 改為持續重用
-   - 開始分析時建立一次
-   - 後續 EXP 與等級 OCR 共用同一個 Worker
-   - 暫停 / 繼續不重新載入
-   - 停止螢幕擷取、重設或離開頁面時才釋放
-
-3. EXP 快速辨識流程
-   - 正常值只執行目前最佳影像流程一次
-   - 記住最近成功的影像流程供下一輪優先使用
-   - 初始值、較低值、首次失敗或結果衝突才追加第二流程
-   - 衝突時才使用額外流程決定多數結果
-
-4. 辨識頻率
-   - 預設間隔由 3 秒改為 1 秒
-   - OCR 執行中仍禁止重疊執行
-   - 完成後下一個計時週期立即可以更新
-
-5. Debug 新增效能資訊
-   - OCR 引擎：未啟動 / 載入中 / 已就緒 / 載入失敗
-   - 最近一次 OCR 耗時
-   - 目前辨識間隔
-```
-
----
-
-## 13. 歷代改版紀錄
+## 13. 完整改版紀錄
 
 ### 初始版 / UI-0.1
 
@@ -2008,3 +1672,4 @@ K線分析折線圖右側顯示最後報價點數字
 Artale 物價查詢新增重新讀取報價按鈕
 目前最新版本
 ```
+
