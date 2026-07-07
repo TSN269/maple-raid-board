@@ -5524,8 +5524,12 @@ function TrainingEfficiencyPanel() {
           </div>
         </div>
 
-        {message ? <div className="mt-4 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-700">{message}</div> : null}
-        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600">{ocrMessage}</div>
+        {debugEnabled ? (
+          <>
+            {message ? <div className="mt-4 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-700">{message}</div> : null}
+            <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600">{ocrMessage}</div>
+          </>
+        ) : null}
       </section>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -6339,7 +6343,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.5</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.6</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -6501,13 +6505,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.5 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.6 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正剛開始分析時，正確初始 EXP 因只有單一影像流程成功而持續被拒絕的問題。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">初始 EXP 若同一畫面有兩種流程一致會立即採用；只有一種流程成功時改為連續兩次確認。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">第二次數值可維持不變或合理增加，不要求完全相同，避免練功中的 EXP 成長讓初始確認一直重置。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">異常高值、新基準與升級後低 EXP 的既有保護條件維持不變。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">EXP 辨識處理狀態改為只有勾選 Debug 時顯示。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">OCR 詳細訊息，包括影像流程、等級與影格來源，也改為只有勾選 Debug 時顯示。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">關閉 Debug 時不會保留兩個狀態訊息區塊的空白版面。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">OCR 判定、EXP 基準、計數、紀錄與統計邏輯維持不變。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">
