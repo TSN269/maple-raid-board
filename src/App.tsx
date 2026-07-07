@@ -2350,6 +2350,11 @@ function TrainingEfficiencyPanel() {
     reason: 'lower' | 'outlier';
     level: number;
   } | null>(null);
+  const initialExpCandidateRef = useRef<{
+    value: number;
+    count: number;
+    lastSeenAt: number;
+  } | null>(null);
   const baselineLevelRef = useRef<number | null>(null);
   const [running, setRunning] = useState(false);
   const [captureActive, setCaptureActive] = useState(false);
@@ -2832,6 +2837,7 @@ function TrainingEfficiencyPanel() {
     setAnalysisStartedAt(timestamp);
     setRunning(true);
     expCandidateRef.current = null;
+    initialExpCandidateRef.current = null;
     baselineLevelRef.current = confirmedLevel;
 
     const message =
@@ -2850,6 +2856,7 @@ function TrainingEfficiencyPanel() {
     message: string,
   ): TrainingExpPushResult {
     expCandidateRef.current = null;
+    initialExpCandidateRef.current = null;
     setMessage(message);
     return {
       accepted: false,
@@ -2920,6 +2927,51 @@ function TrainingEfficiencyPanel() {
     };
   }
 
+  function confirmInitialExp(
+    exp: number,
+    recognitionAgreement: number,
+  ): TrainingExpPushResult | null {
+    // Two image treatments agreeing in the same frame are enough.
+    if (recognitionAgreement >= 2) {
+      initialExpCandidateRef.current = null;
+      return null;
+    }
+
+    const now = Date.now();
+    const previous = initialExpCandidateRef.current;
+    const maximumIncrease = Math.max(
+      1000000,
+      exp * 0.005,
+    );
+    const isConsecutive =
+      previous &&
+      now - previous.lastSeenAt <= 10000 &&
+      exp >= previous.value &&
+      exp - previous.value <= maximumIncrease;
+    const count = isConsecutive ? previous.count + 1 : 1;
+
+    initialExpCandidateRef.current = {
+      value: exp,
+      count,
+      lastSeenAt: now,
+    };
+
+    if (count >= 2) {
+      initialExpCandidateRef.current = null;
+      return null;
+    }
+
+    const message =
+      `初始 EXP ${formatTrainingNumber(exp)} 已辨識，等待下一次連續確認（1/2）；單一影像流程不再直接拒絕。`;
+    setMessage(message);
+
+    return {
+      accepted: false,
+      status: 'pending',
+      message,
+    };
+  }
+
   function pushSample(
     exp: number,
     source: 'manual' | 'ocr',
@@ -2953,6 +3005,7 @@ function TrainingEfficiencyPanel() {
 
     if (source === 'manual') {
       expCandidateRef.current = null;
+      initialExpCandidateRef.current = null;
       const timestamp = Date.now();
       const last = samples[samples.length - 1];
 
@@ -3002,12 +3055,12 @@ function TrainingEfficiencyPanel() {
     const last = samples[samples.length - 1];
 
     if (!last) {
-      if (recognitionAgreement < 2) {
-        return rejectExceptionalExp(
-          exp,
-          `初始 EXP ${formatTrainingNumber(exp)} 只有單一影像流程辨識成功；已拒絕，等待多流程一致結果。`,
-        );
-      }
+      const initialDecision = confirmInitialExp(
+        exp,
+        recognitionAgreement,
+      );
+      if (initialDecision) return initialDecision;
+
       baselineLevelRef.current = effectiveLevel;
     }
 
@@ -3081,6 +3134,7 @@ function TrainingEfficiencyPanel() {
     }
 
     expCandidateRef.current = null;
+    initialExpCandidateRef.current = null;
     const timestamp = Date.now();
     setSamples((prev) =>
       [
@@ -3138,6 +3192,7 @@ function TrainingEfficiencyPanel() {
     setHudPanelCrop(null);
     levelCandidateRef.current = null;
     expCandidateRef.current = null;
+    initialExpCandidateRef.current = null;
     baselineLevelRef.current = null;
     setOcrSuccessCount(0);
     setOcrFailCount(0);
@@ -4814,6 +4869,9 @@ function TrainingEfficiencyPanel() {
 
       let expDecision: TrainingExpPushResult | null = null;
       if (!Number.isFinite(exp)) {
+        if (samples.length === 0) {
+          initialExpCandidateRef.current = null;
+        }
         setOcrFailCount((prev) => prev + 1);
         appendTrainingOcrHistory({
           source: 'ocr',
@@ -4949,6 +5007,9 @@ function TrainingEfficiencyPanel() {
     if (!ok) return;
 
     const startedAt = Date.now();
+    if (samples.length === 0) {
+      initialExpCandidateRef.current = null;
+    }
     setRunning(true);
     setPaused(false);
     setOcrActive(true);
@@ -5041,6 +5102,9 @@ function TrainingEfficiencyPanel() {
     setOcrActive(false);
     setPaused(false);
     setRunning(false);
+    if (samples.length === 0) {
+      initialExpCandidateRef.current = null;
+    }
     setOcrMessage('分析已停止，OCR 與計時已停止。');
   }
 
@@ -6275,7 +6339,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.4</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.5</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -6437,13 +6501,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.4 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.5 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正只有練功效率頁在前景時 EXP 才更新，切換到被擷取遊戲視窗後反覆讀到上一張畫面的問題。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">OCR 改為使用 ImageCapture 直接向螢幕擷取 MediaStreamTrack 取得新影格，不再以頁面上的 video 元素作為主要辨識來源。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">辨識排程改由獨立 Web Worker 發送 tick，降低分析頁進入背景後視窗計時器被節流的影響。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">Debug 新增影格來源、背景排程模式與最近影格時間，可確認是否持續取得遊戲最新畫面。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正剛開始分析時，正確初始 EXP 因只有單一影像流程成功而持續被拒絕的問題。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">初始 EXP 若同一畫面有兩種流程一致會立即採用；只有一種流程成功時改為連續兩次確認。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">第二次數值可維持不變或合理增加，不要求完全相同，避免練功中的 EXP 成長讓初始確認一直重置。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">異常高值、新基準與升級後低 EXP 的既有保護條件維持不變。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">

@@ -1,7 +1,7 @@
 # Maple Raid Board
 
 > Artale／楓之谷多人協作工具站  
-> 目前版本：**TSN UI-9.4**  
+> 目前版本：**TSN UI-9.5**  
 > GitHub：`TSN269/maple-raid-board`  
 > 部署架構：React + TypeScript + Vite + Supabase + Vercel
 
@@ -269,9 +269,10 @@ ERROR: 42702: column reference "item_name" is ambiguous
 1. 使用最近成功的影像處理方式進行快速 OCR。
 2. 一般情況只執行一次 OCR。
 3. 初始值、較低值、失敗或衝突時追加其他影像流程。
-4. 多流程結果依接近程度分組。
-5. 異常高值直接拒絕，不會自動成為新基準。
-6. 較低值必須符合升級條件並連續確認，才可重設基準。
+4. 初始 EXP 若兩種流程一致會立即採用；只有單一流程成功時，以連續兩次合理結果確認。
+5. 多流程結果依接近程度分組。
+6. 異常高值直接拒絕，不會自動成為新基準。
+7. 較低值必須符合升級條件並連續確認，才可重設基準。
 
 支援的影像處理方式：
 
@@ -680,7 +681,7 @@ supabase/ui-7-8-sqlfix2-artale-history-read.sql
 
 ```bash
 git add .
-git commit -m "deploy ui 9.4"
+git commit -m "deploy ui 9.5"
 git push
 ```
 
@@ -1474,6 +1475,17 @@ Serverless API 改用 Supabase REST API
 修正 Node.js 20 without native WebSocket support
 不需要安裝 ws
 前端既有 Supabase 功能不變
+```
+
+### UI-9.5
+
+```text
+修正初始 EXP 只有單一影像流程成功時持續被拒絕
+同一畫面兩種流程一致時立即建立初始基準
+單一流程成功時改為連續兩次合理結果確認
+第二次允許 EXP 維持不變或合理增加
+異常高值與升級後新基準保護維持不變
+目前最新版本
 ```
 
 ### UI-9.4
