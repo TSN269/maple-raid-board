@@ -2341,7 +2341,9 @@ function TrainingEfficiencyPanel() {
     value: number;
     count: number;
     reason: 'lower' | 'outlier';
+    level: number;
   } | null>(null);
+  const baselineLevelRef = useRef<number | null>(null);
   const [running, setRunning] = useState(false);
   const [captureActive, setCaptureActive] = useState(false);
   const [ocrActive, setOcrActive] = useState(false);
@@ -2546,7 +2548,10 @@ function TrainingEfficiencyPanel() {
     });
   }
 
-  function setConfirmedExpBaseline(exp: number, reason: 'lower' | 'outlier') {
+  function setConfirmedExpBaseline(
+    exp: number,
+    confirmedLevel: number,
+  ) {
     const timestamp = Date.now();
     const baseline: TrainingSample = {
       id: `${timestamp}-${Math.random().toString(36).slice(2)}`,
@@ -2561,13 +2566,10 @@ function TrainingEfficiencyPanel() {
     setAnalysisStartedAt(timestamp);
     setRunning(true);
     expCandidateRef.current = null;
+    baselineLevelRef.current = confirmedLevel;
 
-    const reasonText =
-      reason === 'lower'
-        ? '先前基準高於目前正確值'
-        : '與先前趨勢差異過大';
     const message =
-      `EXP ${formatTrainingNumber(exp)} 已連續辨識確認；因${reasonText}，已改設為新基準並重新起算。`;
+      `EXP ${formatTrainingNumber(exp)} 已通過多流程與升級確認；Lv.${confirmedLevel} 已設為新基準並重新起算。`;
     setMessage(message);
 
     return {
@@ -2577,30 +2579,72 @@ function TrainingEfficiencyPanel() {
     } satisfies TrainingExpPushResult;
   }
 
-  function confirmExceptionalExp(
+  function rejectExceptionalExp(
     exp: number,
-    reason: 'lower' | 'outlier',
+    message: string,
   ): TrainingExpPushResult {
+    expCandidateRef.current = null;
+    setMessage(message);
+    return {
+      accepted: false,
+      status: 'rejected',
+      message,
+    };
+  }
+
+  function confirmLowerExpAfterLevelUp(
+    exp: number,
+    recognitionAgreement: number,
+  ): TrainingExpPushResult {
+    const baselineLevel = baselineLevelRef.current;
+    const detectedLevel = currentLevel;
+
+    if (!baselineLevel || detectedLevel !== baselineLevel + 1) {
+      return rejectExceptionalExp(
+        exp,
+        `EXP ${formatTrainingNumber(exp)} 小於目前基準，但未確認等級由 Lv.${baselineLevel || '--'} 升至下一級；已拒絕，不會自動設為新基準。`,
+      );
+    }
+
+    if (recognitionAgreement < 2) {
+      return rejectExceptionalExp(
+        exp,
+        `EXP ${formatTrainingNumber(exp)} 小於目前基準，但只有單一影像流程辨識成功；已拒絕，不會自動設為新基準。`,
+      );
+    }
+
+    const levelTarget = ARTALE_EXP_BY_LEVEL[detectedLevel] || 0;
+    if (levelTarget > 0 && exp > levelTarget * 1.02) {
+      return rejectExceptionalExp(
+        exp,
+        `EXP ${formatTrainingNumber(exp)} 超過 Lv.${detectedLevel} 升級需求的合理範圍；已拒絕。`,
+      );
+    }
+
     const previous = expCandidateRef.current;
-    const tolerance = Math.max(100000, exp * 0.001);
+    const tolerance = Math.max(50000, exp * 0.0005);
     const matchesPrevious =
       previous &&
-      previous.reason === reason &&
+      previous.reason === 'lower' &&
+      previous.level === detectedLevel &&
+      exp >= previous.value &&
       Math.abs(previous.value - exp) <= tolerance;
     const count = matchesPrevious ? previous.count + 1 : 1;
 
-    expCandidateRef.current = { value: exp, count, reason };
+    expCandidateRef.current = {
+      value: exp,
+      count,
+      reason: 'lower',
+      level: detectedLevel,
+    };
 
-    if (count >= 2) {
-      return setConfirmedExpBaseline(exp, reason);
+    const requiredCount = 3;
+    if (count >= requiredCount) {
+      return setConfirmedExpBaseline(exp, detectedLevel);
     }
 
-    const reasonText =
-      reason === 'lower'
-        ? '小於目前基準'
-        : '與近期趨勢差異過大';
     const message =
-      `EXP ${formatTrainingNumber(exp)} 待確認（1/2）：${reasonText}；下一次辨識接近此值才會設為新基準。`;
+      `EXP ${formatTrainingNumber(exp)} 為升級後新基準候選（${count}/${requiredCount}）；需 Lv.${detectedLevel} 與至少兩種影像流程持續一致才會套用。`;
     setMessage(message);
 
     return {
@@ -2613,6 +2657,7 @@ function TrainingEfficiencyPanel() {
   function pushSample(
     exp: number,
     source: 'manual' | 'ocr',
+    recognitionAgreement = source === 'manual' ? 4 : 1,
   ): TrainingExpPushResult {
     if (!Number.isFinite(exp) || exp < 0) {
       const message =
@@ -2623,9 +2668,51 @@ function TrainingEfficiencyPanel() {
       return { accepted: false, status: 'rejected', message };
     }
 
+    const effectiveLevel = currentLevel > 0 ? currentLevel : null;
+    const levelTarget =
+      effectiveLevel !== null
+        ? ARTALE_EXP_BY_LEVEL[effectiveLevel] || 0
+        : 0;
+
+    if (
+      source === 'ocr' &&
+      levelTarget > 0 &&
+      exp > levelTarget * 1.02
+    ) {
+      return rejectExceptionalExp(
+        exp,
+        `EXP ${formatTrainingNumber(exp)} 超過 Lv.${effectiveLevel} 升級需求的合理範圍；已拒絕，不會成為新基準。`,
+      );
+    }
+
     if (source === 'manual') {
       expCandidateRef.current = null;
       const timestamp = Date.now();
+      const last = samples[samples.length - 1];
+
+      if (last && exp < last.exp) {
+        const baseline: TrainingSample = {
+          id: `${timestamp}-${Math.random().toString(36).slice(2)}`,
+          timestamp,
+          exp,
+        };
+        setSamples([baseline]);
+        setAccumulatedActiveMs(0);
+        setCurrentRunStartedAt(timestamp);
+        setAnalysisStartedAt(timestamp);
+        baselineLevelRef.current = effectiveLevel;
+        setExpInput(String(exp));
+        setRunning(true);
+        const message =
+          `已依手動輸入將 EXP ${formatTrainingNumber(exp)} 設為新基準並重新起算。`;
+        setMessage(message);
+        return {
+          accepted: true,
+          status: 'rebaseline',
+          message,
+        };
+      }
+
       setSamples((prev) =>
         [
           ...prev,
@@ -2636,6 +2723,9 @@ function TrainingEfficiencyPanel() {
           },
         ].sort((a, b) => a.timestamp - b.timestamp),
       );
+      if (baselineLevelRef.current === null && effectiveLevel !== null) {
+        baselineLevelRef.current = effectiveLevel;
+      }
       setExpInput(String(exp));
       setRunning(true);
       const message = `已加入 EXP 紀錄：${formatTrainingNumber(exp)}。`;
@@ -2644,9 +2734,30 @@ function TrainingEfficiencyPanel() {
     }
 
     const last = samples[samples.length - 1];
+
+    if (!last) {
+      if (recognitionAgreement < 2) {
+        return rejectExceptionalExp(
+          exp,
+          `初始 EXP ${formatTrainingNumber(exp)} 只有單一影像流程辨識成功；已拒絕，等待多流程一致結果。`,
+        );
+      }
+      baselineLevelRef.current = effectiveLevel;
+    }
+
     if (last) {
+      if (
+        baselineLevelRef.current === null &&
+        effectiveLevel !== null
+      ) {
+        baselineLevelRef.current = effectiveLevel;
+      }
+
       if (exp < last.exp) {
-        return confirmExceptionalExp(exp, 'lower');
+        return confirmLowerExpAfterLevelUp(
+          exp,
+          recognitionAgreement,
+        );
       }
 
       const nowForOutlierCheck = Date.now();
@@ -2677,7 +2788,10 @@ function TrainingEfficiencyPanel() {
         );
 
       if (outlier) {
-        return confirmExceptionalExp(exp, 'outlier');
+        return rejectExceptionalExp(
+          exp,
+          `EXP ${formatTrainingNumber(exp)} 與目前趨勢差異過大；已拒絕。異常高值不會再自動成為新基準。`,
+        );
       }
 
       if (exp === last.exp) {
@@ -2693,6 +2807,13 @@ function TrainingEfficiencyPanel() {
       }
     }
 
+    if (recognitionAgreement < 1) {
+      return rejectExceptionalExp(
+        exp,
+        `EXP ${formatTrainingNumber(exp)} 沒有有效辨識流程支持；已拒絕。`,
+      );
+    }
+
     expCandidateRef.current = null;
     const timestamp = Date.now();
     setSamples((prev) =>
@@ -2705,6 +2826,9 @@ function TrainingEfficiencyPanel() {
         },
       ].sort((a, b) => a.timestamp - b.timestamp),
     );
+    if (baselineLevelRef.current === null && effectiveLevel !== null) {
+      baselineLevelRef.current = effectiveLevel;
+    }
     setExpInput(String(exp));
     setRunning(true);
     const message =
@@ -2749,6 +2873,7 @@ function TrainingEfficiencyPanel() {
     setHudPanelCrop(null);
     levelCandidateRef.current = null;
     expCandidateRef.current = null;
+    baselineLevelRef.current = null;
     setOcrSuccessCount(0);
     setOcrFailCount(0);
     setMessage('已重置練功效率紀錄。');
@@ -3687,23 +3812,90 @@ function TrainingEfficiencyPanel() {
       const value = parseExpOcrText(rawText);
       const confidence = Number(result?.data?.confidence || 0);
       results.push({ name: variant.name, rawText, value, confidence });
+    }
 
-      if (value !== null) {
-        return {
-          value,
-          rawText,
-          source: variant.name,
-          confidence,
-          attempts: results,
-        };
+    const successful = results.filter(
+      (item): item is typeof item & { value: number } =>
+        item.value !== null && Number.isFinite(item.value),
+    );
+
+    if (successful.length === 0) {
+      return {
+        value: null,
+        rawText: results
+          .map((item) => `${item.name}:${item.rawText || '空白'}`)
+          .join('｜'),
+        source: '全部失敗',
+        confidence: 0,
+        agreement: 0,
+        successfulCount: 0,
+        conflicting: false,
+        attempts: results,
+      };
+    }
+
+    const clusters: Array<{
+      values: typeof successful;
+      center: number;
+    }> = [];
+
+    for (const item of successful) {
+      const matched = clusters.find((cluster) => {
+        const tolerance = Math.max(
+          5000,
+          Math.max(cluster.center, item.value) * 0.0002,
+        );
+        return Math.abs(cluster.center - item.value) <= tolerance;
+      });
+
+      if (matched) {
+        matched.values.push(item);
+        matched.center =
+          matched.values.reduce((sum, value) => sum + value.value, 0) /
+          matched.values.length;
+      } else {
+        clusters.push({ values: [item], center: item.value });
       }
     }
 
+    clusters.sort((a, b) => {
+      if (b.values.length !== a.values.length) {
+        return b.values.length - a.values.length;
+      }
+      const confidenceA = a.values.reduce(
+        (sum, value) => sum + value.confidence,
+        0,
+      );
+      const confidenceB = b.values.reduce(
+        (sum, value) => sum + value.confidence,
+        0,
+      );
+      return confidenceB - confidenceA;
+    });
+
+    const best = clusters[0];
+    const representative = [...best.values].sort(
+      (a, b) => b.confidence - a.confidence,
+    )[0];
+    const value = Math.round(
+      best.values.reduce((sum, item) => sum + item.value, 0) /
+        best.values.length,
+    );
+    const confidence =
+      best.values.reduce((sum, item) => sum + item.confidence, 0) /
+      best.values.length;
+
     return {
-      value: null,
-      rawText: results.map((item) => `${item.name}:${item.rawText || '空白'}`).join('｜'),
-      source: '全部失敗',
-      confidence: 0,
+      value,
+      rawText: representative.rawText,
+      source:
+        best.values.length >= 2
+          ? `多流程一致 ${best.values.length}/${successful.length}`
+          : representative.name,
+      confidence,
+      agreement: best.values.length,
+      successfulCount: successful.length,
+      conflicting: clusters.length > 1,
       attempts: results,
     };
   }
@@ -4029,10 +4221,20 @@ function TrainingEfficiencyPanel() {
   }
 
   function applyDetectedLevel(level: number) {
-    const current = Math.max(0, Math.min(200, Number(currentLevelInput) || 0));
+    const current = Math.max(
+      0,
+      Math.min(200, Number(currentLevelInput) || 0),
+    );
 
-    if (current === 0 || level === current || level === current + 1) {
+    if (current === 0) {
       setCurrentLevelInput(String(level));
+      levelCandidateRef.current = { value: level, count: 1 };
+      setLevelOcrMessage(`等級初始辨識：Lv.${level}`);
+      setLevelOcrSuccessCount((prev) => prev + 1);
+      return true;
+    }
+
+    if (level === current) {
       levelCandidateRef.current = { value: level, count: 1 };
       setLevelOcrMessage(`等級自動辨識成功：Lv.${level}`);
       setLevelOcrSuccessCount((prev) => prev + 1);
@@ -4040,17 +4242,23 @@ function TrainingEfficiencyPanel() {
     }
 
     const previous = levelCandidateRef.current;
-    const nextCount = previous?.value === level ? previous.count + 1 : 1;
+    const nextCount =
+      previous?.value === level ? previous.count + 1 : 1;
     levelCandidateRef.current = { value: level, count: nextCount };
 
-    if (nextCount >= 2) {
+    const requiredCount = level === current + 1 ? 2 : 3;
+    if (nextCount >= requiredCount) {
       setCurrentLevelInput(String(level));
-      setLevelOcrMessage(`等級連續辨識確認：Lv.${level}`);
+      setLevelOcrMessage(
+        `等級連續辨識確認：Lv.${level}（${requiredCount}/${requiredCount}）`,
+      );
       setLevelOcrSuccessCount((prev) => prev + 1);
       return true;
     }
 
-    setLevelOcrMessage(`等級候選 Lv.${level}，等待下一次辨識確認。`);
+    setLevelOcrMessage(
+      `等級候選 Lv.${level}，等待確認（${nextCount}/${requiredCount}）。`,
+    );
     return false;
   }
 
@@ -4133,6 +4341,9 @@ function TrainingEfficiencyPanel() {
         rawText: string;
         source: string;
         confidence: number;
+        agreement: number;
+        successfulCount: number;
+        conflicting: boolean;
         attempts: Array<{ name: string; rawText: string; value: number | null; confidence: number }>;
       } | null = null;
       let levelResult: any = null;
@@ -4184,7 +4395,7 @@ function TrainingEfficiencyPanel() {
           : NaN;
       setOcrText(
         expRecognition
-          ? `${expRecognition.source}：${rawText || '空白'}`
+          ? `${expRecognition.source}｜一致 ${expRecognition.agreement}/${Math.max(1, expRecognition.successfulCount)}：${rawText || '空白'}`
           : '(無文字)',
       );
 
@@ -4199,7 +4410,11 @@ function TrainingEfficiencyPanel() {
           message: `EXP 未辨識${rawText ? `：${rawText}` : '：空白'}`,
         });
       } else {
-        expDecision = pushSample(exp, 'ocr');
+        expDecision = pushSample(
+          exp,
+          'ocr',
+          expRecognition?.agreement || 0,
+        );
         appendTrainingOcrHistory({
           source: 'ocr',
           status: expDecision.status,
@@ -4681,7 +4896,7 @@ function TrainingEfficiencyPanel() {
                 Debug
               </label>
             </div>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">一般使用直接按「開始分析」；勾選 Debug 可查看裁切框、OCR 預覽、定位來源、原始辨識文字與最近 OCR／手動紀錄。</p>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">一般使用直接按「開始分析」；勾選 Debug 可查看裁切框、各影像流程的一致數、原始辨識文字與最近 OCR／手動紀錄。異常高值不會自動成為新基準。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析(F8)'}</Button>
@@ -5611,7 +5826,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.1</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.2</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -5773,13 +5988,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.1 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.2 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">練功效率說明改為簡易 Debug 用途提示，避免顯示過長的辨識流程說明。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">最近 OCR／手動紀錄新增全部、已加入、未變化、待確認、新基準、未辨識與已拒絕分類按鈕。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">預估 10 分與預估 60 分的最高值新增異常速率及離群值排除，避免切換畫面造成錯誤最高紀錄。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">分析初期若短時間出現超大 EXP 跳升，改為待確認兩次，不會直接加入統計。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正後續錯誤 EXP 重複辨識後被自動設為新基準的問題。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">四種 EXP 影像流程改為全部辨識後取一致群組，不再採用第一個讀到數字的結果。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">異常高值一律拒絕，不再因連續出現而自動建立新基準。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">較低 EXP 只有在等級確認提升一級、多流程一致且連續三次合理增長時，才允許作為升級後新基準。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">
