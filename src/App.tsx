@@ -2324,7 +2324,11 @@ function TrainingEfficiencyPanel() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const videoWrapRef = useRef<HTMLDivElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const captureTrackRef = useRef<MediaStreamTrack | null>(null);
+  const imageCaptureRef = useRef<any>(null);
+  const liveCaptureCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const ocrTimerRef = useRef<number | null>(null);
+  const ocrSchedulerWorkerRef = useRef<Worker | null>(null);
   const ocrBusyRef = useRef(false);
   const ocrWorkerRef = useRef<any>(null);
   const ocrWorkerPromiseRef = useRef<Promise<any> | null>(null);
@@ -2371,6 +2375,9 @@ function TrainingEfficiencyPanel() {
   const [ocrFailCount, setOcrFailCount] = useState(0);
   const [ocrDurationMs, setOcrDurationMs] = useState(0);
   const [ocrWorkerStatus, setOcrWorkerStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [captureFrameSource, setCaptureFrameSource] = useState<'image-capture' | 'video' | 'none'>('none');
+  const [lastFrameCapturedAt, setLastFrameCapturedAt] = useState<number | null>(null);
+  const [ocrSchedulerMode, setOcrSchedulerMode] = useState<'worker' | 'window' | 'stopped'>('stopped');
   const [ocrIntervalSec, setOcrIntervalSec] = useState(1);
   const [ocrCrop, setOcrCrop] = useState<TrainingAdaptiveCrop>(() => ocrCropRef.current);
   const [levelCrop, setLevelCrop] = useState<TrainingAdaptiveCrop | null>(() => levelCropRef.current);
@@ -2469,6 +2476,193 @@ function TrainingEfficiencyPanel() {
     }
   }
 
+  function stopOcrScheduler() {
+    if (ocrTimerRef.current) {
+      window.clearInterval(ocrTimerRef.current);
+      ocrTimerRef.current = null;
+    }
+
+    if (ocrSchedulerWorkerRef.current) {
+      try {
+        ocrSchedulerWorkerRef.current.postMessage({ type: 'stop' });
+        ocrSchedulerWorkerRef.current.terminate();
+      } catch {
+        // ignore scheduler shutdown errors
+      }
+      ocrSchedulerWorkerRef.current = null;
+    }
+
+    setOcrSchedulerMode('stopped');
+  }
+
+  function startOcrScheduler(intervalSeconds: number) {
+    stopOcrScheduler();
+    const intervalMs = Math.max(500, intervalSeconds * 1000);
+
+    try {
+      const workerSource = `
+        let timer = null;
+        self.onmessage = (event) => {
+          const data = event.data || {};
+          if (data.type === 'stop') {
+            if (timer) clearInterval(timer);
+            timer = null;
+            return;
+          }
+          if (data.type === 'start') {
+            if (timer) clearInterval(timer);
+            const intervalMs = Math.max(500, Number(data.intervalMs) || 1000);
+            self.postMessage({ type: 'tick', at: Date.now() });
+            timer = setInterval(() => {
+              self.postMessage({ type: 'tick', at: Date.now() });
+            }, intervalMs);
+          }
+        };
+      `;
+      const blob = new Blob([workerSource], { type: 'text/javascript' });
+      const url = URL.createObjectURL(blob);
+      const scheduler = new Worker(url);
+      URL.revokeObjectURL(url);
+      scheduler.onmessage = (event) => {
+        if (event.data?.type === 'tick') {
+          void runOcrOnceRef.current();
+        }
+      };
+      scheduler.onerror = () => {
+        scheduler.terminate();
+        if (ocrSchedulerWorkerRef.current === scheduler) {
+          ocrSchedulerWorkerRef.current = null;
+          ocrTimerRef.current = window.setInterval(() => {
+            void runOcrOnceRef.current();
+          }, intervalMs);
+          setOcrSchedulerMode('window');
+        }
+      };
+      ocrSchedulerWorkerRef.current = scheduler;
+      scheduler.postMessage({ type: 'start', intervalMs });
+      setOcrSchedulerMode('worker');
+      return;
+    } catch {
+      // fall through to window timer
+    }
+
+    void runOcrOnceRef.current();
+    ocrTimerRef.current = window.setInterval(() => {
+      void runOcrOnceRef.current();
+    }, intervalMs);
+    setOcrSchedulerMode('window');
+  }
+
+  function makeScaledFrame(
+    source: HTMLCanvasElement,
+    maxWidth = 1280,
+  ) {
+    if (source.width <= maxWidth) return source;
+    const scale = maxWidth / source.width;
+    const frame = document.createElement('canvas');
+    frame.width = Math.max(1, Math.round(source.width * scale));
+    frame.height = Math.max(1, Math.round(source.height * scale));
+    const ctx = frame.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return source;
+    ctx.drawImage(source, 0, 0, frame.width, frame.height);
+    return frame;
+  }
+
+  async function captureLiveTrackFrame(maxWidth = 2560) {
+    const track = captureTrackRef.current;
+    const ImageCaptureConstructor = (window as any).ImageCapture;
+
+    if (
+      track?.readyState === 'live' &&
+      ImageCaptureConstructor
+    ) {
+      try {
+        if (!imageCaptureRef.current) {
+          imageCaptureRef.current = new ImageCaptureConstructor(track);
+        }
+        const bitmap = await imageCaptureRef.current.grabFrame();
+        const sourceWidth = bitmap.width;
+        const sourceHeight = bitmap.height;
+        const scale = Math.min(1, maxWidth / sourceWidth);
+        const canvas = liveCaptureCanvasRef.current || document.createElement('canvas');
+        liveCaptureCanvasRef.current = canvas;
+        canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+        canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) {
+          bitmap.close?.();
+          return null;
+        }
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close?.();
+        captureReferenceFrameRef.current = canvas;
+        setCaptureFrameSource('image-capture');
+        setLastFrameCapturedAt(Date.now());
+        return canvas;
+      } catch {
+        imageCaptureRef.current = null;
+      }
+    }
+
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) return null;
+    const scale = Math.min(1, maxWidth / video.videoWidth);
+    const canvas = liveCaptureCanvasRef.current || document.createElement('canvas');
+    liveCaptureCanvasRef.current = canvas;
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    captureReferenceFrameRef.current = canvas;
+    setCaptureFrameSource('video');
+    setLastFrameCapturedAt(Date.now());
+    return canvas;
+  }
+
+  function cropFrameByPercent(
+    source: HTMLCanvasElement,
+    crop: TrainingAdaptiveCrop | null,
+    minimumWidth: number,
+    minimumHeight: number,
+    preview: HTMLCanvasElement | null,
+  ) {
+    if (!crop) return null;
+    const sx = Math.max(0, Math.floor((crop.x / 100) * source.width));
+    const sy = Math.max(0, Math.floor((crop.y / 100) * source.height));
+    const sw = Math.max(
+      minimumWidth,
+      Math.min(
+        source.width - sx,
+        Math.floor((crop.w / 100) * source.width),
+      ),
+    );
+    const sh = Math.max(
+      minimumHeight,
+      Math.min(
+        source.height - sy,
+        Math.floor((crop.h / 100) * source.height),
+      ),
+    );
+    if (sw <= 0 || sh <= 0) return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = sw;
+    canvas.height = sh;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(source, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    if (preview) {
+      preview.width = sw;
+      preview.height = sh;
+      const previewCtx = preview.getContext('2d');
+      previewCtx?.drawImage(canvas, 0, 0);
+    }
+
+    return canvas;
+  }
+
   async function ensureTrainingOcrWorker() {
     if (ocrWorkerRef.current) return ocrWorkerRef.current;
     if (ocrWorkerPromiseRef.current) return ocrWorkerPromiseRef.current;
@@ -2540,8 +2734,10 @@ function TrainingEfficiencyPanel() {
 
   useEffect(() => {
     return () => {
-      if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
+      stopOcrScheduler();
       streamRef.current?.getTracks().forEach((track) => track.stop());
+      captureTrackRef.current = null;
+      imageCaptureRef.current = null;
       void terminateTrainingOcrWorker();
     };
   }, []);
@@ -2921,8 +3117,7 @@ function TrainingEfficiencyPanel() {
   function resetAll() {
     setRunning(false);
     setOcrActive(false);
-    if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
-    ocrTimerRef.current = null;
+    stopOcrScheduler();
     setSamples([]);
     setOcrHistory([]);
     setOcrHistoryFilter('all');
@@ -2954,17 +3149,72 @@ function TrainingEfficiencyPanel() {
   }
 
   async function startCapture() {
-    if (captureActive) return true;
+    if (captureActive && captureTrackRef.current?.readyState === 'live') {
+      return true;
+    }
+
     try {
       if (!navigator.mediaDevices?.getDisplayMedia) {
         setMessage('此瀏覽器不支援螢幕擷取。');
         return false;
       }
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          frameRate: { ideal: 15, max: 30 },
+        },
+        audio: false,
+      });
+      const track = stream.getVideoTracks()[0] || null;
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
+      captureTrackRef.current = track;
+      imageCaptureRef.current = null;
+      liveCaptureCanvasRef.current = null;
+      setCaptureFrameSource('none');
+      setLastFrameCapturedAt(null);
+
+      if (track) {
+        try {
+          track.contentHint = 'detail';
+        } catch {
+          // contentHint is optional
+        }
+        track.addEventListener(
+          'ended',
+          () => {
+            stopOcrScheduler();
+            setCaptureActive(false);
+            setOcrActive(false);
+            setRunning(false);
+            setOcrMessage('螢幕擷取已由瀏覽器停止。');
+          },
+          { once: true },
+        );
+
+        const ImageCaptureConstructor = (window as any).ImageCapture;
+        if (ImageCaptureConstructor) {
+          try {
+            imageCaptureRef.current = new ImageCaptureConstructor(track);
+            setCaptureFrameSource('image-capture');
+          } catch {
+            imageCaptureRef.current = null;
+          }
+        }
+      }
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.muted = true;
+        videoRef.current.playsInline = true;
+        await videoRef.current.play().catch(() => undefined);
+      }
+
       setCaptureActive(true);
-      setMessage('已開始螢幕擷取。');
+      setMessage(
+        imageCaptureRef.current
+          ? '已開始螢幕擷取；OCR 將直接讀取擷取軌道，不依賴分析頁是否在前景。'
+          : '已開始螢幕擷取；目前瀏覽器不支援 ImageCapture，將使用影片畫面備援。',
+      );
       return true;
     } catch (err) {
       setMessage(err instanceof Error ? err.message : '無法開始螢幕擷取');
@@ -2973,14 +3223,18 @@ function TrainingEfficiencyPanel() {
   }
 
   function stopCapture() {
-    if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
-    ocrTimerRef.current = null;
+    stopOcrScheduler();
     setOcrActive(false);
     setRunning(false);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    captureTrackRef.current = null;
+    imageCaptureRef.current = null;
+    liveCaptureCanvasRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     setCaptureActive(false);
+    setCaptureFrameSource('none');
+    setLastFrameCapturedAt(null);
     setManualSelectMode(false);
     setDragBox(null);
     preferredExpVariantRef.current = 0;
@@ -3610,8 +3864,9 @@ function TrainingEfficiencyPanel() {
     };
   }
 
-  function autoDetectOcrCrop() {
-    const frame = captureReferenceFrame(1280);
+  async function autoDetectOcrCrop() {
+    const liveFrame = await captureLiveTrackFrame(2560);
+    const frame = liveFrame ? makeScaledFrame(liveFrame, 1280) : captureReferenceFrame(1280);
     const result = detectAdaptiveCrops({ silent: false, initial: true, frame });
     initialCropDetectionRef.current = result.expFound || result.levelFound;
     return initialCropDetectionRef.current;
@@ -4457,74 +4712,58 @@ function TrainingEfficiencyPanel() {
 
   async function runOcrOnce() {
     if (ocrBusyRef.current) return;
-    const ocrCycleStartedAt = performance.now();
-    const video = videoRef.current;
-    if (!video || !video.videoWidth || !video.videoHeight) {
-      setOcrMessage('尚未取得可辨識的螢幕畫面。');
-      return;
-    }
-
-    // Re-detect on every OCR cycle so moving/resizing the game window is handled.
-    const adaptive = detectAdaptiveCrops({ silent: true });
-    if (!adaptive.hudFound) {
-      setOcrMessage('本次 OCR 略過：目前畫面未確認完整狀態列；下一個週期會重新掃描。');
-      return;
-    }
-
-    const expCrop = drawOcrCropPreview(adaptive.expCrop);
-    const levelCropPixels = drawLevelCropPreview(adaptive.levelCrop);
-
-    if (!expCrop || !levelCropPixels) {
-      setOcrMessage('完整狀態列已找到，但等級或 EXP 子區域無法建立裁切畫面。');
-      return;
-    }
-
-    const expCanvas = canvasRef.current || document.createElement('canvas');
-    canvasRef.current = expCanvas;
-    expCanvas.width = expCrop.sw;
-    expCanvas.height = expCrop.sh;
-    const expCtx = expCanvas.getContext('2d', { willReadFrequently: true });
-    if (!expCtx) {
-      setOcrMessage('瀏覽器無法建立 Canvas。');
-      return;
-    }
-    expCtx.drawImage(video, expCrop.sx, expCrop.sy, expCrop.sw, expCrop.sh, 0, 0, expCrop.sw, expCrop.sh);
-
-    let levelCanvas: HTMLCanvasElement | null = null;
-    if (levelCropPixels) {
-      levelCanvas = document.createElement('canvas');
-      levelCanvas.width = levelCropPixels.sw;
-      levelCanvas.height = levelCropPixels.sh;
-      const levelCtx = levelCanvas.getContext('2d', { willReadFrequently: true });
-      if (levelCtx) {
-        levelCtx.drawImage(
-          video,
-          levelCropPixels.sx,
-          levelCropPixels.sy,
-          levelCropPixels.sw,
-          levelCropPixels.sh,
-          0,
-          0,
-          levelCropPixels.sw,
-          levelCropPixels.sh,
-        );
-      } else {
-        levelCanvas = null;
-      }
-    }
-
     ocrBusyRef.current = true;
-    setOcrMessage('自適應定位完成，正在辨識 EXP 與等級…');
+    const ocrCycleStartedAt = performance.now();
 
     try {
+      const liveFrame = await captureLiveTrackFrame(2560);
+      if (!liveFrame) {
+        setOcrMessage('尚未取得可辨識的螢幕擷取影格。');
+        return;
+      }
+
+      const analysisFrame = makeScaledFrame(liveFrame, 1280);
+      const adaptive = detectAdaptiveCrops({
+        silent: true,
+        frame: analysisFrame,
+      });
+      if (!adaptive.hudFound) {
+        setOcrMessage(
+          '本次 OCR 略過：直接擷取影格中未確認完整狀態列；下一個週期會重新掃描。',
+        );
+        return;
+      }
+
+      const expCanvas = cropFrameByPercent(
+        liveFrame,
+        adaptive.expCrop,
+        10,
+        10,
+        previewCanvasRef.current,
+      );
+      const levelCanvas = cropFrameByPercent(
+        liveFrame,
+        adaptive.levelCrop,
+        8,
+        8,
+        levelPreviewCanvasRef.current,
+      );
+
+      if (!expCanvas || !levelCanvas) {
+        setOcrMessage(
+          '完整狀態列已找到，但等級或 EXP 子區域無法從直接擷取影格建立。',
+        );
+        return;
+      }
+
+      canvasRef.current = expCanvas;
+      setOcrMessage('已取得最新擷取軌道影格，正在辨識 EXP 與等級…');
+
       const expVariants = buildExpOcrVariants(expCanvas);
-      const pixelLevelResult = levelCanvas
-        ? recognizeLevelByPixelSegments(levelCanvas)
+      const pixelLevelResult = recognizeLevelByPixelSegments(levelCanvas);
+      const processedLevel = !pixelLevelResult
+        ? preprocessLevelCrop(levelCanvas)
         : null;
-      const processedLevel =
-        levelCanvas && !pixelLevelResult
-          ? preprocessLevelCrop(levelCanvas)
-          : null;
       const worker = await ensureTrainingOcrWorker();
 
       let expRecognition: {
@@ -4535,7 +4774,12 @@ function TrainingEfficiencyPanel() {
         agreement: number;
         successfulCount: number;
         conflicting: boolean;
-        attempts: Array<{ name: string; rawText: string; value: number | null; confidence: number }>;
+        attempts: Array<{
+          name: string;
+          rawText: string;
+          value: number | null;
+          confidence: number;
+        }>;
       } | null = null;
       let levelResult: any = null;
 
@@ -4598,19 +4842,28 @@ function TrainingEfficiencyPanel() {
         }
       }
 
-      const tesseractLevelText = String(levelResult?.data?.text || '').trim();
+      const tesseractLevelText = String(
+        levelResult?.data?.text || '',
+      ).trim();
       const rawLevelText = pixelLevelResult
         ? pixelLevelResult.text
         : tesseractLevelText;
-      const levelSource = pixelLevelResult ? '像素七段辨識' : 'Tesseract';
+      const levelSource = pixelLevelResult
+        ? '像素七段辨識'
+        : 'Tesseract';
       setLevelOcrText(
         rawLevelText
           ? `${levelSource}：${rawLevelText}`
           : '(無文字)',
       );
-      const detectedLevel = pixelLevelResult?.value ??
-        (processedLevel ? parseDetectedLevel(tesseractLevelText) : null);
-      const levelAccepted = detectedLevel ? applyDetectedLevel(detectedLevel) : false;
+      const detectedLevel =
+        pixelLevelResult?.value ??
+        (processedLevel
+          ? parseDetectedLevel(tesseractLevelText)
+          : null);
+      const levelAccepted = detectedLevel
+        ? applyDetectedLevel(detectedLevel)
+        : false;
 
       const expStatus = Number.isFinite(exp)
         ? `${expDecision?.message || `EXP ${formatTrainingNumber(exp)}`}（${expRecognition?.source || 'OCR'}）`
@@ -4623,7 +4876,9 @@ function TrainingEfficiencyPanel() {
           ? '等級未辨識'
           : '尚未定位等級區域';
 
-      setOcrMessage(`OCR：${expStatus}；${levelStatus}。`);
+      setOcrMessage(
+        `OCR：${expStatus}；${levelStatus}。影格來源：${captureFrameSource === 'image-capture' ? '擷取軌道' : '影片備援'}。`,
+      );
       if (!detectedLevel) {
         setLevelOcrMessage(
           `等級辨識失敗：像素七段辨識與 Tesseract 都沒有取得 1～200 的數字${tesseractLevelText ? `（${tesseractLevelText}）` : ''}`,
@@ -4635,10 +4890,17 @@ function TrainingEfficiencyPanel() {
       }
     } catch (err) {
       setOcrFailCount((prev) => prev + 1);
-      setOcrMessage(err instanceof Error ? `OCR 失敗：${err.message}` : 'OCR 失敗');
+      setOcrMessage(
+        err instanceof Error
+          ? `OCR 失敗：${err.message}`
+          : 'OCR 失敗',
+      );
     } finally {
       setOcrDurationMs(
-        Math.max(0, Math.round(performance.now() - ocrCycleStartedAt)),
+        Math.max(
+          0,
+          Math.round(performance.now() - ocrCycleStartedAt),
+        ),
       );
       ocrBusyRef.current = false;
     }
@@ -4654,7 +4916,10 @@ function TrainingEfficiencyPanel() {
     const attempts = 10;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       await waitForCapturePaint();
-      const frame = captureReferenceFrame(1280);
+      const liveFrame = await captureLiveTrackFrame(2560);
+      const frame = liveFrame
+        ? makeScaledFrame(liveFrame, 1280)
+        : captureReferenceFrame(1280);
       const detection = detectAdaptiveCrops({
         silent: attempt < attempts,
         initial: true,
@@ -4729,16 +4994,11 @@ function TrainingEfficiencyPanel() {
       return;
     }
 
-    if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
-    void runOcrOnceRef.current();
-    ocrTimerRef.current = window.setInterval(() => {
-      void runOcrOnceRef.current();
-    }, Math.max(1, ocrIntervalSec) * 1000);
+    startOcrScheduler(ocrIntervalSec);
   }
 
   function pauseAnalysis() {
-    if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
-    ocrTimerRef.current = null;
+    stopOcrScheduler();
     const pausedAt = Date.now();
     if (currentRunStartedAt) {
       setAccumulatedActiveMs((prev) => prev + Math.max(0, pausedAt - currentRunStartedAt));
@@ -4756,11 +5016,7 @@ function TrainingEfficiencyPanel() {
     setOcrActive(true);
     setCurrentRunStartedAt(Date.now());
     setOcrMessage('分析已繼續，OCR 與計時已恢復。');
-    if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
-    void runOcrOnceRef.current();
-    ocrTimerRef.current = window.setInterval(() => {
-      void runOcrOnceRef.current();
-    }, Math.max(1, ocrIntervalSec) * 1000);
+    startOcrScheduler(ocrIntervalSec);
   }
 
   function togglePauseContinueAnalysis() {
@@ -4776,8 +5032,7 @@ function TrainingEfficiencyPanel() {
   }
 
   function stopAnalysis() {
-    if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
-    ocrTimerRef.current = null;
+    stopOcrScheduler();
     const stoppedAt = Date.now();
     if (ocrActive && currentRunStartedAt) {
       setAccumulatedActiveMs((prev) => prev + Math.max(0, stoppedAt - currentRunStartedAt));
@@ -5083,7 +5338,7 @@ function TrainingEfficiencyPanel() {
                 Debug
               </label>
             </div>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">一般使用直接按「開始分析」；OCR 引擎只在首次啟動時載入，之後重複使用。勾選 Debug 可查看單次辨識耗時、裁切框、原始文字與紀錄。</p>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">一般使用直接按「開始分析」；切換到遊戲視窗後，OCR 會直接從螢幕擷取軌道取得新影格，並由背景 Worker 排程，不依賴分析頁保持在前景。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析(F8)'}</Button>
@@ -5150,7 +5405,7 @@ function TrainingEfficiencyPanel() {
               <div className="flex flex-wrap gap-2 rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-3">
                 <Button variant="secondary" disabled={!captureActive} onClick={() => setManualSelectMode((prev) => !prev)}>{manualSelectMode ? '取消框選' : '手動框選裁切區'}</Button>
                 <Button variant="secondary" disabled={!captureActive} onClick={saveCropAsDefault}>儲存為預設裁切區</Button>
-                <Button variant="secondary" disabled={!captureActive} onClick={autoDetectOcrCrop}>從螢幕擷取對照重新辨識 EXP / 等級</Button>
+                <Button variant="secondary" disabled={!captureActive} onClick={() => { void autoDetectOcrCrop(); }}>從螢幕擷取對照重新辨識 EXP / 等級</Button>
                 <Button variant="ghost" onClick={resetSavedCrop}>清除預設裁切區</Button>
                 <span className="self-center text-xs font-semibold text-orange-700">青框為完整 LV / HP / MP / EXP 狀態列；青框確認後才產生橘色 EXP 框與藍色等級框。找不到青框時不會使用舊座標辨識。</span>
               </div>
@@ -5179,10 +5434,12 @@ function TrainingEfficiencyPanel() {
                 <div className="text-sm font-black text-sky-700">定位來源：{cropDetectionSource}<div className="mt-1 text-xs font-semibold text-sky-600">必須先辨識右側參考形式的完整狀態列，才會建立等級與 EXP 裁切框。</div></div>
                 <img src="/training-hud-reference.png" alt="LV HP MP EXP 狀態列辨識參考" className="w-full rounded-lg border border-sky-200 bg-slate-950 object-contain" />
               </div>
-              <div className="mb-3 grid gap-3 md:grid-cols-3">
+              <div className="mb-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                 <div className="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm font-black text-sky-700">OCR 引擎：{ocrWorkerStatus === 'ready' ? '已就緒' : ocrWorkerStatus === 'loading' ? '載入中' : ocrWorkerStatus === 'error' ? '載入失敗' : '未啟動'}</div>
                 <div className="rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3 text-sm font-black text-violet-700">最近 OCR 耗時：{ocrDurationMs > 0 ? `${(ocrDurationMs / 1000).toFixed(2)} 秒` : '--'}</div>
-                <div className="rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-black text-orange-700">辨識間隔：{ocrIntervalSec} 秒｜一般流程 1 次 OCR</div>
+                <div className="rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-black text-orange-700">辨識間隔：{ocrIntervalSec} 秒</div>
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">影格來源：{captureFrameSource === 'image-capture' ? '擷取軌道' : captureFrameSource === 'video' ? '影片備援' : '未取得'}</div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-700">排程：{ocrSchedulerMode === 'worker' ? '背景 Worker' : ocrSchedulerMode === 'window' ? '頁面計時器備援' : '停止'}{lastFrameCapturedAt ? `｜影格 ${Math.max(0, Math.round((now - lastFrameCapturedAt) / 1000))} 秒前` : ''}</div>
               </div>
               <div className="grid gap-3 md:grid-cols-4">
                 <div className="rounded-3xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">EXP OCR 成功：{ocrSuccessCount}</div>
@@ -6018,7 +6275,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.3</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.4</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -6180,13 +6437,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.3 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.4 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正 EXP 變動需要等待數分鐘才更新的問題。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">Tesseract Worker 改為開始分析時建立一次並持續重用，不再每個週期重複載入 OCR 引擎。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">正常辨識由四種影像流程縮減為優先流程一次；只有初始、較低值、失敗或衝突時才追加第二流程確認。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">預設辨識間隔由 3 秒改為 1 秒，Debug 新增 OCR 引擎狀態與單次辨識耗時。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正只有練功效率頁在前景時 EXP 才更新，切換到被擷取遊戲視窗後反覆讀到上一張畫面的問題。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">OCR 改為使用 ImageCapture 直接向螢幕擷取 MediaStreamTrack 取得新影格，不再以頁面上的 video 元素作為主要辨識來源。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">辨識排程改由獨立 Web Worker 發送 tick，降低分析頁進入背景後視窗計時器被節流的影響。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">Debug 新增影格來源、背景排程模式與最近影格時間，可確認是否持續取得遊戲最新畫面。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">

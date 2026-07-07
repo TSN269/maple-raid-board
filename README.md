@@ -1,7 +1,7 @@
 # Maple Raid Board
 
 > Artale／楓之谷多人協作工具站  
-> 目前版本：**TSN UI-9.3**  
+> 目前版本：**TSN UI-9.4**  
 > GitHub：`TSN269/maple-raid-board`  
 > 部署架構：React + TypeScript + Vite + Supabase + Vercel
 
@@ -290,6 +290,14 @@ UI-9.3 起：
 - 預設辨識間隔為 1 秒。
 - OCR 尚未完成時不會重疊啟動下一次。
 
+UI-9.4 起：
+
+- 使用 `ImageCapture.grabFrame()` 直接讀取螢幕擷取視訊軌道。
+- EXP 辨識不再依賴分析頁 `<video>` 元素是否持續重繪。
+- 切換到被擷取的遊戲視窗後，仍可取得最新影格。
+- OCR tick 優先由獨立 Web Worker 排程，降低背景頁計時器節流。
+- 不支援 ImageCapture 的瀏覽器才回退至 video 元素。
+
 ### Debug
 
 勾選 Debug 可查看：
@@ -299,6 +307,9 @@ UI-9.3 起：
 - 狀態列定位來源。
 - OCR Worker 狀態。
 - 最近一次 OCR 耗時。
+- 影格來源：擷取軌道或影片備援。
+- OCR 排程：背景 Worker 或頁面計時器備援。
+- 最近取得影格距今秒數。
 - 原始 OCR 文字與影像流程一致數。
 - 最近 OCR／手動紀錄。
 
@@ -639,13 +650,15 @@ supabase/ui-7-8-sqlfix2-artale-history-read.sql
 - 按重新辨識狀態列。
 - 必要時停止擷取後重新開始。
 
-### OCR 更新延遲
+### OCR 更新延遲或切換視窗後停在舊值
 
-- Debug 查看「OCR 引擎」是否為已就緒。
-- 查看最近一次 OCR 耗時。
-- 避免同時執行高負載瀏覽器分頁。
-- 確認沒有持續切換遊戲畫面或遮蔽狀態列。
-- Worker 僅在開始分析時載入；若狀態異常，停止螢幕擷取後重新開始。
+- Debug 確認「影格來源」為「擷取軌道」。
+- Debug 確認「排程」為「背景 Worker」。
+- 查看最近影格時間是否持續更新。
+- OCR 引擎狀態應為「已就緒」。
+- 如果瀏覽器不支援 ImageCapture，會顯示「影片備援」；背景辨識可靠度較低。
+- 不要將被擷取的遊戲視窗最小化，部分作業系統會停止提供最小化視窗影格。
+- 若影格時間停止，先停止螢幕擷取，再重新開始分析並重新選擇遊戲視窗。
 
 ### EXP 被拒絕
 
@@ -667,7 +680,7 @@ supabase/ui-7-8-sqlfix2-artale-history-read.sql
 
 ```bash
 git add .
-git commit -m "deploy ui 9.3"
+git commit -m "deploy ui 9.4"
 git push
 ```
 
@@ -675,7 +688,7 @@ git push
 
 ```bash
 git add README.md
-git commit -m "rewrite readme for ui 9.3"
+git commit -m "deploy ui 9.4 background capture"
 git push
 ```
 
@@ -1461,6 +1474,17 @@ Serverless API 改用 Supabase REST API
 修正 Node.js 20 without native WebSocket support
 不需要安裝 ws
 前端既有 Supabase 功能不變
+```
+
+### UI-9.4
+
+```text
+修正分析頁退到背景後 EXP 重複上一張畫面的問題
+改用 ImageCapture 直接讀取螢幕擷取 MediaStreamTrack 最新影格
+OCR 不再依賴分析頁 video 元素持續重繪
+新增 Web Worker 背景排程，降低背景分頁計時器節流
+Debug 新增影格來源、排程模式與最近影格時間
+目前最新版本
 ```
 
 ### UI-9.3
