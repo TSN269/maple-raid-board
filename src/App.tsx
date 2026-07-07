@@ -2326,6 +2326,9 @@ function TrainingEfficiencyPanel() {
   const streamRef = useRef<MediaStream | null>(null);
   const ocrTimerRef = useRef<number | null>(null);
   const ocrBusyRef = useRef(false);
+  const ocrWorkerRef = useRef<any>(null);
+  const ocrWorkerPromiseRef = useRef<Promise<any> | null>(null);
+  const preferredExpVariantRef = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const levelPreviewCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -2366,7 +2369,9 @@ function TrainingEfficiencyPanel() {
   const [ocrText, setOcrText] = useState('');
   const [ocrSuccessCount, setOcrSuccessCount] = useState(0);
   const [ocrFailCount, setOcrFailCount] = useState(0);
-  const [ocrIntervalSec, setOcrIntervalSec] = useState(3);
+  const [ocrDurationMs, setOcrDurationMs] = useState(0);
+  const [ocrWorkerStatus, setOcrWorkerStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [ocrIntervalSec, setOcrIntervalSec] = useState(1);
   const [ocrCrop, setOcrCrop] = useState<TrainingAdaptiveCrop>(() => ocrCropRef.current);
   const [levelCrop, setLevelCrop] = useState<TrainingAdaptiveCrop | null>(() => levelCropRef.current);
   const [hudPanelCrop, setHudPanelCrop] = useState<TrainingAdaptiveCrop | null>(null);
@@ -2464,6 +2469,70 @@ function TrainingEfficiencyPanel() {
     }
   }
 
+  async function ensureTrainingOcrWorker() {
+    if (ocrWorkerRef.current) return ocrWorkerRef.current;
+    if (ocrWorkerPromiseRef.current) return ocrWorkerPromiseRef.current;
+
+    setOcrWorkerStatus('loading');
+    const promise = (async () => {
+      const tesseractUrl =
+        'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.esm.min.js';
+      const tesseractModule =
+        (await import(/* @vite-ignore */ tesseractUrl)) as any;
+      const tesseractApi =
+        tesseractModule.default ?? tesseractModule;
+      const createWorker =
+        tesseractApi.createWorker ?? tesseractModule.createWorker;
+
+      if (typeof createWorker !== 'function') {
+        throw new Error('tesseract.js createWorker API unavailable');
+      }
+
+      const worker = await createWorker('eng');
+      ocrWorkerRef.current = worker;
+      setOcrWorkerStatus('ready');
+      return worker;
+    })();
+
+    ocrWorkerPromiseRef.current = promise;
+
+    try {
+      return await promise;
+    } catch (error) {
+      ocrWorkerRef.current = null;
+      setOcrWorkerStatus('error');
+      throw error;
+    } finally {
+      ocrWorkerPromiseRef.current = null;
+    }
+  }
+
+  async function terminateTrainingOcrWorker() {
+    const worker = ocrWorkerRef.current;
+    ocrWorkerRef.current = null;
+    ocrWorkerPromiseRef.current = null;
+    setOcrWorkerStatus('idle');
+
+    if (worker && typeof worker.terminate === 'function') {
+      try {
+        await worker.terminate();
+      } catch {
+        // ignore worker shutdown errors
+      }
+    }
+  }
+
+  async function recognizeWithTrainingWorker(
+    worker: any,
+    canvas: HTMLCanvasElement,
+    parameters: Record<string, string>,
+  ) {
+    if (typeof worker.setParameters === 'function') {
+      await worker.setParameters(parameters);
+    }
+    return worker.recognize(canvas);
+  }
+
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
@@ -2473,6 +2542,7 @@ function TrainingEfficiencyPanel() {
     return () => {
       if (ocrTimerRef.current) window.clearInterval(ocrTimerRef.current);
       streamRef.current?.getTracks().forEach((track) => track.stop());
+      void terminateTrainingOcrWorker();
     };
   }, []);
 
@@ -2876,6 +2946,9 @@ function TrainingEfficiencyPanel() {
     baselineLevelRef.current = null;
     setOcrSuccessCount(0);
     setOcrFailCount(0);
+    preferredExpVariantRef.current = 0;
+    setOcrDurationMs(0);
+    void terminateTrainingOcrWorker();
     setMessage('已重置練功效率紀錄。');
     setOcrMessage('OCR 已停止並清空紀錄。');
   }
@@ -2910,6 +2983,8 @@ function TrainingEfficiencyPanel() {
     setCaptureActive(false);
     setManualSelectMode(false);
     setDragBox(null);
+    preferredExpVariantRef.current = 0;
+    void terminateTrainingOcrWorker();
     setOcrMessage('已停止螢幕擷取與 OCR。');
   }
 
@@ -3792,8 +3867,9 @@ function TrainingEfficiencyPanel() {
   }
 
   async function recognizeExpWithVariants(
-    recognize: any,
+    worker: any,
     variants: Array<{ name: string; canvas: HTMLCanvasElement }>,
+    lastKnownExp: number | null,
   ) {
     const results: Array<{
       name: string;
@@ -3802,21 +3878,135 @@ function TrainingEfficiencyPanel() {
       confidence: number;
     }> = [];
 
-    for (const variant of variants) {
-      const result = await recognize(variant.canvas, 'eng', {
-        tessedit_char_whitelist: 'EXPexp:0123456789,.%[]() ',
-        tessedit_pageseg_mode: '7',
-        preserve_interword_spaces: '1',
-      });
+    const recognizeVariant = async (variantIndex: number) => {
+      const variant = variants[variantIndex];
+      const result = await recognizeWithTrainingWorker(
+        worker,
+        variant.canvas,
+        {
+          tessedit_char_whitelist:
+            'EXPexp:0123456789,.%[]() ',
+          tessedit_pageseg_mode: '7',
+          preserve_interword_spaces: '1',
+        },
+      );
       const rawText = String(result?.data?.text || '').trim();
       const value = parseExpOcrText(rawText);
       const confidence = Number(result?.data?.confidence || 0);
-      results.push({ name: variant.name, rawText, value, confidence });
+      const parsed = {
+        name: variant.name,
+        rawText,
+        value,
+        confidence,
+      };
+      results.push(parsed);
+      return parsed;
+    };
+
+    const preferredIndex =
+      preferredExpVariantRef.current % variants.length;
+    const primary = await recognizeVariant(preferredIndex);
+
+    // Normal path: one OCR pass. Reuse the last successful image treatment.
+    if (
+      primary.value !== null &&
+      lastKnownExp !== null &&
+      primary.value >= lastKnownExp
+    ) {
+      preferredExpVariantRef.current = preferredIndex;
+      return {
+        value: primary.value,
+        rawText: primary.rawText,
+        source: primary.name,
+        confidence: primary.confidence,
+        agreement: 1,
+        successfulCount: 1,
+        conflicting: false,
+        attempts: results,
+      };
+    }
+
+    // Initial value, lower value, or primary failure needs a second treatment
+    // before it can affect a baseline.
+    const remainingIndexes = variants
+      .map((_, index) => index)
+      .filter((index) => index !== preferredIndex);
+
+    for (const index of remainingIndexes) {
+      const candidate = await recognizeVariant(index);
+
+      if (
+        primary.value !== null &&
+        candidate.value !== null
+      ) {
+        const tolerance = Math.max(
+          5000,
+          Math.max(primary.value, candidate.value) * 0.0002,
+        );
+        if (
+          Math.abs(primary.value - candidate.value) <= tolerance
+        ) {
+          preferredExpVariantRef.current =
+            primary.confidence >= candidate.confidence
+              ? preferredIndex
+              : index;
+          return {
+            value: Math.round(
+              (primary.value + candidate.value) / 2,
+            ),
+            rawText:
+              primary.confidence >= candidate.confidence
+                ? primary.rawText
+                : candidate.rawText,
+            source: `快速雙流程一致 2/${results.length}`,
+            confidence:
+              (primary.confidence + candidate.confidence) / 2,
+            agreement: 2,
+            successfulCount: results.filter(
+              (item) => item.value !== null,
+            ).length,
+            conflicting: false,
+            attempts: results,
+          };
+        }
+      }
+
+      if (primary.value === null && candidate.value !== null) {
+        preferredExpVariantRef.current = index;
+
+        // A normal increase can use the successful fallback immediately.
+        if (
+          lastKnownExp !== null &&
+          candidate.value >= lastKnownExp
+        ) {
+          return {
+            value: candidate.value,
+            rawText: candidate.rawText,
+            source: candidate.name,
+            confidence: candidate.confidence,
+            agreement: 1,
+            successfulCount: 1,
+            conflicting: false,
+            attempts: results,
+          };
+        }
+      }
+
+      // Two attempts are enough for the frequent path. Only continue when both
+      // produced conflicting numeric values and a deciding vote is required.
+      const numericResults = results.filter(
+        (item): item is typeof item & { value: number } =>
+          item.value !== null,
+      );
+      if (results.length >= 2 && numericResults.length < 2) {
+        continue;
+      }
+      if (numericResults.length >= 2) break;
     }
 
     const successful = results.filter(
       (item): item is typeof item & { value: number } =>
-        item.value !== null && Number.isFinite(item.value),
+        item.value !== null,
     );
 
     if (successful.length === 0) {
@@ -3825,7 +4015,7 @@ function TrainingEfficiencyPanel() {
         rawText: results
           .map((item) => `${item.name}:${item.rawText || '空白'}`)
           .join('｜'),
-        source: '全部失敗',
+        source: '快速流程失敗',
         confidence: 0,
         agreement: 0,
         successfulCount: 0,
@@ -3851,10 +4041,15 @@ function TrainingEfficiencyPanel() {
       if (matched) {
         matched.values.push(item);
         matched.center =
-          matched.values.reduce((sum, value) => sum + value.value, 0) /
-          matched.values.length;
+          matched.values.reduce(
+            (sum, value) => sum + value.value,
+            0,
+          ) / matched.values.length;
       } else {
-        clusters.push({ values: [item], center: item.value });
+        clusters.push({
+          values: [item],
+          center: item.value,
+        });
       }
     }
 
@@ -3862,37 +4057,35 @@ function TrainingEfficiencyPanel() {
       if (b.values.length !== a.values.length) {
         return b.values.length - a.values.length;
       }
-      const confidenceA = a.values.reduce(
-        (sum, value) => sum + value.confidence,
-        0,
+      return (
+        b.values.reduce(
+          (sum, value) => sum + value.confidence,
+          0,
+        ) -
+        a.values.reduce(
+          (sum, value) => sum + value.confidence,
+          0,
+        )
       );
-      const confidenceB = b.values.reduce(
-        (sum, value) => sum + value.confidence,
-        0,
-      );
-      return confidenceB - confidenceA;
     });
 
     const best = clusters[0];
     const representative = [...best.values].sort(
       (a, b) => b.confidence - a.confidence,
     )[0];
-    const value = Math.round(
-      best.values.reduce((sum, item) => sum + item.value, 0) /
-        best.values.length,
-    );
-    const confidence =
-      best.values.reduce((sum, item) => sum + item.confidence, 0) /
-      best.values.length;
 
     return {
-      value,
+      value: Math.round(best.center),
       rawText: representative.rawText,
       source:
         best.values.length >= 2
-          ? `多流程一致 ${best.values.length}/${successful.length}`
+          ? `快速多數一致 ${best.values.length}/${successful.length}`
           : representative.name,
-      confidence,
+      confidence:
+        best.values.reduce(
+          (sum, item) => sum + item.confidence,
+          0,
+        ) / best.values.length,
       agreement: best.values.length,
       successfulCount: successful.length,
       conflicting: clusters.length > 1,
@@ -4264,6 +4457,7 @@ function TrainingEfficiencyPanel() {
 
   async function runOcrOnce() {
     if (ocrBusyRef.current) return;
+    const ocrCycleStartedAt = performance.now();
     const video = videoRef.current;
     if (!video || !video.videoWidth || !video.videoHeight) {
       setOcrMessage('尚未取得可辨識的螢幕畫面。');
@@ -4331,10 +4525,7 @@ function TrainingEfficiencyPanel() {
         levelCanvas && !pixelLevelResult
           ? preprocessLevelCrop(levelCanvas)
           : null;
-      const tesseractUrl = 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.esm.min.js';
-      const tesseractModule = await import(/* @vite-ignore */ tesseractUrl) as any;
-      const tesseractApi = tesseractModule.default ?? tesseractModule;
-      const recognize = tesseractApi.recognize ?? tesseractModule.recognize;
+      const worker = await ensureTrainingOcrWorker();
 
       let expRecognition: {
         value: number | null;
@@ -4348,43 +4539,21 @@ function TrainingEfficiencyPanel() {
       } | null = null;
       let levelResult: any = null;
 
-      if (typeof recognize === 'function') {
-        expRecognition = await recognizeExpWithVariants(recognize, expVariants);
-        if (processedLevel) {
-          levelResult = await recognize(processedLevel, 'eng', {
+      expRecognition = await recognizeExpWithVariants(
+        worker,
+        expVariants,
+        samples[samples.length - 1]?.exp ?? null,
+      );
+
+      if (processedLevel) {
+        levelResult = await recognizeWithTrainingWorker(
+          worker,
+          processedLevel,
+          {
             tessedit_char_whitelist: '0123456789',
             tessedit_pageseg_mode: '7',
-          });
-        }
-      } else {
-        const createWorker = tesseractApi.createWorker ?? tesseractModule.createWorker;
-        if (typeof createWorker !== 'function') throw new Error('tesseract.js recognize/createWorker API unavailable');
-        const worker = await createWorker('eng');
-        const recognizeWithWorker = async (
-          canvas: HTMLCanvasElement,
-          _language: string,
-          parameters: Record<string, string>,
-        ) => {
-          if (typeof worker.setParameters === 'function') {
-            await worker.setParameters(parameters);
-          }
-          return worker.recognize(canvas);
-        };
-        expRecognition = await recognizeExpWithVariants(
-          recognizeWithWorker,
-          expVariants,
+          },
         );
-
-        if (processedLevel) {
-          if (typeof worker.setParameters === 'function') {
-            await worker.setParameters({
-              tessedit_char_whitelist: '0123456789',
-              tessedit_pageseg_mode: '7',
-            });
-          }
-          levelResult = await worker.recognize(processedLevel);
-        }
-        if (typeof worker.terminate === 'function') await worker.terminate();
       }
 
       const rawText = expRecognition?.rawText || '';
@@ -4468,6 +4637,9 @@ function TrainingEfficiencyPanel() {
       setOcrFailCount((prev) => prev + 1);
       setOcrMessage(err instanceof Error ? `OCR 失敗：${err.message}` : 'OCR 失敗');
     } finally {
+      setOcrDurationMs(
+        Math.max(0, Math.round(performance.now() - ocrCycleStartedAt)),
+      );
       ocrBusyRef.current = false;
     }
   }
@@ -4538,6 +4710,21 @@ function TrainingEfficiencyPanel() {
       setCurrentRunStartedAt(null);
       setOcrMessage(
         '開始分析已停止：連續 10 次仍找不到完整狀態列。請讓狀態列完整顯示在擷取畫面內，再重新開始。',
+      );
+      return;
+    }
+
+    setOcrMessage('狀態列定位完成，正在載入快速 OCR 引擎…');
+    try {
+      await ensureTrainingOcrWorker();
+    } catch (error) {
+      setOcrActive(false);
+      setRunning(false);
+      setCurrentRunStartedAt(null);
+      setOcrMessage(
+        error instanceof Error
+          ? `OCR 引擎載入失敗：${error.message}`
+          : 'OCR 引擎載入失敗。',
       );
       return;
     }
@@ -4896,7 +5083,7 @@ function TrainingEfficiencyPanel() {
                 Debug
               </label>
             </div>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">一般使用直接按「開始分析」；勾選 Debug 可查看裁切框、各影像流程的一致數、原始辨識文字與最近 OCR／手動紀錄。異常高值不會自動成為新基準。</p>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">一般使用直接按「開始分析」；OCR 引擎只在首次啟動時載入，之後重複使用。勾選 Debug 可查看單次辨識耗時、裁切框、原始文字與紀錄。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={startAnalysis} disabled={ocrActive}>{ocrActive ? '分析中' : '開始分析(F8)'}</Button>
@@ -4991,6 +5178,11 @@ function TrainingEfficiencyPanel() {
               <div className="mb-3 grid gap-3 rounded-2xl border border-sky-100 bg-sky-50 p-3 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center">
                 <div className="text-sm font-black text-sky-700">定位來源：{cropDetectionSource}<div className="mt-1 text-xs font-semibold text-sky-600">必須先辨識右側參考形式的完整狀態列，才會建立等級與 EXP 裁切框。</div></div>
                 <img src="/training-hud-reference.png" alt="LV HP MP EXP 狀態列辨識參考" className="w-full rounded-lg border border-sky-200 bg-slate-950 object-contain" />
+              </div>
+              <div className="mb-3 grid gap-3 md:grid-cols-3">
+                <div className="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm font-black text-sky-700">OCR 引擎：{ocrWorkerStatus === 'ready' ? '已就緒' : ocrWorkerStatus === 'loading' ? '載入中' : ocrWorkerStatus === 'error' ? '載入失敗' : '未啟動'}</div>
+                <div className="rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3 text-sm font-black text-violet-700">最近 OCR 耗時：{ocrDurationMs > 0 ? `${(ocrDurationMs / 1000).toFixed(2)} 秒` : '--'}</div>
+                <div className="rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-black text-orange-700">辨識間隔：{ocrIntervalSec} 秒｜一般流程 1 次 OCR</div>
               </div>
               <div className="grid gap-3 md:grid-cols-4">
                 <div className="rounded-3xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">EXP OCR 成功：{ocrSuccessCount}</div>
@@ -5826,7 +6018,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.2</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.3</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -5988,13 +6180,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.2 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.3 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正後續錯誤 EXP 重複辨識後被自動設為新基準的問題。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">四種 EXP 影像流程改為全部辨識後取一致群組，不再採用第一個讀到數字的結果。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">異常高值一律拒絕，不再因連續出現而自動建立新基準。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">較低 EXP 只有在等級確認提升一級、多流程一致且連續三次合理增長時，才允許作為升級後新基準。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正 EXP 變動需要等待數分鐘才更新的問題。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">Tesseract Worker 改為開始分析時建立一次並持續重用，不再每個週期重複載入 OCR 引擎。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">正常辨識由四種影像流程縮減為優先流程一次；只有初始、較低值、失敗或衝突時才追加第二流程確認。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">預設辨識間隔由 3 秒改為 1 秒，Debug 新增 OCR 引擎狀態與單次辨識耗時。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">
