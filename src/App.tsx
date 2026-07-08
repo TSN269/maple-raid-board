@@ -2041,13 +2041,60 @@ function isExtremeTrainingOcrSample(samples: TrainingSample[], exp: number, now:
   return false;
 }
 
-function TrainingStatCard({ title, value, sub, icon }: { title: string; value: string; sub?: string; icon?: string }) {
+type TrainingStatKey =
+  | 'exp'
+  | 'expPerMinute'
+  | 'elapsed'
+  | 'accumulated10'
+  | 'predicted10'
+  | 'percentage'
+  | 'accumulated60'
+  | 'predicted60'
+  | 'eta';
+
+const TRAINING_STAT_KEYS: TrainingStatKey[] = [
+  'exp',
+  'expPerMinute',
+  'elapsed',
+  'accumulated10',
+  'predicted10',
+  'percentage',
+  'accumulated60',
+  'predicted60',
+  'eta',
+];
+
+function TrainingStatCard({
+  title,
+  value,
+  sub,
+  hidden,
+  onToggle,
+}: {
+  title: string;
+  value: string;
+  sub?: string;
+  hidden: boolean;
+  onToggle: () => void;
+}) {
   return (
     <div className="relative overflow-hidden rounded-[1.6rem] border border-orange-100/80 bg-white/85 p-4 shadow-[0_18px_55px_-44px_rgba(124,45,18,0.75)]">
-      <div className="absolute right-4 top-3 text-lg text-orange-400">{icon || '👁'}</div>
-      <div className="text-center text-xs font-black text-slate-400">{title}</div>
-      <div className="mt-2 text-center text-2xl font-black tracking-tight text-slate-950">{value}</div>
-      {sub ? <div className="mx-auto mt-2 w-fit rounded-full bg-orange-100 px-3 py-1 text-xs font-black text-orange-700">{sub}</div> : null}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-pressed={hidden}
+        aria-label={hidden ? `顯示${title}數據` : `隱藏${title}數據`}
+        title={hidden ? `顯示${title}數據` : `隱藏${title}數據`}
+        className={classNames(
+          'absolute right-3 top-2.5 grid h-8 w-8 place-items-center rounded-full text-lg transition hover:scale-105 focus:outline-none focus:ring-4 focus:ring-orange-100',
+          hidden ? 'bg-slate-100 text-slate-400 ring-1 ring-slate-200' : 'bg-orange-50 text-orange-500 ring-1 ring-orange-100',
+        )}
+      >
+        👁
+      </button>
+      <div className="px-8 text-center text-xs font-black text-slate-400">{title}</div>
+      <div className="mt-2 text-center text-2xl font-black tracking-tight text-slate-950">{hidden ? '*****' : value}</div>
+      {sub ? <div className="mx-auto mt-2 w-fit rounded-full bg-orange-100 px-3 py-1 text-xs font-black text-orange-700">{hidden ? '*****' : sub}</div> : null}
     </div>
   );
 }
@@ -2424,12 +2471,31 @@ function TrainingEfficiencyPanel() {
   const [levelCrop, setLevelCrop] = useState<TrainingAdaptiveCrop | null>(() => levelCropRef.current);
   const [hudPanelCrop, setHudPanelCrop] = useState<TrainingAdaptiveCrop | null>(null);
   const [debugEnabled, setDebugEnabled] = useState(false);
+  const [hiddenTrainingStats, setHiddenTrainingStats] = useState<Set<TrainingStatKey>>(() => new Set());
   const [manualSelectMode, setManualSelectMode] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragBox, setDragBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
   const [trainingStatSnapshots, setTrainingStatSnapshots] = useState<TrainingStatsSnapshot[]>(() => loadTrainingStatsSnapshots());
   const [selectedTrainingStatSnapshotId, setSelectedTrainingStatSnapshotId] = useState<string | null>(null);
+  const allTrainingStatsHidden = TRAINING_STAT_KEYS.every((key) => hiddenTrainingStats.has(key));
+
+  function toggleTrainingStatVisibility(key: TrainingStatKey) {
+    setHiddenTrainingStats((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleAllTrainingStatsVisibility() {
+    setHiddenTrainingStats((previous) => (
+      TRAINING_STAT_KEYS.every((key) => previous.has(key))
+        ? new Set<TrainingStatKey>()
+        : new Set<TrainingStatKey>(TRAINING_STAT_KEYS)
+    ));
+  }
 
   function loadSavedTrainingCrop() {
     try {
@@ -5437,6 +5503,19 @@ function TrainingEfficiencyPanel() {
                 <input id="training-debug-toggle" type="checkbox" checked={debugEnabled} onChange={(event) => setDebugEnabled(event.target.checked)} className="h-4 w-4 rounded border-orange-300 text-orange-500 focus:ring-orange-400" />
                 Debug
               </label>
+              <button
+                type="button"
+                onClick={toggleAllTrainingStatsVisibility}
+                aria-pressed={allTrainingStatsHidden}
+                aria-label={allTrainingStatsHidden ? '顯示全部數據分析數值' : '隱藏全部數據分析數值'}
+                title={allTrainingStatsHidden ? '顯示全部數據分析數值' : '隱藏全部數據分析數值'}
+                className={classNames(
+                  'grid h-8 w-8 place-items-center rounded-full border text-lg transition hover:scale-105 focus:outline-none focus:ring-4 focus:ring-orange-100',
+                  allTrainingStatsHidden ? 'border-slate-200 bg-slate-100 text-slate-400' : 'border-orange-100 bg-orange-50 text-orange-500',
+                )}
+              >
+                👁
+              </button>
             </div>
             <p className="mt-2 max-w-3xl text-sm font-semibold leading-7 text-slate-500">一般使用直接按「開始分析」；切換到遊戲視窗後，OCR 會直接從螢幕擷取軌道取得新影格，並由背景 Worker 排程，不依賴分析頁保持在前景。</p>
           </div>
@@ -5569,15 +5648,15 @@ function TrainingEfficiencyPanel() {
       </section>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <TrainingStatCard title="EXP" value={`${formatTrainingNumber(currentExp)}${targetExp > 0 ? ` [${currentPercent.toFixed(2)}%]` : ''}`} sub={totalExp > 0 ? `+${formatTrainingNumber(totalExp)}${targetExp > 0 ? ` [${totalExpPercent.toFixed(2)}%]` : ''}` : undefined} icon="👁" />
-        <TrainingStatCard title="EXP / 分" value={`⚡ ${formatTrainingNumber(expPerMinute)}`} icon="👁" />
-        <TrainingStatCard title="統計時間" value={formatTrainingDuration(elapsedMinutes)} sub={analysisStartedAt ? `開始 ${new Date(analysisStartedAt).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}` : undefined} icon="👁" />
-        <TrainingStatCard title="EXP累積 (10分)" value={`${formatTrainingNumber(accumulated10)} (${elapsedMinutes < 10 ? '<10m' : '10m'})`} icon="👁" />
-        <TrainingStatCard title="預估 10 分( 近10分 | 最高 )" value={`${formatTrainingNumber(predicted10)} (${formatTrainingNumber(accumulated10)} | ${formatTrainingNumber(highest10)})`} icon="👁" />
-        <TrainingStatCard title="預估百分比 (1 | 10 | 60分)" value={targetExp > 0 ? `${percentPerMinute.toFixed(2)}% | ${(percentPerMinute * 10).toFixed(2)}% | ${(percentPerMinute * 60).toFixed(2)}%` : '-- | -- | --'} icon="👁" />
-        <TrainingStatCard title="EXP累積 (60分)" value={`${formatTrainingNumber(accumulated60)} (${elapsedMinutes < 60 ? '<1h' : '60m'})`} icon="👁" />
-        <TrainingStatCard title="預估 60 分( 近60分 | 最高 )" value={`${formatTrainingNumber(predicted60)} (${formatTrainingNumber(accumulated60)} | ${formatTrainingNumber(highest60)})`} icon="👁" />
-        <TrainingStatCard title="預估升級時間" value={formatTrainingDuration(etaMinutes)} sub={currentLevel > 0 ? `等級 ${Math.min(200, currentLevel + 1)}` : undefined} icon="👁" />
+        <TrainingStatCard title="EXP" value={`${formatTrainingNumber(currentExp)}${targetExp > 0 ? ` [${currentPercent.toFixed(2)}%]` : ''}`} sub={totalExp > 0 ? `+${formatTrainingNumber(totalExp)}${targetExp > 0 ? ` [${totalExpPercent.toFixed(2)}%]` : ''}` : undefined} hidden={hiddenTrainingStats.has('exp')} onToggle={() => toggleTrainingStatVisibility('exp')} />
+        <TrainingStatCard title="EXP / 分" value={`⚡ ${formatTrainingNumber(expPerMinute)}`} hidden={hiddenTrainingStats.has('expPerMinute')} onToggle={() => toggleTrainingStatVisibility('expPerMinute')} />
+        <TrainingStatCard title="統計時間" value={formatTrainingDuration(elapsedMinutes)} sub={analysisStartedAt ? `開始 ${new Date(analysisStartedAt).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}` : undefined} hidden={hiddenTrainingStats.has('elapsed')} onToggle={() => toggleTrainingStatVisibility('elapsed')} />
+        <TrainingStatCard title="EXP累積 (10分)" value={`${formatTrainingNumber(accumulated10)} (${elapsedMinutes < 10 ? '<10m' : '10m'})`} hidden={hiddenTrainingStats.has('accumulated10')} onToggle={() => toggleTrainingStatVisibility('accumulated10')} />
+        <TrainingStatCard title="預估 10 分( 近10分 | 最高 )" value={`${formatTrainingNumber(predicted10)} (${formatTrainingNumber(accumulated10)} | ${formatTrainingNumber(highest10)})`} hidden={hiddenTrainingStats.has('predicted10')} onToggle={() => toggleTrainingStatVisibility('predicted10')} />
+        <TrainingStatCard title="預估百分比 (1 | 10 | 60分)" value={targetExp > 0 ? `${percentPerMinute.toFixed(2)}% | ${(percentPerMinute * 10).toFixed(2)}% | ${(percentPerMinute * 60).toFixed(2)}%` : '-- | -- | --'} hidden={hiddenTrainingStats.has('percentage')} onToggle={() => toggleTrainingStatVisibility('percentage')} />
+        <TrainingStatCard title="EXP累積 (60分)" value={`${formatTrainingNumber(accumulated60)} (${elapsedMinutes < 60 ? '<1h' : '60m'})`} hidden={hiddenTrainingStats.has('accumulated60')} onToggle={() => toggleTrainingStatVisibility('accumulated60')} />
+        <TrainingStatCard title="預估 60 分( 近60分 | 最高 )" value={`${formatTrainingNumber(predicted60)} (${formatTrainingNumber(accumulated60)} | ${formatTrainingNumber(highest60)})`} hidden={hiddenTrainingStats.has('predicted60')} onToggle={() => toggleTrainingStatVisibility('predicted60')} />
+        <TrainingStatCard title="預估升級時間" value={formatTrainingDuration(etaMinutes)} sub={currentLevel > 0 ? `等級 ${Math.min(200, currentLevel + 1)}` : undefined} hidden={hiddenTrainingStats.has('eta')} onToggle={() => toggleTrainingStatVisibility('eta')} />
       </div>
 
       <TrainingChart samples={samples} />
@@ -6379,7 +6458,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.9</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-10.0</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -6541,13 +6620,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.9 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-10.0 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">WC換楓幣排行改為固定顯示第 1～5 名。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">第 6～10 名保留在同一排行區塊，可透過垂直捲軸向下查看。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">商城道具分類、wcmc 由大到小排序與前 10 名資料範圍維持不變。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">點擊排行商品切換行情與 K 線分析的功能維持不變。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">練功效率偵測的 Debug 右側新增數據分析總控 👁 按鈕。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">總控按鈕可一次隱藏或顯示全部九個數據分析欄位。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">每個數據分析卡片的 👁 按鈕可獨立控制該欄位。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">隱藏時主數值與附加數值統一顯示為 *****，不影響 OCR、統計與紀錄。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">
