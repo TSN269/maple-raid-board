@@ -28,6 +28,7 @@ const LATEST_KEYS = ['latest', 'lastPrice', 'last_price', 'price', 'currentPrice
 const AVG7D_KEYS = ['avg7d', 'avg_7d', 'weekAvg', 'sevenDayAvg', 'avg7days', '7日均', '七日均', '7天均價', '週均價', '周均價', '7日平均', '一週均價'];
 const AVG30D_KEYS = ['avg30d', 'avg_30d', 'monthAvg', 'thirtyDayAvg', 'avg30days', '30日均', '三十日均', '30天均價', '月均價', '30日平均'];
 const CHANGE_KEYS = ['change', 'changePercent', 'change_percent', 'rate', '漲跌幅', '漲跌', '變化率', '漲跌%', '漲跌％', '漲幅', '跌幅'];
+const WCMC_KEYS = ['wcmc', 'wc_mc', 'wcMeso', 'wcToMeso', 'wc_to_meso', 'WC換楓幣', 'WC換楓幣比值', 'WC換楓幣比例'];
 
 function valueFrom(row, keys, fallback = '') {
   for (const key of keys) {
@@ -113,7 +114,8 @@ function headerScore(row) {
   const hasLatest = LATEST_KEYS.some((key) => normalized.includes(normalizeKey(key)));
   const hasCategory = CATEGORY_KEYS.some((key) => normalized.includes(normalizeKey(key)));
   const hasAvg = AVG7D_KEYS.some((key) => normalized.includes(normalizeKey(key))) || AVG30D_KEYS.some((key) => normalized.includes(normalizeKey(key)));
-  return Number(hasName) * 4 + Number(hasLatest) * 4 + Number(hasCategory) + Number(hasAvg);
+  const hasWcmc = WCMC_KEYS.some((key) => normalized.includes(normalizeKey(key)));
+  return Number(hasName) * 4 + Number(hasLatest) * 4 + Number(hasCategory) + Number(hasAvg) + Number(hasWcmc);
 }
 
 function parseCsv(text) {
@@ -151,6 +153,7 @@ function normalizeRows(rows, source, meta = {}) {
       const avg30d = toNumber(valueFrom(row, AVG30D_KEYS, avg7d), avg7d);
       const derivedChange = avg7d > 0 ? ((latest - avg7d) / avg7d) * 100 : 0;
       const change = toNumber(valueFrom(row, CHANGE_KEYS, derivedChange), derivedChange);
+      const wcmc = toNumber(valueFrom(row, WCMC_KEYS, 0));
 
       return {
         id: stableItemKey(valueFrom(row, ['id', 'key', 'item_id', '商品ID', '編號', '固定ID', '固定id', '商品固定ID'], ''), name),
@@ -160,6 +163,7 @@ function normalizeRows(rows, source, meta = {}) {
         avg7d,
         avg30d,
         change,
+        wcmc,
         trend: [avg30d || avg7d || latest, avg7d || latest, latest].filter((value) => value > 0),
       };
     })

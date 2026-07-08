@@ -660,6 +660,7 @@ type ArtaleMarketItem = {
   change: number;
   trend: number[];
   historyDates?: string[];
+  wcmc: number;
 };
 
 type ArtaleMarketPayload = {
@@ -734,6 +735,7 @@ function normalizeArtaleMarketPayload(payload: unknown): ArtaleMarketPayload {
         change: toSafeNumber(item.change ?? item.changePercent ?? item.change_percent ?? item.rate, derivedChange),
         trend: trend.length >= 2 ? trend : [avg30d || latest, avg7d || latest, latest].filter((value) => value > 0),
         historyDates: Array.isArray(item.historyDates) ? item.historyDates.map((value) => String(value)) : undefined,
+        wcmc: toSafeNumber(item.wcmc ?? item.WCMC ?? item.wc_mc ?? item.wcMeso ?? item.wcToMeso ?? item.wc_to_meso ?? item['WC換楓幣'] ?? item['WC換楓幣比值'] ?? item['WC換楓幣比例']),
       } satisfies ArtaleMarketItem;
     })
     .filter(Boolean) as ArtaleMarketItem[];
@@ -772,6 +774,11 @@ function formatMesos(value: number) {
   if (value >= 100000000) return `${(value / 100000000).toFixed(value >= 1000000000 ? 1 : 2)}億`;
   if (value >= 10000) return `${Math.round(value / 10000).toLocaleString('zh-TW')}萬`;
   return Math.round(value).toLocaleString('zh-TW');
+}
+
+function formatWcMeso(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '--';
+  return value.toLocaleString('zh-TW', { maximumFractionDigits: 2 });
 }
 
 function movingAverage(values: number[], windowSize: number) {
@@ -886,6 +893,10 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
   const activeItem = items.find((item) => item.id === activeItemId) || items[0] || null;
   const compareItem = items.find((item) => item.id === compareItemId) || items.find((item) => item.id !== activeItem?.id) || activeItem;
   const watchItems = watchList.map((id) => items.find((item) => item.id === id)).filter(Boolean) as ArtaleMarketItem[];
+  const wcMesoRanking = [...items]
+    .filter((item) => item.category.normalize('NFKC').replace(/\s+/g, '') === '商城道具類' && item.wcmc > 0)
+    .sort((a, b) => b.wcmc - a.wcmc)
+    .slice(0, 10);
   const successRatio = Math.max(0.01, Math.min(100, Number(successRate || 1)) / 100);
   const expectedCost = Math.max(0, Number(calcPrice || 0)) * Math.max(0, Number(scrollCount || 0)) / successRatio;
   const spread = activeItem && compareItem ? activeItem.latest - compareItem.latest : 0;
@@ -937,26 +948,50 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
         ) : null}
 
 
-        <section className="mt-5 rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">自選清單</div>
-              <h3 className="mt-1 text-xl font-black text-slate-950">我的自選清單</h3>
+        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+          <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">自選清單</div>
+                <h3 className="mt-1 text-xl font-black text-slate-950">我的自選清單</h3>
+              </div>
+              <Pill tone="orange">{watchItems.length} 項</Pill>
             </div>
-            <Pill tone="orange">{watchItems.length} 項</Pill>
-          </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            {watchItems.length > 0 ? watchItems.map((item) => (
-              <button key={item.id} type="button" onClick={() => setActiveItemId(item.id)} className="flex items-center justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50/50 px-3 py-2 text-left transition hover:bg-orange-100/70">
-                <span className="min-w-0 truncate text-sm font-black text-slate-800">{item.name}</span>
-                <span className="flex shrink-0 items-center gap-2">
-                  <span className={classNames('rounded-full px-2 py-0.5 text-[11px] font-black', item.change >= 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700')}>{item.change >= 0 ? '+' : ''}{item.change.toFixed(1)}%</span>
-                  <span className="text-sm font-black text-orange-700">{formatMesos(item.latest)}</span>
-                </span>
-              </button>
-            )) : <div className="rounded-2xl border border-dashed border-orange-100 bg-orange-50/50 p-4 text-center text-sm font-semibold text-slate-500 sm:col-span-2 xl:col-span-4">尚未加入自選商品。</div>}
-          </div>
-        </section>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {watchItems.length > 0 ? watchItems.map((item) => (
+                <button key={item.id} type="button" onClick={() => setActiveItemId(item.id)} className="flex items-center justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50/50 px-3 py-2 text-left transition hover:bg-orange-100/70">
+                  <span className="min-w-0 truncate text-sm font-black text-slate-800">{item.name}</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className={classNames('rounded-full px-2 py-0.5 text-[11px] font-black', item.change >= 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700')}>{item.change >= 0 ? '+' : ''}{item.change.toFixed(1)}%</span>
+                    <span className="text-sm font-black text-orange-700">{formatMesos(item.latest)}</span>
+                  </span>
+                </button>
+              )) : <div className="rounded-2xl border border-dashed border-orange-100 bg-orange-50/50 p-4 text-center text-sm font-semibold text-slate-500 sm:col-span-2">尚未加入自選商品。</div>}
+            </div>
+          </section>
+
+          <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">商城道具類</div>
+                <h3 className="mt-1 text-xl font-black text-slate-950">WC換楓幣排行</h3>
+              </div>
+              <Pill tone="orange">前 10 名</Pill>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {wcMesoRanking.length > 0 ? wcMesoRanking.map((item, index) => (
+                <button key={item.id} type="button" onClick={() => setActiveItemId(item.id)} className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-orange-100 bg-orange-50/50 px-3 py-2 text-left transition hover:bg-orange-100/70">
+                  <span className={classNames('grid h-7 w-7 place-items-center rounded-full text-xs font-black', index < 3 ? 'bg-orange-500 text-white' : 'bg-white text-slate-500 ring-1 ring-orange-100')}>{index + 1}</span>
+                  <span className="min-w-0 truncate text-sm font-black text-slate-800">{item.name}</span>
+                  <span className="text-right">
+                    <span className="block text-sm font-black text-orange-700">{formatWcMeso(item.wcmc)}</span>
+                    <span className="block text-[10px] font-bold text-slate-400">楓幣 / WC</span>
+                  </span>
+                </button>
+              )) : <div className="rounded-2xl border border-dashed border-orange-100 bg-orange-50/50 p-4 text-center text-sm font-semibold leading-6 text-slate-500">商城道具類目前沒有可用的 wcmc 資料。</div>}
+            </div>
+          </section>
+        </div>
 
         <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
           <section className="rounded-[1.6rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
@@ -6343,7 +6378,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.6</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.7</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -6505,13 +6540,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.6 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.7 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">EXP 辨識處理狀態改為只有勾選 Debug 時顯示。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">OCR 詳細訊息，包括影像流程、等級與影格來源，也改為只有勾選 Debug 時顯示。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">關閉 Debug 時不會保留兩個狀態訊息區塊的空白版面。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">OCR 判定、EXP 基準、計數、紀錄與統計邏輯維持不變。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">Artale 物價查詢的「我的自選清單」右側新增「WC換楓幣排行」。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">排行榜只讀取資料來源中分類為「商城道具類」的商品。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">依照 wcmc 欄位由大到小排序，顯示前 10 名。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">點擊排行榜商品可直接切換下方商品行情與 K 線分析。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">

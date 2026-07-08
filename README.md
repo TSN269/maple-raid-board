@@ -1,7 +1,7 @@
 # Maple Raid Board
 
 > Artale／楓之谷多人協作工具站  
-> 目前版本：**TSN UI-9.6**  
+> 目前版本：**TSN UI-9.7**  
 > GitHub：`TSN269/maple-raid-board`  
 > 部署架構：React + TypeScript + Vite + Supabase + Vercel
 
@@ -69,6 +69,7 @@ Maple Raid Board 整合突襲報名、隊伍管理、羅茱跳台協作、練功
 
 - Google Sheet CSV／CSV URL 資料來源。
 - 商品搜尋、分類、列表與自選清單。
+- 自選清單右側顯示商城道具類 `wcmc` 前 10 名的 WC 換楓幣排行。
 - 最後報價、7 日均、30 日均與漲跌幅。
 - 歷史走勢、K 線分析與均線。
 - 自選清單保存於 localStorage。
@@ -1481,6 +1482,18 @@ Serverless API 改用 Supabase REST API
 前端既有 Supabase 功能不變
 ```
 
+### UI-9.7
+
+```text
+Artale 物價查詢的我的自選清單右側新增 WC換楓幣排行
+排行榜限定資料來源分類為商城道具類的商品
+依照 wcmc 欄位由大到小排序並顯示前 10 名
+點擊排行榜商品可直接切換下方商品行情與 K 線分析
+Vercel API 與前端正規化層同步支援 wcmc 欄位
+不需要新增 Supabase SQL
+目前最新版本
+```
+
 ### UI-9.6
 
 ```text
@@ -1488,7 +1501,6 @@ EXP 辨識處理狀態改為只有勾選 Debug 時顯示
 OCR 詳細訊息改為只有勾選 Debug 時顯示
 關閉 Debug 時不保留狀態訊息空白區塊
 OCR 判定、EXP 基準、計數、紀錄與統計邏輯維持不變
-目前最新版本
 ```
 
 ### UI-9.5
