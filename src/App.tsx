@@ -978,7 +978,8 @@ function ArtalePriceModal({ onClose }: { onClose: () => void }) {
               </div>
               <Pill tone="orange">前 10 名</Pill>
             </div>
-            <div className="mt-3 grid gap-2">
+            <div className="mt-2 text-xs font-bold text-slate-400">畫面先顯示第 1～5 名，向下捲動可查看第 6～10 名。</div>
+            <div className="mt-3 grid h-72 gap-2 overflow-y-scroll pr-1 [scrollbar-gutter:stable]">
               {wcMesoRanking.length > 0 ? wcMesoRanking.map((item, index) => (
                 <button key={item.id} type="button" onClick={() => setActiveItemId(item.id)} className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-orange-100 bg-orange-50/50 px-3 py-2 text-left transition hover:bg-orange-100/70">
                   <span className={classNames('grid h-7 w-7 place-items-center rounded-full text-xs font-black', index < 3 ? 'bg-orange-500 text-white' : 'bg-white text-slate-500 ring-1 ring-orange-100')}>{index + 1}</span>
@@ -6378,7 +6379,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.8</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-9.9</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -6540,13 +6541,13 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.8 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-9.9 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正 WC換楓幣排行讀不到資料的問題。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">排行榜分類條件改為精確匹配資料來源中的「商城道具」。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">仍依照 wcmc 欄位由大到小排序並顯示前 10 名。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">商品名稱、wcmc 數值與點擊切換行情功能維持不變。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">WC換楓幣排行改為固定顯示第 1～5 名。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">第 6～10 名保留在同一排行區塊，可透過垂直捲軸向下查看。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">商城道具分類、wcmc 由大到小排序與前 10 名資料範圍維持不變。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">點擊排行商品切換行情與 K 線分析的功能維持不變。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">

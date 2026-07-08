@@ -1,7 +1,7 @@
 # Maple Raid Board
 
 > Artale／楓之谷多人協作工具站  
-> 目前版本：**TSN UI-9.8**  
+> 目前版本：**TSN UI-9.9**  
 > GitHub：`TSN269/maple-raid-board`  
 > 部署架構：React + TypeScript + Vite + Supabase + Vercel
 
@@ -1482,6 +1482,17 @@ Serverless API 改用 Supabase REST API
 前端既有 Supabase 功能不變
 ```
 
+### UI-9.9
+
+```text
+WC換楓幣排行畫面固定顯示第 1～5 名
+第 6～10 名保留在同一排行區塊，可透過垂直捲軸向下查看
+仍只取分類為「商城道具」且 wcmc 大於 0 的前 10 名資料
+wcmc 由大到小排序與點擊商品切換行情功能維持不變
+不需要新增 Supabase SQL
+目前最新版本
+```
+
 ### UI-9.8
 
 ```text
@@ -1490,7 +1501,6 @@ Serverless API 改用 Supabase REST API
 保留分類文字 NFKC 正規化與空白移除，避免全形或多餘空白影響匹配
 依照 wcmc 由大到小顯示前 10 名
 不需要新增 Supabase SQL
-目前最新版本
 ```
 
 ### UI-9.7
