@@ -6458,7 +6458,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-10.0</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-10.1</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -6620,13 +6620,12 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-10.0 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-10.1 READMEFIX 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">練功效率偵測的 Debug 右側新增數據分析總控 👁 按鈕。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">總控按鈕可一次隱藏或顯示全部九個數據分析欄位。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">每個數據分析卡片的 👁 按鈕可獨立控制該欄位。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">隱藏時主數值與附加數值統一顯示為 *****，不影響 OCR、統計與紀錄。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正 README 完整改版紀錄的版本排序。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">UI-7.5 VERCELFIX2 後改為依序排列 UI-7.6、UI-7.7、UI-7.8、UI-7.8 SQLFIX2、UI-7.9、UI-8.x、UI-9.x、UI-10.0。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">本次僅調整 README 與版本公告，不變更練功效率偵測、Artale 物價查詢或 Supabase SQL。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">
