@@ -1,7 +1,7 @@
 # Maple Raid Board
 
 > Artale／楓之谷多人協作工具站  
-> 目前版本：**TSN UI-10.2 ARTALETIMEFIX**  
+> 目前版本：**TSN UI-10.3 ARTALEHISTORYFIX**  
 > GitHub：`TSN269/maple-raid-board`  
 > 部署架構：React + TypeScript + Vite + Supabase + Vercel
 
@@ -1760,4 +1760,11 @@ wcmc 由大到小排序與點擊商品切換行情功能維持不變
 - Vercel / Netlify 物價 API 回應新增 `refreshedAt`。
 - 物價 API 快取改為 `no-store, no-cache, must-revalidate`，避免重新整理後仍看到舊更新時間。
 - 不變更 Artale 物價資料來源、排行榜、K 線、歷史資料表與 Supabase SQL。
+
+### UI-10.3 ARTALEHISTORYFIX
+
+- 修正 Artale 物價查詢「歷史最後報價」可能與商品行情最新報價對不上的問題。
+- Vercel 物價 API 讀取 Supabase 每日最後報價時改為分頁讀取完整歷史資料，避免 REST 預設筆數上限截斷最近日期。
+- 寫入本日報價後，歷史趨勢會強制補入本次來源的今日最後報價，確保 K 線最後一點與商品行情一致。
+- 不變更 Supabase SQL、資料來源欄位、WC 換楓幣排行或練功效率偵測功能。
 

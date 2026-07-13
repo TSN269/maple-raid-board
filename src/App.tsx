@@ -6460,7 +6460,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-950">Maple Raid Board</h1>
-                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-10.2</span>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700 ring-1 ring-orange-200">TSN UI-10.3</span>
                 <span className="text-orange-500">✦</span>
               </div>
               <p className="mt-1 text-xs font-bold text-slate-400">點擊右上蘑菇 Logo 可紀錄「遊戲id / 特徵碼」。</p>
@@ -6622,12 +6622,12 @@ export default function App() {
       {showVersionAnnouncement && activePanel === 'home' ? (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/45 p-4">
           <div className="w-full max-w-xl rounded-[2rem] border border-orange-100 bg-white p-6 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-10.2 ARTALETIMEFIX 更新公告</div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">TSN UI-10.3 ARTALEHISTORYFIX 更新公告</div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">本次版本更新內容</h2>
             <div className="mt-4 grid gap-3 text-sm font-bold leading-7 text-slate-600">
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正 Artale 物價查詢「商品行情」的資料庫更新時間可能停留在歷史資料列舊時間。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">前端改為優先顯示 API 本次成功讀取時間，重新整理後會顯示當下讀取時間。</div>
-              <div className="rounded-2xl bg-orange-50 px-4 py-3">Vercel／Netlify 物價 API 新增 refreshedAt，並將快取改為 no-store。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">修正 Artale 物價查詢「歷史最後報價」可能與商品行情最新報價對不上的問題。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">Vercel 物價 API 改為分頁讀取 Supabase 每日最後報價，避免最近日期被 REST 預設筆數上限截斷。</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3">寫入本日報價後，K 線歷史最後一點會補入本次來源的今日報價。</div>
             </div>
             <div className="mt-5 rounded-2xl border border-orange-100 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">若有問題可以聯絡作者DC:Mmumu0730</div>
             <div className="mt-5 flex justify-end">

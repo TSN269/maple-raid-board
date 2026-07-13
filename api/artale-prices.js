@@ -274,6 +274,42 @@ async function supabaseRestRequest(path, options = {}) {
   return payload;
 }
 
+async function fetchAllDailyPriceRecords(since) {
+  const config = getSupabaseRestConfig();
+  if (!config) throw new Error('SUPABASE_SERVICE_ROLE_KEY 未設定，無法讀取每日最後報價。');
+
+  const batchSize = 1000;
+  const maxBatches = 200;
+  const records = [];
+
+  for (let offset = 0, batch = 0; batch < maxBatches; offset += batchSize, batch += 1) {
+    const path = `/artale_price_daily_records?select=item_key,item_name,price_date,last_price,updated_at&price_date=gte.${since}&order=price_date.asc,updated_at.asc&limit=${batchSize}&offset=${offset}`;
+    const response = await fetch(`${config.restUrl}${path}`, {
+      method: 'GET',
+      headers: {
+        apikey: config.serviceKey,
+        Authorization: `Bearer ${config.serviceKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const text = await response.text();
+    const payload = text ? JSON.parse(text) : [];
+
+    if (!response.ok) {
+      const message = payload?.message || payload?.hint || payload?.details || text || `Supabase REST HTTP ${response.status}`;
+      throw new Error(message);
+    }
+
+    const page = Array.isArray(payload) ? payload : [];
+    records.push(...page);
+
+    if (page.length < batchSize) return records;
+  }
+
+  throw new Error(`每日最後報價歷史資料超過 ${batchSize * maxBatches} 筆，請縮短查詢範圍或改用後端 RPC 分頁。`);
+}
+
 async function mergeLegacyPriceKeys(items = []) {
   try {
     const payload = items.map((item) => ({
@@ -348,9 +384,7 @@ async function persistDailyPricesAndApplyHistory(items, source) {
 
     const keyMergeResult = await mergeLegacyPriceKeys(items);
 
-    const records = await supabaseRestRequest(`/artale_price_daily_records?select=item_key,item_name,price_date,last_price,updated_at&price_date=gte.${since}&order=price_date.asc`, {
-      method: 'GET',
-    });
+    const records = await fetchAllDailyPriceRecords(since);
 
     const itemById = new Map(items.map((item) => [String(item.id), item]));
     const itemIdByName = new Map(items.map((item) => [normalizeHistoryName(item.name), String(item.id)]));
@@ -375,6 +409,20 @@ async function persistDailyPricesAndApplyHistory(items, source) {
           date: dateKey,
           price,
           updatedAt,
+        });
+      }
+    }
+
+    const currentSnapshotUpdatedAt = new Date().toISOString();
+    for (const item of items) {
+      if (!historyMap.has(item.id)) historyMap.set(item.id, new Map());
+      const dayMap = historyMap.get(item.id);
+      const previous = dayMap.get(today);
+      if (!previous || previous.price !== item.latest) {
+        dayMap.set(today, {
+          date: today,
+          price: item.latest,
+          updatedAt: previous?.updatedAt || currentSnapshotUpdatedAt,
         });
       }
     }
