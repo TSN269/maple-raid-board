@@ -1,7 +1,7 @@
 # Maple Raid Board
 
 > Artale／楓之谷多人協作工具站  
-> 目前版本：**TSN UI-10.1 READMEFIX**  
+> 目前版本：**TSN UI-10.2 ARTALETIMEFIX**  
 > GitHub：`TSN269/maple-raid-board`  
 > 部署架構：React + TypeScript + Vite + Supabase + Vercel
 
@@ -1751,5 +1751,13 @@ wcmc 由大到小排序與點擊商品切換行情功能維持不變
 修正 README 完整改版紀錄中 UI-7.5 VERCELFIX2 後的版本順序
 改為 UI-7.6 → UI-7.7 → UI-7.8 → UI-7.8 SQLFIX2 → UI-7.9 → UI-8.x → UI-9.x → UI-10.0 → UI-10.1 READMEFIX
 僅調整 README 與版本公告，不變更前端功能、Supabase SQL 或 API 邏輯
-目前最新版本
 ```
+
+### UI-10.2 ARTALETIMEFIX
+
+- 修正 Artale 物價查詢「商品行情」的資料庫更新時間可能停留在歷史資料列舊時間。
+- 前端顯示時間優先使用 API 本次成功讀取時間 `refreshedAt`，再回退至 `updatedAt`、`historyUpdatedAt`、`priceDate`。
+- Vercel / Netlify 物價 API 回應新增 `refreshedAt`。
+- 物價 API 快取改為 `no-store, no-cache, must-revalidate`，避免重新整理後仍看到舊更新時間。
+- 不變更 Artale 物價資料來源、排行榜、K 線、歷史資料表與 Supabase SQL。
+

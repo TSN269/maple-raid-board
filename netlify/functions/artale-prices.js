@@ -203,6 +203,7 @@ function normalizeRows(rows, source, sheetName) {
     source,
     sheet: sheetName || '',
     updatedAt: new Date().toISOString(),
+    refreshedAt: new Date().toISOString(),
     items,
   };
 }
@@ -279,7 +280,7 @@ exports.handler = async function handler() {
       statusCode: result.status,
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': result.status === 200 ? 'public, max-age=300, stale-while-revalidate=600' : 'no-store',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
       },
       body: JSON.stringify(result.payload),
     };

@@ -429,6 +429,7 @@ async function persistDailyPricesAndApplyHistory(items, source) {
 }
 
 async function loadRowsFromSource() {
+  const requestStartedAt = new Date().toISOString();
   const csvUrl = process.env.ARTALE_PRICE_CSV_URL || process.env.ARTALE_PRICE_EXCEL_URL || process.env.ARTALE_PRICE_DATA_URL || '';
   const authHeader = process.env.ARTALE_PRICE_DATA_AUTH_HEADER || '';
 
@@ -507,6 +508,7 @@ async function loadRowsFromSource() {
       historyRows: historyResult.historyRows || 0,
       priceDate: historyResult.priceDate,
       historyUpdatedAt: historyResult.historyUpdatedAt || '',
+      refreshedAt: requestStartedAt,
     },
   };
 }
@@ -518,7 +520,7 @@ exports.handler = async function handler() {
       statusCode: result.status,
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': result.status === 200 ? 'public, max-age=300, stale-while-revalidate=600' : 'no-store',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
       },
       body: JSON.stringify(result.payload),
     };
